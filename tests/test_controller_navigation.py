@@ -56,7 +56,7 @@ async function check(file,held,expected){
   await check('examples/line-cutter/index.html',[0],'play.html');
   await check('examples/line-cutter/index.html',[4,5],'/');
   await check('examples/line-cutter/play.html',[0],'press');
-  await check('examples/line-cutter/play.html',[4,5],'./index.html');
+  await check('examples/line-cutter/play.html',[4,5],'/');
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
         result = subprocess.run(['node', '-e', harness], cwd=ROOT, text=True,

@@ -58,16 +58,16 @@ app.whenReady().then(async()=>{
       const hub=await require('./hub-smoke.cjs').checkHub(win,output);
       const library=await win.webContents.executeJavaScript('fetch("/library").then(r=>r.json())');
       if(!library.length)throw Error('Empty smoke library');
-      await win.loadURL('hub://app'+library[0].entrypoint);
+      await win.webContents.executeJavaScript(`document.querySelector('[aria-label=library]').click();document.querySelector('.game-card').click();`);
       await new Promise(resolve=>setTimeout(resolve,3000));
       const trailer=await win.webContents.executeJavaScript('[...document.querySelectorAll("video")].map(v=>({time:v.currentTime,error:v.error?.message,paused:v.paused}))');
       if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'title.png'),(await win.webContents.capturePage()).toPNG());}
-      await win.loadURL('hub://app/games/line-cutter/play.html');
+      await win.webContents.executeJavaScript(`document.querySelector('.play-game').click();`);
       await new Promise(resolve=>setTimeout(resolve,1000));
-      const report=await win.webContents.executeJavaScript(`(()=>{const p=HandheldPlatform.createPlatform(window.HandheldPlatformOptions);const s=p.saves('line-cutter');s.set('desktop-smoke',{ok:true});return {kind:p.kind,save:s.get('desktop-smoke'),node:typeof require,video:[...document.querySelectorAll('video')].map(v=>({time:v.currentTime,error:v.error?.message,paused:v.paused}))};})()`);
+      const report=await win.webContents.executeJavaScript(`(()=>{const p=HandheldPlatform.createPlatform(window.HandheldPlatformOptions);const s=p.saves('line-cutter');s.set('desktop-smoke',{ok:true});return {kind:p.kind,save:s.get('desktop-smoke'),node:typeof require,url:location.href,canvas:!!document.getElementById('screen'),video:[...document.querySelectorAll('video')].map(v=>({time:v.currentTime,error:v.error?.message,paused:v.paused}))};})()`);
       if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'desktop.png'),(await win.webContents.capturePage()).toPNG());await fs.writeFile(path.join(output,'report.json'),JSON.stringify({hub,library,trailer,report},null,2));}
       console.log(JSON.stringify({hub,library,trailer,report}));
-      if(report.kind!=='desktop'||!report.save?.ok||report.node!=='undefined'||!trailer.some(v=>v.time>0&&!v.paused&&!v.error))throw Error('Desktop bridge smoke failed');
+      if(report.kind!=='desktop'||!report.save?.ok||report.node!=='undefined'||!report.canvas||report.video.length||!report.url.endsWith(library[0].entrypoint)||!trailer.some(v=>v.time>0&&!v.paused&&!v.error))throw Error('Desktop bridge smoke failed');
       app.exit(0);
     }catch(error){console.error(error);app.exit(1);}
   }

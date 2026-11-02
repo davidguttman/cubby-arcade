@@ -24,6 +24,6 @@ function load(file){
 test('packaged title and gameplay read persisted mappings, reject old keys and preserve saves',()=>{
  const title=load('examples/line-cutter/index.html');title.press('KeyZ');assert.equal(title.sandbox.location.href,'');title.press('KeyV');assert.equal(title.sandbox.location.href,'play.html');
  const back=load('examples/line-cutter/index.html');back.press('Escape');assert.equal(back.sandbox.location.href,'');back.press('KeyQ');assert.equal(back.sandbox.location.href,'/');
- const game=load('examples/line-cutter/play.html');game.press('KeyZ');assert.deepEqual(game.presses,[]);game.press('KeyV');assert.deepEqual(game.presses,['a']);game.press('KeyQ');assert.equal(game.sandbox.location.href,'./index.html');
+ const game=load('examples/line-cutter/play.html');game.press('KeyZ');assert.deepEqual(game.presses,[]);game.press('KeyV');assert.deepEqual(game.presses,['a']);game.press('KeyQ');assert.equal(game.sandbox.location.href,'/');
  assert.equal(game.storage.get('linecutter_run'),'{"round":3}');
 });

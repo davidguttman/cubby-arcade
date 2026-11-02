@@ -56,7 +56,7 @@ function picker() {
   if (!game) return;
   host.dispose();
   // Returning via navigation releases the game's AudioContext and keeps its localStorage saves.
-  location.href = './index.html';
+  location.href = '/';
 }
 const platform = HandheldPlatform.createPlatform(window.HandheldPlatformOptions);
 host = HandheldSDK.createGameHost({platform, gameId:'line-cutter',

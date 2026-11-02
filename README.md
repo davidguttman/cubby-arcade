@@ -13,7 +13,7 @@ See `AGENTS.md`.
 
 Line Cutter is an unchanged **technical test payload**, not the product design
 or intended audience. Its internal written menus are not precedent. Its new
-package cover, title/start controls and play affordance use no words. The attract
+package title/start controls and play affordance use no words. The cover title is an explicit requested exception. The attract
 loop is the **actual 46.6-second gameplay trailer used on david.app**, played
 muted from the installed package. Original game text inside this test footage
 is not precedent for child-facing games. No reading is required to start or exit.
@@ -25,16 +25,16 @@ OS and games now have independent lifecycles:
 ```text
 /opt/handheld/runtime/                     OS launcher, server, installer
 /var/lib/handheld/games/line-cutter/
-  releases/0.1.13/                          complete installed package
+  releases/0.1.14/                          complete installed package
     manifest.json                         identity/version/integrity inventory
-    cover.png                             wordless game-inspired cover art
+    cover.png                             game-inspired cover art (title requested)
     index.html                            wordless controls + recorded gameplay trailer
     play.html                             game-owned browser/input adapter
     line-cutter.js                        unchanged upstream game
     title-loop.mp3
     match-loop.mp3
     trailer-handheld.webm                 recorded gameplay, local/offline
-  current -> releases/0.1.13                atomically selected active release
+  current -> releases/0.1.14                atomically selected active release
 ```
 
 `GET /library` discovers installed manifests, never an upstream repo or catalog.
@@ -67,7 +67,7 @@ From this repo on the prepared development host:
 ./vm.py fetch-games
 ./vm.py sync
 ./vm.py build-example
-./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.13.game.zip
+./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.14.game.zip
 ./vm.py view
 ```
 
@@ -94,9 +94,9 @@ from the generic launcher. Future games can supply the same package contract.
 
 ### Controls and saves
 
-Library: arrows/D-pad choose; A/Enter opens the selected package. Its trailer/title: A/Enter plays; B/Escape returns to the library. Gameplay: Z/Space=A, X=B,
+Library: arrows/D-pad choose; A/Enter opens the selected game's detail preview. Play launches the game directly, without another trailer screen; B/Escape exits the game to the library. Gameplay: Z/Space=A, X=B,
 arrows=D-pad, Enter/P=Start, M/right Shift=Select. Escape or L1+R1 returns to the
-package title. Standard Gamepad API support still needs real-device mapping tests.
+library. Standard Gamepad API support still needs real-device mapping tests.
 
 The 240×160 surfaces display at 480×320, centered on the 640×480 output.
 Persistent saves remain in the existing guest user's WebKit profile, outside
@@ -283,7 +283,7 @@ npm run desktop:build
 
 The Linux x64 folder is a self-contained local distribution (runtime and games
 included). Add its `HandheldHub` executable as a non-Steam game to open one
-fullscreen hub. Steam account integration, Steam Cloud, achievements, store
+fullscreen hub. In Steam, use **Games → Add a Non-Steam Game → Browse**, select that executable, then **Properties → Controller → Enable Steam Input** and the **Gamepad** template. Leave forced compatibility/Proton disabled for this native Linux build; keep the entire distribution folder intact. Steam account integration, Steam Cloud, achievements, store
 publishing and Steam Deck verification are **not** implemented or claimed.
 Windows/macOS packaging and physical controller behavior remain unverified.
 Standard keyboard/Gamepad API/pictorial controls are the shared implementations.
@@ -351,7 +351,7 @@ Create an offline example catalog and manage a disposable desktop profile:
 
 ```sh
 ./vm.py build-example
-uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.13.game.zip --output .cache/catalog/catalog.json
+uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.14.game.zip --output .cache/catalog/catalog.json
 uv run python -m runtime.catalog --developer-local list "file://$PWD/.cache/catalog/catalog.json"
 uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games install "file://$PWD/.cache/catalog/catalog.json" line-cutter
 HUB_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
@@ -423,4 +423,4 @@ unfocused window.
 
 The Line Cutter cover is ImageGen-created pixel-art key art, based on the actual
 gameplay trailer palette and archery theme. It replaces the generic SVG target;
-the cover contains no words and is not represented as a gameplay screenshot.
+the cover includes the explicitly requested LINE CUTTER title, with the arrowhead fully buried in the target, and is not represented as a gameplay screenshot. The earlier wordless version is preserved as `cover-wordless.png`.
