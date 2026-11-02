@@ -1,0 +1,29 @@
+[Unit]
+Description=Fullscreen WPE handheld game session
+After=systemd-user-sessions.service handheld-http.service
+Requires=handheld-http.service
+Conflicts=getty@tty1.service
+
+[Service]
+User=arcade
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PAMName=login
+WorkingDirectory=/opt/handheld
+Environment=XDG_SESSION_TYPE=wayland
+Environment=XDG_SESSION_CLASS=user
+Environment=XDG_SEAT=seat0
+Environment=XDG_VTNR=1
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+ExecStart=/usr/bin/dbus-run-session /usr/local/bin/handheld-kiosk
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
