@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import zipfile
+from urllib.parse import urlsplit
 from runtime import packages
 
 HERE = Path(__file__).resolve().parent
@@ -52,6 +53,15 @@ def game_manifest():
         path = Path(asset['path'])
         if path.is_absolute() or '..' in path.parts or not path.parts or not re.fullmatch(r'[0-9a-f]{64}', asset['sha256']):
             raise SystemExit('Game lock contains an invalid asset path or SHA-256.')
+        if 'url' in asset:
+            url = urlsplit(asset['url'])
+            if url.scheme != 'https' or not url.hostname or url.username or url.password:
+                raise SystemExit('External game assets require a public HTTPS URL.')
+        if 'rendition' in asset:
+            rendition = asset['rendition']
+            path = Path(rendition['path'])
+            if path.is_absolute() or '..' in path.parts or not path.parts or not re.fullmatch(r'[0-9a-f]{64}', rendition['sha256']) or rendition['recipe'] != 'silent-vp8-480x300-30fps-v1':
+                raise SystemExit('Invalid locked media rendition.')
     return manifest
 
 
@@ -73,9 +83,33 @@ def fetch_games():
         endpoint = f"repos/{manifest['repository']}/contents/{asset['path']}?ref={manifest['commit']}"
         try:
             with temporary.open('wb') as output:
-                run(['gh', 'api', endpoint, '-H', 'Accept: application/vnd.github.raw'], stdout=output)
+                if 'url' in asset:
+                    run(['curl', '--fail', '--location', '--silent', '--show-error',
+                         '--proto', '=https', '--proto-redir', '=https', asset['url']], stdout=output)
+                else:
+                    run(['gh', 'api', endpoint, '-H', 'Accept: application/vnd.github.raw'], stdout=output)
             if not verified(temporary, asset['sha256']):
                 raise SystemExit(f"Game asset checksum mismatch: {asset['path']}")
+            temporary.replace(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+    for asset in manifest['assets']:
+        if 'rendition' not in asset:
+            continue
+        rendition = asset['rendition']
+        destination = GAME_CACHE / rendition['path']
+        if verified(destination, rendition['sha256']):
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(destination.stem + '.part.webm')
+        try:
+            run(['ffmpeg', '-v', 'error', '-y', '-i', GAME_CACHE / asset['path'], '-an',
+                 '-vf', 'fps=30,scale=480:300:flags=neighbor', '-c:v', 'libvpx',
+                 '-crf', '20', '-b:v', '500k',
+                 '-threads', '1', '-map_metadata', '-1', '-fflags', '+bitexact',
+                 '-flags:v', '+bitexact', temporary])
+            if not verified(temporary, rendition['sha256']):
+                raise SystemExit('Media rendition checksum mismatch; use the FFmpeg version recorded in games.lock.json.')
             temporary.replace(destination)
         finally:
             temporary.unlink(missing_ok=True)
@@ -91,20 +125,27 @@ def build_example():
             raise SystemExit(f"Missing game asset {asset['path']}; run ./vm.py fetch-games first.")
         if not verified(source, asset['sha256']):
             raise SystemExit(f"Game asset checksum mismatch: {asset['path']}; run ./vm.py fetch-games to repair.")
-        files[Path(asset['path']).name] = source.read_bytes()
+        if 'rendition' in asset:
+            rendition = asset['rendition']
+            source = GAME_CACHE / rendition['path']
+            if not verified(source, rendition['sha256']):
+                raise SystemExit('Media rendition missing or checksum mismatch; run ./vm.py fetch-games.')
+        name = Path(asset.get('rendition', asset)['path']).name
+        files[name] = source.read_bytes()
     for source in sorted((HERE / 'examples/line-cutter').iterdir()):
         if source.is_file():
             files[source.name] = source.read_bytes()
-    metadata = dict(schema_version=1, id='line-cutter', version='0.1.1',
+    metadata = dict(schema_version=1, id='line-cutter', version='0.1.6',
         runtime='web', entrypoint='index.html', artwork='cover.svg', attract='index.html',
-        capabilities=['canvas2d', 'web-audio', 'local-storage', 'gamepad'],
-        provenance={'repository': manifest['repository'], 'commit': manifest['commit']},
+        capabilities=['canvas2d', 'web-audio', 'local-storage', 'gamepad', 'video'],
+        provenance={'repository': manifest['repository'], 'commit': manifest['commit'],
+                    'external_assets': [asset for asset in manifest['assets'] if 'url' in asset]},
         files={name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())})
-    # Attract is an actual packaged entrypoint; its animation is not gameplay footage.
+    # Title/attract loads the recorded gameplay trailer from the same package.
     packages.validate_manifest(metadata)
     files['manifest.json'] = (json.dumps(metadata, sort_keys=True, indent=2) + '\n').encode()
     STATE.mkdir(parents=True, exist_ok=True)
-    destination = STATE / 'line-cutter-0.1.1.game.zip'
+    destination = STATE / 'line-cutter-0.1.6.game.zip'
     with zipfile.ZipFile(destination, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in sorted(files.items()):
             entry = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))

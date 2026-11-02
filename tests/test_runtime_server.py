@@ -71,6 +71,21 @@ class RuntimeServerTests(unittest.TestCase):
         self.assertEqual(body, b'new runtime')
         self.assertEqual(headers.get('Cache-Control'), 'no-store')
 
+    def test_media_ranges_support_seek_suffix_and_head(self):
+        for value, body in [('bytes=0-2', b'old'), ('bytes=4-', b'runtime'), ('bytes=-3', b'ime')]:
+            status, headers, actual = self.request('GET', '/', {'Range': value})
+            self.assertEqual(status, 206)
+            self.assertEqual(actual, body)
+            self.assertEqual(int(headers['Content-Length']), len(body))
+            self.assertEqual(headers['Accept-Ranges'], 'bytes')
+        status, headers, body = self.request('HEAD', '/', {'Range': 'bytes=0-2'})
+        self.assertEqual((status, headers['Content-Range'], body), (206, 'bytes 0-2/11', b''))
+        for value in ['bytes=99-', 'bytes=3-1', 'bytes=-0', 'bytes=0-1,4-5', 'bytes=' + '9' * 100 + '-', 'nonsense']:
+            status, headers, _ = self.request('GET', '/', {'Range': value})
+            self.assertEqual(status, 416)
+            self.assertEqual(headers['Content-Range'], 'bytes */11')
+        self.assertEqual(self.request('GET', '/missing', {'Range': 'bytes=0-1'})[0], 404)
+
     def test_library_and_only_manifest_assets_are_served_offline(self):
         payload = b'game'
         package = self.root / 'game.zip'

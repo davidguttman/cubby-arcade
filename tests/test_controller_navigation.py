@@ -16,8 +16,11 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 async function check(file,held,expected){
   let callback,pad=null,presses=[];
   const noop=()=>{},context=new Proxy({}, {get:()=>noop});
+  const mediaEvents={},mediaCalls=[];
   const canvas={getContext:()=>context,addEventListener:noop};
-  const sandbox={document:{querySelector:()=>canvas,getElementById:()=>canvas,
+  const video={addEventListener:(event,fn)=>{mediaEvents[event]=fn},
+    load:()=>mediaCalls.push('load'),play:()=>{mediaCalls.push('play');return Promise.resolve()}};
+  const sandbox={document:{querySelector:selector=>selector==='video'?video:canvas,getElementById:()=>canvas,
     body:{classList:{add:noop}},hasFocus:()=>true,visibilityState:'visible'},
     navigator:{getGamepads:()=>pad?[pad]:[]},location:{href:'',search:''},innerWidth:640,innerHeight:480,
     performance:{now:()=>0},Image:class{},addEventListener:noop,
@@ -32,6 +35,12 @@ async function check(file,held,expected){
   for(const match of fs.readFileSync(file,'utf8').matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))
     vm.runInContext(match[1],sandbox);
   await new Promise(resolve=>setImmediate(resolve));
+  if(file==='examples/line-cutter/index.html'){
+    assert.ok(mediaEvents.ended,'trailer needs replay after completion');
+    mediaEvents.ended();
+    assert.deepEqual(mediaCalls,['load','play']);
+    assert.equal(sandbox.location.href,'');
+  }
   const frame=(buttons,axis=0)=>{pad=buttons===null?null:{buttons:Array.from({length:16},(_,i)=>({pressed:buttons.includes(i)})),axes:[axis,0],id:'test'};callback(1000)};
   frame(null);frame(held);frame(held);
   assert.equal(sandbox.location.href,'',file+' accepted held navigation');

@@ -1,6 +1,7 @@
 """Loopback-only offline asset server; stores bounded browser diagnostics."""
 import http.server
 import json
+import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 try:
@@ -27,7 +28,51 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         for header in ('If-Modified-Since', 'If-None-Match'):
             if header in self.headers:
                 del self.headers[header]
-        return super().send_head()
+        self.range_length = None
+        value = self.headers.get('Range')
+        path = Path(self.translate_path(self.path))
+        if not value or not path.is_file():
+            return super().send_head()
+        # Video decoders seek even with local files. Support a single bounded
+        # byte range without buffering the whole package asset into memory.
+        content = path.open('rb')
+        size = path.stat().st_size
+        match = re.fullmatch(r'bytes=([0-9]{0,20})-([0-9]{0,20})', value)
+        start, end = 0, -1
+        if match and any(match.groups()) and size:
+            left, right = match.groups()
+            if left:
+                start = int(left)
+                end = min(int(right), size - 1) if right else size - 1
+            elif int(right):
+                start, end = max(0, size - int(right)), size - 1
+        if not 0 <= start <= end < size:
+            content.close()
+            self.send_response(416)
+            self.send_header('Content-Range', f'bytes */{size}')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return None
+        self.range_length = end - start + 1
+        content.seek(start)
+        self.send_response(206)
+        self.send_header('Content-Type', self.guess_type(str(path)))
+        self.send_header('Accept-Ranges', 'bytes')
+        self.send_header('Content-Range', f'bytes {start}-{end}/{size}')
+        self.send_header('Content-Length', str(self.range_length))
+        self.end_headers()
+        return content
+
+    def copyfile(self, source, outputfile):
+        if self.range_length is None:
+            return super().copyfile(source, outputfile)
+        remaining = self.range_length
+        while remaining:
+            chunk = source.read(min(65536, remaining))
+            if not chunk:
+                break
+            outputfile.write(chunk)
+            remaining -= len(chunk)
 
     def translate_path(self, path):
         path = unquote(urlsplit(path).path)

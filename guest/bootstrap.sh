@@ -11,7 +11,7 @@ cat >/etc/apt/sources.list <<'EOF'
 deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20261027T000000Z/ trixie main
 EOF
 apt-get update
-apt-get install -y --no-install-recommends cog weston libgl1-mesa-dri gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav pulseaudio dbus-user-session fonts-dejavu-core curl
+apt-get install -y --no-install-recommends cog weston libgl1-mesa-dri gstreamer1.0-gl gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav pulseaudio dbus-user-session fonts-dejavu-core curl
 install -m644 /opt/handheld/guest/weston.ini /etc/handheld/weston.ini
 install -m644 /opt/handheld/guest/cog.ini /etc/handheld/cog.ini
 install -m755 /opt/handheld/guest/run-kiosk.sh /usr/local/bin/handheld-kiosk

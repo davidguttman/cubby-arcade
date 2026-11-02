@@ -40,7 +40,7 @@ class GameDependencyTests(unittest.TestCase):
         with patch.object(vm, 'run', side_effect=AssertionError('unexpected network')):
             with self.assertRaisesRegex(SystemExit, 'fetch-games'):
                 vm.build_example()
-        self.assertFalse((self.state / 'line-cutter-0.1.1.game.zip').exists())
+        self.assertFalse((self.state / 'line-cutter-0.1.6.game.zip').exists())
 
     def test_bundle_checks_cached_asset_integrity(self):
         self.cached_asset(b'tampered')
@@ -58,6 +58,51 @@ class GameDependencyTests(unittest.TestCase):
         self.assertEqual((self.cache / self.asset['path']).read_bytes(), self.payload)
         with patch.object(vm, 'run', side_effect=AssertionError('unexpected network')):
             vm.fetch_games()
+
+    def test_external_trailer_fetch_and_offline_inventory(self):
+        trailer = b'real recorded gameplay'
+        asset = {'path': 'media/trailer.mp4', 'url': 'https://media.publit.io/file/trailer.mp4',
+                 'sha256': hashlib.sha256(trailer).hexdigest()}
+        self.manifest['assets'].append(asset)
+        self.lock.write_text(json.dumps(self.manifest))
+        self.cached_asset(self.payload)
+        def download_asset(args, **kwargs):
+            self.assertEqual(args, ['curl', '--fail', '--location', '--silent', '--show-error',
+                                  '--proto', '=https', '--proto-redir', '=https', asset['url']])
+            kwargs['stdout'].write(trailer)
+        with patch.object(vm, 'run', side_effect=download_asset):
+            vm.fetch_games()
+        with patch.object(vm, 'run', side_effect=AssertionError('unexpected network')):
+            package = vm.build_example()
+            self.assertEqual(vm.build_example().read_bytes(), package.read_bytes())
+        with zipfile.ZipFile(package) as archive:
+            self.assertEqual(archive.read('trailer.mp4'), trailer)
+            metadata = json.loads(archive.read('manifest.json'))
+            self.assertEqual(metadata['version'], '0.1.6')
+            self.assertEqual(metadata['files']['trailer.mp4'], asset['sha256'])
+            self.assertIn(b'trailer-handheld.webm', archive.read('index.html'))
+
+    def test_locked_rendition_build_is_offline_and_rejects_tampering(self):
+        self.cached_asset(self.payload)
+        output = b'silent handheld video'
+        self.asset['rendition'] = {'path': 'media/handheld.webm',
+            'sha256': hashlib.sha256(output).hexdigest(),
+            'ffmpeg_version': 'n9.0.2', 'recipe': 'silent-vp8-480x300-30fps-v1'}
+        self.lock.write_text(json.dumps(self.manifest))
+        def convert(args, **kwargs):
+            self.assertEqual(args[0], 'ffmpeg')
+            self.assertIn('-an', args)
+            Path(args[-1]).write_bytes(output)
+        with patch.object(vm, 'run', side_effect=convert):
+            vm.fetch_games()
+        with patch.object(vm, 'run', side_effect=AssertionError('unexpected subprocess')):
+            vm.fetch_games()
+            package = vm.build_example()
+        with zipfile.ZipFile(package) as archive:
+            self.assertEqual(archive.read('handheld.webm'), output)
+        (self.cache / self.asset['rendition']['path']).write_bytes(b'tampered')
+        with self.assertRaisesRegex(SystemExit, 'rendition'):
+            vm.build_example()
 
     def test_corrupt_download_is_not_installed(self):
         def download_corrupt(args, **kwargs):
