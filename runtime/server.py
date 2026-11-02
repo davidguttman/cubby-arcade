@@ -5,9 +5,9 @@ import re
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 try:
-    from . import packages
+    from . import packages, game_shell
 except ImportError:
-    import packages
+    import packages, game_shell
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/handheld')
@@ -31,6 +31,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.range_length = None
         value = self.headers.get('Range')
         path = Path(self.translate_path(self.path))
+        if urlsplit(self.path).path.startswith('/games/') and path.suffix.lower() == '.html' and path.is_file():
+            import io
+            content = game_shell.inject(path.read_bytes())
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(content)))
+            self.end_headers()
+            return io.BytesIO(content)
         if not value or not path.is_file():
             return super().send_head()
         # Video decoders seek even with local files. Support a single bounded
@@ -97,7 +105,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path not in {'/runtime/index.html', '/runtime/core/input.js',
                          '/runtime/core/preferences.js', '/runtime/core/platform.js', '/runtime/core/sdk.js',
                          '/runtime/core/controls.js', '/runtime/core/screen.css',
-                         '/runtime/core/hub.js', '/runtime/core/hub.css'}:
+                         '/runtime/core/hub.js', '/runtime/core/hub.css', '/runtime/core/game-shell.js'}:
             return str(ROOT / '.missing-runtime-asset')
         return str(ROOT / path.lstrip('/'))
 

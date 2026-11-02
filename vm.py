@@ -139,7 +139,7 @@ def build_example():
     for source in sorted((HERE / 'runtime/core').iterdir()):
         if source.is_file() and source.suffix in {'.js', '.css'}:
             files['core/' + source.name] = source.read_bytes()
-    metadata = dict(schema_version=1, id='line-cutter', version='0.1.14',
+    metadata = dict(schema_version=1, id='line-cutter', version='0.1.15',
         runtime='web', entrypoint='play.html', artwork='cover.png',
         capabilities=['canvas2d', 'web-audio', 'local-storage', 'gamepad', 'video'],
         provenance={'repository': manifest['repository'], 'commit': manifest['commit'],
@@ -152,7 +152,7 @@ def build_example():
     packages.validate_manifest(metadata)
     files['manifest.json'] = (json.dumps(metadata, sort_keys=True, indent=2) + '\n').encode()
     STATE.mkdir(parents=True, exist_ok=True)
-    destination = STATE / 'line-cutter-0.1.14.game.zip'
+    destination = STATE / 'line-cutter-0.1.15.game.zip'
     with zipfile.ZipFile(destination, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in sorted(files.items()):
             entry = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))

@@ -17,7 +17,11 @@ app.whenReady().then(async()=>{
       if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
       assetPath(request.url,site);
       const file=library.file(request.url);
-      const data=['/library','/catalog'].includes(url.pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
+      let data=['/library','/catalog'].includes(url.pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
+      if(url.pathname.startsWith('/games/')&&path.extname(file).toLowerCase()==='.html'){
+        let html=data.toString('utf8');const tag='<script src="/runtime/core/preferences.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script>';
+        if(!html.includes(tag)){const match=/<!doctype[^>]*>/i.exec(html),at=match?match.index+match[0].length:0;data=Buffer.from(html.slice(0,at)+tag+html.slice(at));}
+      }
       const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.webm':'video/webm','.mp4':'video/mp4','.mp3':'audio/mpeg','.png':'image/png'};
       const headers={'Content-Type':mime[path.extname(file)]||(['/library','/catalog'].includes(url.pathname)?'application/json':'application/octet-stream'),'Accept-Ranges':'bytes','Cache-Control':'no-store'};
       let body=data,status=200;
@@ -68,6 +72,23 @@ app.whenReady().then(async()=>{
       if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'desktop.png'),(await win.webContents.capturePage()).toPNG());await fs.writeFile(path.join(output,'report.json'),JSON.stringify({hub,library,trailer,report},null,2));}
       console.log(JSON.stringify({hub,library,trailer,report}));
       if(report.kind!=='desktop'||!report.save?.ok||report.node!=='undefined'||!report.canvas||report.video.length||!report.url.endsWith(library[0].entrypoint)||!trailer.some(v=>v.time>0&&!v.paused&&!v.error))throw Error('Desktop bridge smoke failed');
+      // Exercise the host-owned menu, not the game's optional Quit callback.
+      win.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});
+      win.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
+      await new Promise(resolve=>setTimeout(resolve,200));
+      if(!await win.webContents.executeJavaScript('HandheldGameShell.isOpen()'))throw Error('System menu did not open');
+      if(output)await fs.writeFile(path.join(output,'system-menu.png'),(await win.webContents.capturePage()).toPNG());
+      // Pointer activation on the resume picture must return to the same game.
+      await win.webContents.executeJavaScript(`document.querySelector('[aria-label="Resume game"]').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));`);
+      if(await win.webContents.executeJavaScript('HandheldGameShell.isOpen()'))throw Error('System menu resume failed');
+      win.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});
+      win.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
+      win.webContents.sendInputEvent({type:'keyDown',keyCode:'Right'});
+      win.webContents.sendInputEvent({type:'keyUp',keyCode:'Right'});
+      win.webContents.sendInputEvent({type:'keyDown',keyCode:'Return'});
+      win.webContents.sendInputEvent({type:'keyUp',keyCode:'Return'});
+      await new Promise(resolve=>setTimeout(resolve,400));
+      if(!await win.webContents.executeJavaScript('!!document.querySelector(".game-card")'))throw Error('System menu did not return to library');
       app.exit(0);
     }catch(error){console.error(error);app.exit(1);}
   }

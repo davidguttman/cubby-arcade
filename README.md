@@ -25,7 +25,7 @@ OS and games now have independent lifecycles:
 ```text
 /opt/handheld/runtime/                     OS launcher, server, installer
 /var/lib/handheld/games/line-cutter/
-  releases/0.1.14/                          complete installed package
+  releases/0.1.15/                          complete installed package
     manifest.json                         identity/version/integrity inventory
     cover.png                             game-inspired cover art (title requested)
     index.html                            wordless controls + recorded gameplay trailer
@@ -34,7 +34,7 @@ OS and games now have independent lifecycles:
     title-loop.mp3
     match-loop.mp3
     trailer-handheld.webm                 recorded gameplay, local/offline
-  current -> releases/0.1.14                atomically selected active release
+  current -> releases/0.1.15                atomically selected active release
 ```
 
 `GET /library` discovers installed manifests, never an upstream repo or catalog.
@@ -67,7 +67,7 @@ From this repo on the prepared development host:
 ./vm.py fetch-games
 ./vm.py sync
 ./vm.py build-example
-./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.14.game.zip
+./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.15.game.zip
 ./vm.py view
 ```
 
@@ -94,9 +94,9 @@ from the generic launcher. Future games can supply the same package contract.
 
 ### Controls and saves
 
-Library: arrows/D-pad choose; A/Enter opens the selected game's detail preview. Play launches the game directly, without another trailer screen; B/Escape exits the game to the library. Gameplay: Z/Space=A, X=B,
-arrows=D-pad, Enter/P=Start, M/right Shift=Select. Escape or L1+R1 returns to the
-library. Standard Gamepad API support still needs real-device mapping tests.
+Library: arrows/D-pad choose; A/Enter opens the selected game's detail preview. Play launches the game directly, without another trailer screen. Gameplay: Z/Space=A, X=B,
+arrows=D-pad, Enter/P=Start, M/right Shift=Select. Escape, Select+Start, or L1+R1 opens the
+wordless system menu to resume or return to the library. Standard Gamepad API support still needs real-device mapping tests.
 
 The 240×160 surfaces display at 480×320, centered on the 640×480 output.
 Persistent saves remain in the existing guest user's WebKit profile, outside
@@ -351,7 +351,7 @@ Create an offline example catalog and manage a disposable desktop profile:
 
 ```sh
 ./vm.py build-example
-uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.14.game.zip --output .cache/catalog/catalog.json
+uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.15.game.zip --output .cache/catalog/catalog.json
 uv run python -m runtime.catalog --developer-local list "file://$PWD/.cache/catalog/catalog.json"
 uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games install "file://$PWD/.cache/catalog/catalog.json" line-cutter
 HUB_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
@@ -424,3 +424,23 @@ unfocused window.
 The Line Cutter cover is ImageGen-created pixel-art key art, based on the actual
 gameplay trailer palette and archery theme. It replaces the generic SVG target;
 the cover includes the explicitly requested LINE CUTTER title, with the arrowhead fully buried in the target, and is not represented as a gameplay screenshot. The earlier wordless version is preserved as `cover-wordless.png`.
+
+
+### System-owned game menu
+
+Games do not need a Quit button or SDK to return to the library. Every host
+injects `/runtime/core/game-shell.js` into served game HTML **before game
+scripts**, leaving installed archives and their checksums unchanged.
+
+- **Keyboard:** Escape opens the wordless menu. Escape again resumes; arrows
+  select the play/resume or grid/library picture, Enter confirms.
+- **Controller:** Select + Start opens the menu (L1 + R1 is also supported).
+  Release the shortcut, choose with left/right, A confirms, B resumes.
+- **Touch:** the pictorial menu button follows Options → touch visibility.
+  It remains outside the game's UI; no reading is required.
+
+SDK games pause while this menu is open, and resume only when dismissed.
+Non-SDK games still have blocked keyboard/pointer/controller input and a reliable
+route out, but may keep simulating or playing audio behind the menu. This is not
+a browser/process-crash recovery mechanism, nor a sandbox against malicious games.
+The shared-origin catalog continues to require trusted developer game packages.

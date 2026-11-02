@@ -5,9 +5,10 @@ import tempfile
 import unittest
 import zipfile
 import web
+from runtime import game_shell
 
 class WebHostTests(unittest.TestCase):
-    def test_export_validates_and_copies_exact_package_and_shared_launcher(self):
+    def test_export_validates_package_and_adds_host_shell_and_shared_launcher(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             package = root / 'demo.game.zip'
@@ -20,7 +21,7 @@ class WebHostTests(unittest.TestCase):
             output = root / 'output'
             web.build(output, [package])
             self.assertEqual((output / 'index.html').read_bytes(), (web.HERE / 'runtime/index.html').read_bytes())
-            self.assertEqual((output / 'games/demo/index.html').read_bytes(), payload['index.html'])
+            self.assertEqual((output / 'games/demo/index.html').read_bytes(), game_shell.inject(payload['index.html']))
             self.assertEqual(json.loads((output / 'library').read_text())[0]['entrypoint'], '/games/demo/index.html')
             self.assertEqual(json.loads((output / 'catalog').read_text()), json.loads((output / 'library').read_text()))
             self.assertEqual((output / 'runtime/core/hub.js').read_bytes(), (web.HERE / 'runtime/core/hub.js').read_bytes())
@@ -31,7 +32,7 @@ class WebHostTests(unittest.TestCase):
             # An invalid replacement must leave the previous export intact.
             with zipfile.ZipFile(package, 'a') as archive: archive.writestr('bad.txt', 'extra')
             with self.assertRaises(ValueError): web.build(output, [package])
-            self.assertEqual((output / 'games/demo/index.html').read_bytes(), payload['index.html'])
+            self.assertEqual((output / 'games/demo/index.html').read_bytes(), game_shell.inject(payload['index.html']))
             unrelated = root / 'unrelated'
             unrelated.mkdir()
             with self.assertRaises(ValueError): web.build(unrelated, [])

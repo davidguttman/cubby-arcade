@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
-from runtime import packages
+from runtime import packages, game_shell
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE / '.cache/web'
@@ -37,7 +37,10 @@ def build(output, archives):
             for name in manifest['files']:
                 destination = target / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(release / name, destination)
+                if destination.suffix.lower() == '.html':
+                    destination.write_bytes(game_shell.inject((release / name).read_bytes()))
+                else:
+                    shutil.copyfile(release / name, destination)
         (site / '.handheld-web-export').write_text('generated\n')
         (site / 'library').write_text(json.dumps(library, sort_keys=True) + '\n')
         (site / 'catalog').write_text(json.dumps(library, sort_keys=True) + '\n')

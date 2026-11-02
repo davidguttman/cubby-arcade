@@ -10,7 +10,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from runtime import server, packages
+from runtime import server, packages, game_shell
 
 
 class RuntimeServerTests(unittest.TestCase):
@@ -64,7 +64,7 @@ class RuntimeServerTests(unittest.TestCase):
         self.assertEqual(self.request('GET', '/runtime/core/input.js')[2], b'shared input')
         (core / 'preferences.js').write_bytes(b'shared preferences')
         self.assertEqual(self.request('GET', '/runtime/core/preferences.js')[2], b'shared preferences')
-        for name in ['hub.js', 'hub.css']:
+        for name in ['hub.js', 'hub.css', 'game-shell.js']:
             (core / name).write_text('shared UI')
             self.assertEqual(self.request('GET', '/runtime/core/' + name)[2], b'shared UI')
         self.assertEqual(self.request('GET', '/catalog')[0], 200)
@@ -115,7 +115,8 @@ class RuntimeServerTests(unittest.TestCase):
         status, _, body = self.request('GET', '/library')
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)[0]['entrypoint'], '/games/test-game/index.html')
-        self.assertEqual(self.request('GET', '/games/test-game/index.html')[2], payload)
+        self.assertEqual(self.request('GET', '/games/test-game/index.html')[2], game_shell.inject(payload))
+        self.assertEqual((self.games / 'test-game/current/index.html').read_bytes(), payload)
         for path in ['/games/test-game/manifest.json', '/games/test-game/%2e%2e/manifest.json', '/guest/bootstrap.sh']:
             self.assertEqual(self.request('GET', path)[0], 404)
 

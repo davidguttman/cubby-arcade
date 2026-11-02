@@ -68,3 +68,11 @@ test('game host suspends and resumes execution on host focus transitions and rem
   handlers.blur();handlers.blur();handlers.focus();assert.deepEqual(calls,['wake','stop','start','wake']);
   host.dispose();assert.deepEqual(Object.keys(handlers),[]);
 });
+
+test('system menu pauses SDK game and focus cannot resume underneath it',()=>{
+ const handlers={},calls=[];const target={addEventListener:(n,f)=>handlers[n]=f,removeEventListener:n=>delete handlers[n]};
+ const host=createGameHost({target,platform:createPlatform({document:{}}),gameId:'demo',inputFactory:()=>({dispose(){}})});
+ host.start({stop:()=>calls.push('stop'),start:()=>calls.push('start'),wake:()=>calls.push('wake')});
+ handlers['handheld:system-menu']({detail:{open:true}});handlers.focus();assert.deepEqual(calls,['wake','stop']);
+ handlers['handheld:system-menu']({detail:{open:false}});assert.deepEqual(calls,['wake','stop','start','wake']);host.dispose();
+});
