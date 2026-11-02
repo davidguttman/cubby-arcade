@@ -78,7 +78,7 @@ class GameDependencyTests(unittest.TestCase):
         with zipfile.ZipFile(package) as archive:
             self.assertEqual(archive.read('trailer.mp4'), trailer)
             metadata = json.loads(archive.read('manifest.json'))
-            self.assertEqual(metadata['version'], '0.1.12')
+            self.assertEqual(metadata['version'], '0.1.13')
             self.assertEqual(metadata['files']['trailer.mp4'], asset['sha256'])
             self.assertEqual(metadata['attract'], 'trailer.mp4')
             self.assertIn(b'trailer-handheld.webm', archive.read('index.html'))
@@ -124,7 +124,7 @@ class GameDependencyTests(unittest.TestCase):
         with zipfile.ZipFile(package) as archive:
             self.assertEqual(archive.read('line-cutter.js'), self.payload)
             self.assertIn('index.html', archive.namelist())
-            self.assertIn('cover.svg', archive.namelist())
+            self.assertIn('cover.png', archive.namelist())
             metadata = json.loads(archive.read('manifest.json'))
             for source in (vm.HERE / 'runtime/core').glob('*.js'):
                 name = 'core/' + source.name

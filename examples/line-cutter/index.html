@@ -1,7 +1,7 @@
 <!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title>
 <link rel="stylesheet" href="core/screen.css">
 <div class="screen"><video src="trailer-handheld.webm" autoplay muted playsinline preload="auto"></video><canvas width="240" height="160" aria-label="Play"></canvas></div><script src="core/preferences.js"></script><script src="core/input.js"></script><script src="core/controls.js"></script><script>
-const c=document.querySelector('canvas'),x=c.getContext('2d'),cover=new Image();cover.src='cover.svg';
+const c=document.querySelector('canvas'),x=c.getContext('2d'),cover=new Image();cover.src='cover.png';
 const trailer=document.querySelector('video');
 
 function publish(){fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'attract',trailer:{time:trailer.currentTime,duration:trailer.duration,width:trailer.videoWidth,height:trailer.videoHeight,paused:trailer.paused,muted:trailer.muted,loop:true,readyState:trailer.readyState,error:trailer.error?trailer.error.code:null}})}).catch(()=>{})}

@@ -25,16 +25,16 @@ OS and games now have independent lifecycles:
 ```text
 /opt/handheld/runtime/                     OS launcher, server, installer
 /var/lib/handheld/games/line-cutter/
-  releases/0.1.12/                          complete installed package
+  releases/0.1.13/                          complete installed package
     manifest.json                         identity/version/integrity inventory
-    cover.svg                             recognizable library artwork
+    cover.png                             wordless game-inspired cover art
     index.html                            wordless controls + recorded gameplay trailer
     play.html                             game-owned browser/input adapter
     line-cutter.js                        unchanged upstream game
     title-loop.mp3
     match-loop.mp3
     trailer-handheld.webm                 recorded gameplay, local/offline
-  current -> releases/0.1.12                atomically selected active release
+  current -> releases/0.1.13                atomically selected active release
 ```
 
 `GET /library` discovers installed manifests, never an upstream repo or catalog.
@@ -67,7 +67,7 @@ From this repo on the prepared development host:
 ./vm.py fetch-games
 ./vm.py sync
 ./vm.py build-example
-./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.12.game.zip
+./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.13.game.zip
 ./vm.py view
 ```
 
@@ -351,7 +351,7 @@ Create an offline example catalog and manage a disposable desktop profile:
 
 ```sh
 ./vm.py build-example
-uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.12.game.zip --output .cache/catalog/catalog.json
+uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.13.game.zip --output .cache/catalog/catalog.json
 uv run python -m runtime.catalog --developer-local list "file://$PWD/.cache/catalog/catalog.json"
 uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games install "file://$PWD/.cache/catalog/catalog.json" line-cutter
 HUB_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
@@ -420,3 +420,7 @@ change live controls until saved. Adult text is confined to that dialog.
 discovery/options, key capture and draft cancellation). It briefly shows and
 focuses its window because key capture intentionally cannot run in a hidden,
 unfocused window.
+
+The Line Cutter cover is ImageGen-created pixel-art key art, based on the actual
+gameplay trailer palette and archery theme. It replaces the generic SVG target;
+the cover contains no words and is not represented as a gameplay screenshot.
