@@ -1,167 +1,137 @@
 # handheld-os (working name)
 
-An independent home for the handheld OS integration, picture-first launcher,
-and ARM64 development environment. The product name is undecided.
-The current implementation is a **development VM**, not a flashable RG353V OS.
+An independent home for Linux/OS integration, a picture-first launcher, and the
+ARM64 development VM. Not a flashable RG353V OS; do not flash its QEMU disk.
 
-## Product requirements: pre-literate gamers
+## Audience: pre-literate children
 
-The intended players are pre-literate. **No words by default in child-facing
-UI**: launcher, game/library/store discovery, prompts, instructions, status,
-errors, and games. Use recognizable pictures, animation, sound, and demonstrated
-actions. Any visible word needs a compelling reason why it must be a word;
-it must be short, simple, and phonetic, and never required to proceed.
-Text belongs only in a clearly separate adult setup/management flow.
-The current launcher uses an archery picture and a play symbol; its A-button
-glyph is an optional matching physical-control cue, not a reading gate.
-See `AGENTS.md` for the persistent implementation contract.
+**No words by default** in child-facing launchers, libraries, prompts, errors,
+instructions or games. Use pictures, animation, sound and demonstrated actions.
+Any word needs a compelling reason and must be short, simple and phonetic;
+reading must never be necessary. Text is allowed in separate adult management.
+See `AGENTS.md`.
 
-**Line Cutter is only the existing runtime test payload, not the product design
-target.** Its unchanged title screens/gameplay include text, so it is not a
-pre-literate-ready game and must not define the child UX contract.
+Line Cutter is an unchanged **technical test payload**, not the product design
+or intended audience. Its internal written menus are not precedent. Its new
+package cover, title/start presentation and animated archery attract loop use
+no words. The loop is an illustration, **not recorded gameplay or a trailer**.
 
-## Repository boundary
+## Disk-installed example game
 
-This repository owns `guest/` (Linux kiosk setup and services), `runtime/`
-(pictorial launcher and input adapter), `vm.py` (QEMU/VM lifecycle and bundling),
-and the explicit development game dependency in `games.lock.json`.
-Game source and music remain upstream: no game implementation or audio is
-vendored here. No david.app checkout or relative path is needed to run this repo.
+OS and games now have independent lifecycles:
 
-`./vm.py fetch-games` uses the authenticated GitHub CLI to retrieve three exact
-Line Cutter assets at a full commit, checks each SHA-256, and caches them under
-ignored `.cache/games/`. The upstream game repository is private, so first fetch
-requires `gh` access to `davidguttman/misc.davidguttman.com`. Credentials are never
-copied into this repo or the VM. Bundling verifies the cache again and never
-fetches implicitly. Once fetched, bundling, sync, and game play work offline.
-This developer dependency command is **not** the future child-facing store or
-an installed-game manager.
+```text
+/opt/handheld/runtime/                     OS launcher, server, installer
+/var/lib/handheld/games/line-cutter/
+  releases/0.1.1/                          complete installed package
+    manifest.json                         identity/version/integrity inventory
+    cover.svg                             recognizable library artwork
+    index.html                            picture-only title + attract animation
+    play.html                             game-owned browser/input adapter
+    line-cutter.js                        unchanged upstream game
+    title-loop.mp3
+    match-loop.mp3
+  current -> releases/0.1.1                atomically selected active release
+```
 
-## Next: games store and installation
+`GET /library` discovers installed manifests, never an upstream repo or catalog.
+The generic launcher consumes package artwork and entrypoint; it contains no
+Line Cutter-specific logic. `/games/<id>/<asset>` serves only inventoried files
+from that game's active release. The package owns title/start/attract, its input
+adapter, actual gameplay and all audio. Everything plays offline after install.
 
-- An adult-facing catalog/setup flow, separate from a child's offline pictorial
-  game library; child discovery and play must not depend on written descriptions.
-- Versioned game packages/catalog entries with recognizable artwork, controller
-  capabilities, and integrity/provenance metadata.
-- Download verification and atomic install/update with rollback on interruption.
-- Saves kept separately from replaceable game packages, surviving updates.
-- Installed games available offline, with clear visual/audio status feedback.
+Manifest schema 1 has `id`, `version`, `runtime: web`, `entrypoint`, `artwork`, an
+optional `attract` entrypoint, capabilities/provenance metadata and a SHA-256
+inventory. These are local integrity checks, **not publisher authentication or
+signatures**. Use only trusted developer-built packages. Web games currently
+share the kiosk origin/profile, so this is **not isolation for untrusted games**.
 
-These are upcoming work, not implemented features. The present launcher has
-one test tile; it is not yet a multi-game library or downloadable OS image.
+The installer bounds archive size/count, rejects traversal/symlinks/extra files,
+and checks every hash before activation. It stages on the same filesystem,
+retains prior releases and atomically replaces `current`. A failed validation
+leaves the active install untouched. Identical reinstall is idempotent; reusing
+a version with different bytes fails. Old releases are intentionally retained.
+There is no automatic rollback UI, garbage collection, catalog/download flow,
+package signing or power-loss durability guarantee yet. Atomic selector changes
+protect against process interruption, not arbitrary storage failure.
 
-## RG353V development VM
+### Build and install
 
-ARM64 Linux development appliance for the gray **Anbernic RG353V (2 GB)**.
-The pinned Line Cutter JavaScript and two MP3s are bundled unchanged from the
-verified dependency cache, alongside a small game picker and input adapter.
-
-## Run
-
-From the repository root:
+From this repo on the prepared development host:
 
 ```sh
 ./vm.py fetch-games
-./vm.py init
-./vm.py start
-./vm.py status
+./vm.py sync
+./vm.py build-example
+./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.1.game.zip
 ./vm.py view
 ```
 
-The executable uses `uv` and pinned Python utility dependencies. First boot
-installs the guest runtime; follow progress in
-`/mnt/data/vms/handheld-os/serial.log` or:
+First fetch needs authenticated `gh` access to the private upstream repository
+`davidguttman/misc.davidguttman.com`. `games.lock.json` pins the full upstream
+commit and all three SHA-256 values. Assets stay in ignored `.cache/games`; no
+credentials or game payload are committed here. Package building is deterministic
+and offline, and rechecks cached hashes. The generated `.game.zip` stays outside
+Git in `/mnt/data/vms/handheld-os`.
+
+`sync` updates **only OS runtime/services**, not packages or saves. Fresh bootstrap
+starts with an empty pictorial library; install is explicit. Cover, title/attract,
+and adapter source for this example live under `examples/line-cutter/`, separate
+from the generic launcher. Future games can supply the same package contract.
+
+### Controls and saves
+
+Library: arrows/D-pad choose; A/Enter opens the selected package. Its animated
+title: A/Enter plays; B/Escape returns to the library. Gameplay: Z/Space=A, X=B,
+arrows=D-pad, Enter/P=Start, M/right Shift=Select. Escape or L1+R1 returns to the
+package title. Standard Gamepad API support still needs real-device mapping tests.
+
+The 240×160 surfaces display at 480×320, centered on the 640×480 output.
+Persistent saves remain in the existing guest user's WebKit profile, outside
+all replaceable game directories. The origin stays `http://127.0.0.1:8080`, and
+Line Cutter keeps its existing `linecutter_run` key: prior saves are preserved
+without copying/resetting the profile. This example is compatible with existing
+saves; a future SDK needs an explicit per-game save API/namespace for other games.
+
+## ARM64 development VM
 
 ```sh
-./vm.py ssh 'tail -30 /var/log/handheld-bootstrap.log'
-```
-
-`view` opens the host's VNC viewer. VNC is loopback-only, port **5907**, and
-SSH is loopback-only, port **12222**. There is no public server or jump.sh URL.
-For viewing from another computer, forward VNC over your normal SSH connection
-to this host; do not bind VNC to the LAN.
-
-### Development commands
-
-```sh
-./vm.py sync        # copies current launcher/runtime and verified cached game
-./vm.py screenshot  # prints path to actual VNC framebuffer capture
-./vm.py key ret     # injected physical Enter key (QMP qcode)
-./vm.py key z
+# First initialization only (existing disk/saves are preserved):
+./vm.py init
+./vm.py start
+./vm.py sync
+./vm.py status
+./vm.py view
+./vm.py screenshot
+./vm.py key ret
 ./vm.py key esc
 ./vm.py ssh 'cat /var/lib/handheld/browser-report.json'
-./vm.py stop        # ACPI clean shutdown; no unrelated process killed
+./vm.py stop
 ```
 
-Controls: Enter/A opens the selected game; Z/Space is A, X is B, arrows are the
-D-pad, Enter/P is Start, M/right Shift is Select. Escape returns to the picker.
-Standard browser gamepad mappings are supported, with **L1+R1** returning to the
-picker. Actual RG353V controller enumeration/mapping still needs hardware
-verification. The screen can also be clicked for A.
+Uses QEMU `virt`, 4 Cortex-A55 CPUs, 2GB RAM, Debian 13 ARM64 and WPE/Cog/Weston.
+VM software rendering is **not** an RG353V speed/GPU benchmark. Hardware graphics,
+controls, audio latency, suspend and ROCKNIX integration need device validation.
+No Node server, Docker or desktop changes. The guest uses a loopback Python server.
+VNC is host loopback port 5907 and SSH port 12222, with a task-specific SSH key;
+there is no public server or jump.sh URL. Forward VNC over SSH for remote access.
 
-The picker and game render at **240×160**, displayed at **480×320** (exact 2× scale) centered
-in a **640×480** output. Both use Canvas2D; the picker has a low-rate blinking
-selection indicator. The runtime uses WPE WebKit with Cog and Weston, not
-Chromium. Local saves live in the guest user's persistent WebKit profile.
-Returning to the picker reloads the page to release audio/render resources.
+The executable uses `uv` with pinned utility dependencies. The prepared rootless
+QEMU 11.1.2 toolchain is under `/mnt/data/vms/handheld-os/toolchain/root/usr`;
+manifest/signature provenance is alongside it. Prerequisites are `uv`, `curl`,
+`ssh`, `ssh-keygen`, `vncviewer`, plus QEMU ARM64/image tools/EDK2 firmware (system
+or the prepared rootless toolchain), QEMU GPU/audio modules and host PipeWire/PA.
+`HANDHELD_FIRMWARE_DIR` overrides system EDK2 paths; `HANDHELD_VM_DIR` overrides
+artifact state. Fixed ports mean only one VM at a time.
 
-## Host prerequisites / rootless toolchain
-
-- `uv`, `curl`, `ssh`, `ssh-keygen`, `vncviewer`; authenticated `gh` for first game fetch
-- QEMU system ARM64, QEMU image tools, and AArch64 EDK2 firmware
-- QEMU `virtio-gpu-pci` and PulseAudio backend modules; a host PulseAudio/PipeWire
-  compatibility server for audible output
-
-The prepared host has a user-local QEMU **11.1.2** installation at
-`/mnt/data/vms/handheld-os/toolchain/root/usr`. No host root permission,
-desktop configuration changes, Docker, or Node server is needed.
-The CLI automatically uses that layout and sets:
-
-```text
-LD_LIBRARY_PATH=<root>/usr/lib
-QEMU_MODULE_DIR=<root>/usr/lib/qemu
-QEMU -L <root>/usr/share/qemu
-```
-
-Firmware is `share/edk2/aarch64/QEMU_EFI.fd` plus a private copy of
-`QEMU_VARS.fd`. With system-installed QEMU, those paths default to
-`/usr/share/edk2/aarch64`; override the firmware directory using
-`HANDHELD_FIRMWARE_DIR` if the distribution uses another location.
-The rootless package manifest/signature verification provenance is in
-`toolchain/manifest.json` in the artifact directory.
-
-## Reproducibility and isolation
-
-- Fixed Debian 13 ARM64 cloud image build **20261026-2643**; SHA-512 is pinned
-  in `vm.py` and checked before use. Source: Debian's HTTPS cloud image archive.
-- Guest package archive snapshot: **20261027T000000Z**, with Debian package
-  signature verification enabled. No moving `latest` package/image inputs.
-- Exact installed package versions are saved to
-  `/var/lib/handheld/packages.lock.tsv`; the game SHA-256 is saved beside it.
-- Persistent disk, SSH keys, firmware variables, screenshots, and logs stay
-  outside Git at `/mnt/data/vms/handheld-os` (mode 0700).
-- Task-specific SSH key only; SSH passwords and host agent forwarding disabled.
-- Guest static HTTP binds only to guest loopback, with no public port forward.
-- No host directories are mounted into the guest. `sync` copies only the scoped
-  runtime files and the three hash-verified game assets from `games.lock.json`.
-- `HANDHELD_VM_DIR` can select a separate artifact directory, but ports are fixed:
-  stop this VM before starting a second one on the same host.
-- `init` preserves an existing guest disk; it does not reset saves or rerun
-  cloud-init on an already initialized guest. `sync` updates the runtime safely.
-
-## What is and is not apples-to-apples
-
-QEMU uses ARM64 `virt`, four Cortex-A55 CPUs and 2 GB RAM. The VM kernel,
-virtual display, audio device, and llvmpipe software rendering differ from the
-RG353V's Rockchip kernel/Mali GPU/real controls. Emulation is **not a handheld
-speed benchmark**. This VM verifies ARM ABI, WebKit behavior, asset packaging,
-input flow and persistence. Frame time, input/audio latency, GPU acceleration,
-power, suspend, and actual controller mappings must be measured on the device.
-
-The pinned runtime and game bundle are candidates for the device, **not an
-already-verified ROCKNIX package**. A matching device userland/runtime build is
-still required; Debian binaries cannot simply be assumed compatible with
-ROCKNIX. Do not flash this generic QEMU image to the RG353V.
+Debian cloud image build 20261026-2643 is SHA-512 pinned in `vm.py`; signed guest
+packages use snapshot 20261027T000000Z. Installed versions are recorded in
+`/var/lib/handheld/packages.lock.tsv`. VM disks, keys, logs, screenshots, generated
+packages and firmware state stay outside Git at `/mnt/data/vms/handheld-os`.
+No host filesystem is mounted into the guest. Original VM migration preserved
+its complete state from `/mnt/data/vms/david-app-handheld`; never replace a disk
+to migrate saves. Inspect serial/bootstrap/session logs there and under
+`/var/lib/handheld` for diagnostics; gameplay posts the browser report to `/report`.
 
 ## Verification
 
@@ -170,25 +140,6 @@ uv run python -m unittest discover -s tests -v
 bash -n guest/bootstrap.sh guest/run-kiosk.sh
 ```
 
-The dependency tests cover exact commit retrieval, cache reuse without network,
-missing/corrupt assets, failed download cleanup, and correct offline packaging.
-
-## Existing VM migration
-
-The original development VM's state was external to david.app at
-`/mnt/data/vms/david-app-handheld`; the standalone default is now
-`/mnt/data/vms/handheld-os`. Do not create a new disk to migrate saves. Stop only
-the owned VM cleanly before relocating its state, preserve the complete directory
-(including keys, firmware, seed, profile disk, and toolchain), and update the
-qcow2 backing-image path if it is absolute. Then start and sync with this CLI.
-Use `HANDHELD_VM_DIR` to target a retained state directory instead of moving it.
-Existing cloud-init metadata is preserved when regenerating a seed.
-
-## Diagnostics
-
-`status` reports QEMU PID, guest services and the actual WPE page report.
-`/var/lib/handheld/browser-report.json` records viewport, Canvas2D/localStorage,
-Web Audio state, decoded MP3 availability, rendered frames and JS errors.
-`/var/lib/handheld/weston.log`, `/var/lib/handheld/session.log`, the systemd journal, and bootstrap log contain
-graphics/startup details. Check audio samples as well as AudioContext state
-before claiming sound works; API presence alone is not an audio test.
+Tests cover pinned fetch/cache integrity, deterministic offline packaging,
+OS/game bundle separation, install/update validation, invalid install preservation,
+version immutability, traversal and manifest-only offline discovery/HTTP serving.

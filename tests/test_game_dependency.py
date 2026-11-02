@@ -2,6 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 import tarfile
+import zipfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -38,13 +39,13 @@ class GameDependencyTests(unittest.TestCase):
     def test_missing_dependency_fails_without_network_or_partial_bundle(self):
         with patch.object(vm, 'run', side_effect=AssertionError('unexpected network')):
             with self.assertRaisesRegex(SystemExit, 'fetch-games'):
-                vm.bundle()
-        self.assertFalse((self.state / 'bundle.tar.gz').exists())
+                vm.build_example()
+        self.assertFalse((self.state / 'line-cutter-0.1.1.game.zip').exists())
 
     def test_bundle_checks_cached_asset_integrity(self):
         self.cached_asset(b'tampered')
         with self.assertRaisesRegex(SystemExit, 'checksum'):
-            vm.bundle()
+            vm.build_example()
 
     def test_fetch_uses_exact_commit_and_reuses_verified_cache(self):
         def download_asset(args, **kwargs):
@@ -67,15 +68,20 @@ class GameDependencyTests(unittest.TestCase):
         self.assertFalse((self.cache / self.asset['path']).exists())
         self.assertEqual(list(self.cache.rglob('*.part')), [])
 
-    def test_offline_bundle_contains_exact_game_at_runtime_path(self):
+    def test_offline_package_contains_exact_game_and_os_bundle_has_no_game(self):
         self.cached_asset(self.payload)
         with patch.object(vm, 'run', side_effect=AssertionError('unexpected network')):
+            package = vm.build_example()
+            first = package.read_bytes()
+            self.assertEqual(vm.build_example().read_bytes(), first)
             bundle = vm.bundle()
+        with zipfile.ZipFile(package) as archive:
+            self.assertEqual(archive.read('line-cutter.js'), self.payload)
+            self.assertIn('index.html', archive.namelist())
+            self.assertIn('cover.svg', archive.namelist())
         with tarfile.open(bundle) as archive:
-            self.assertEqual(archive.extractfile(self.asset['path']).read(), self.payload)
             self.assertIn('runtime/index.html', archive.getnames())
-            self.assertIn('guest/bootstrap.sh', archive.getnames())
-            self.assertFalse(any('.git' in name or '__pycache__' in name for name in archive.getnames()))
+            self.assertFalse(any(name.startswith('public/') or 'examples/' in name for name in archive.getnames()))
 
 
 if __name__ == '__main__':

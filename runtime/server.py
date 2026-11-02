@@ -2,9 +2,15 @@
 import http.server
 import json
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
+try:
+    from . import packages
+except ImportError:
+    import packages
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/handheld')
+GAMES = packages.GAMES
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -23,9 +29,39 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 del self.headers[header]
         return super().send_head()
 
+    def translate_path(self, path):
+        path = unquote(urlsplit(path).path)
+        if path.startswith('/games/'):
+            parts = path.split('/')
+            game_id, relative = parts[2], '/'.join(parts[3:])
+            try:
+                packages.safe_path(relative)
+                entry = next(g for g in packages.library(GAMES) if g['id'] == game_id)
+                release = (GAMES / entry['id'] / 'current').resolve(strict=True)
+                manifest = packages.validate_manifest(json.loads((release / 'manifest.json').read_text()))
+                if relative not in manifest['files']:
+                    raise ValueError('Not a package asset')
+                target = (release / relative).resolve(strict=True)
+                if not target.is_relative_to(release):
+                    raise ValueError('Invalid path')
+                return str(target)
+            except (ValueError, OSError, StopIteration, KeyError, TypeError):
+                return str(ROOT / '.missing-game-asset')
+        if path == '/':
+            path = '/runtime/index.html'
+        if path != '/runtime/index.html':
+            return str(ROOT / '.missing-runtime-asset')
+        return str(ROOT / 'runtime/index.html')
+
     def do_GET(self):
-        if self.path == '/':
-            self.path = '/runtime/index.html'
+        if urlsplit(self.path).path == '/library':
+            content = json.dumps(packages.library(GAMES)).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
         super().do_GET()
 
     def do_POST(self):

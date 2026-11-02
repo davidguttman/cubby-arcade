@@ -19,7 +19,9 @@ install -m644 /opt/handheld/guest/handheld-http.service /etc/systemd/system/hand
 install -m644 /opt/handheld/guest/handheld-kiosk.service /etc/systemd/system/handheld-kiosk.service
 chown -R arcade:arcade /opt/handheld /var/lib/handheld
 dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' > /var/lib/handheld/packages.lock.tsv
-sha256sum /opt/handheld/public/line-cutter/line-cutter.js > /var/lib/handheld/game.sha256
+mkdir -p /var/lib/handheld/games
+chown root:root /var/lib/handheld/games
+chmod 755 /var/lib/handheld/games
 systemctl daemon-reload
 systemctl enable handheld-http.service handheld-kiosk.service
 systemctl start handheld-http.service handheld-kiosk.service

@@ -11,6 +11,8 @@ import socket
 import subprocess
 import sys
 import tarfile
+import zipfile
+from runtime import packages
 
 HERE = Path(__file__).resolve().parent
 GAME_LOCK = HERE / 'games.lock.json'
@@ -80,20 +82,54 @@ def fetch_games():
     print('Pinned game assets verified in', GAME_CACHE)
 
 
-def bundle():
+def build_example():
     manifest = game_manifest()
+    files = {}
     for asset in manifest['assets']:
         source = GAME_CACHE / asset['path']
         if not source.is_file():
             raise SystemExit(f"Missing game asset {asset['path']}; run ./vm.py fetch-games first.")
         if not verified(source, asset['sha256']):
             raise SystemExit(f"Game asset checksum mismatch: {asset['path']}; run ./vm.py fetch-games to repair.")
+        files[Path(asset['path']).name] = source.read_bytes()
+    for source in sorted((HERE / 'examples/line-cutter').iterdir()):
+        if source.is_file():
+            files[source.name] = source.read_bytes()
+    metadata = dict(schema_version=1, id='line-cutter', version='0.1.1',
+        runtime='web', entrypoint='index.html', artwork='cover.svg', attract='index.html',
+        capabilities=['canvas2d', 'web-audio', 'local-storage', 'gamepad'],
+        provenance={'repository': manifest['repository'], 'commit': manifest['commit']},
+        files={name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())})
+    # Attract is an actual packaged entrypoint; its animation is not gameplay footage.
+    packages.validate_manifest(metadata)
+    files['manifest.json'] = (json.dumps(metadata, sort_keys=True, indent=2) + '\n').encode()
+    STATE.mkdir(parents=True, exist_ok=True)
+    destination = STATE / 'line-cutter-0.1.1.game.zip'
+    with zipfile.ZipFile(destination, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in sorted(files.items()):
+            entry = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            entry.external_attr = 0o100644 << 16
+            archive.writestr(entry, content)
+    print(destination)
+    return destination
+
+
+def install_game(package):
+    if not pid():
+        raise SystemExit('VM is not running.')
+    # Guest installer revalidates all content before changing the active selector.
+    with Path(package).open('rb') as content:
+        ssh(['cat > /tmp/handheld-install.game.zip'], stdin=content)
+    ssh(['sudo python3 /opt/handheld/runtime/packages.py /tmp/handheld-install.game.zip && '
+         'sudo systemctl restart handheld-kiosk'])
+
+
+def bundle():
     destination = STATE / 'bundle.tar.gz'
     with tarfile.open(destination, 'w:gz') as archive:
         for folder in ('runtime', 'guest'):
             archive.add(HERE / folder, arcname=folder, filter=lambda item: None if '__pycache__' in item.name else item)
-        for asset in manifest['assets']:
-            archive.add(GAME_CACHE / asset['path'], arcname=asset['path'])
     return destination
 
 
@@ -225,9 +261,8 @@ def sync():
          'sudo install -m644 /opt/handheld/guest/weston.ini /opt/handheld/guest/cog.ini /etc/handheld/ && '
          'sudo install -m755 /opt/handheld/guest/run-kiosk.sh /usr/local/bin/handheld-kiosk && '
          'sudo install -m644 /opt/handheld/guest/handheld-http.service /opt/handheld/guest/handheld-kiosk.service /etc/systemd/system/ && '
-         'sha256sum /opt/handheld/public/line-cutter/line-cutter.js | sudo tee /var/lib/handheld/game.sha256 >/dev/null && '
          'sudo systemctl daemon-reload && sudo systemctl restart handheld-http handheld-kiosk'])
-    print('Synced current worktree game/runtime and restarted guest kiosk.')
+    print('Synced OS runtime only; installed games and saves unchanged.')
 
 
 def status():
@@ -253,10 +288,14 @@ def screenshot():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['fetch-games','init','start','status','ssh','sync','stop','view','screenshot','key'])
+    parser.add_argument('command', choices=['build-example','install-game','fetch-games','init','start','status','ssh','sync','stop','view','screenshot','key'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
-    if args.command == 'ssh':
+    if args.command == 'install-game':
+        if len(args.arguments) != 1:
+            raise SystemExit('install-game requires a local .game.zip package')
+        install_game(args.arguments[0])
+    elif args.command == 'ssh':
         ssh(args.arguments)
     elif args.command == 'view':
         run(['vncviewer', f'127.0.0.1:{VNC_DISPLAY}'])

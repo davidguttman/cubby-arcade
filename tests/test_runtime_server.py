@@ -1,4 +1,7 @@
 import http.client
+import hashlib
+import json
+import zipfile
 import http.server
 import os
 from pathlib import Path
@@ -7,7 +10,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from runtime import server
+from runtime import server, packages
 
 
 class RuntimeServerTests(unittest.TestCase):
@@ -15,6 +18,11 @@ class RuntimeServerTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
+        self.root = root
+        self.games = root / 'games'
+        games_patch = patch.object(server, 'GAMES', self.games)
+        games_patch.start()
+        self.addCleanup(games_patch.stop)
         self.page = root / 'runtime' / 'index.html'
         self.page.parent.mkdir()
         self.page.write_bytes(b'old runtime')
@@ -62,6 +70,24 @@ class RuntimeServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body, b'new runtime')
         self.assertEqual(headers.get('Cache-Control'), 'no-store')
+
+    def test_library_and_only_manifest_assets_are_served_offline(self):
+        payload = b'game'
+        package = self.root / 'game.zip'
+        manifest = dict(schema_version=1, id='test-game', version='1', runtime='web',
+                        entrypoint='index.html', artwork='art.svg',
+                        files={p: hashlib.sha256(payload).hexdigest() for p in ['index.html','art.svg']})
+        with zipfile.ZipFile(package, 'w') as z:
+            z.writestr('manifest.json', json.dumps(manifest))
+            for p in manifest['files']:
+                z.writestr(p, payload)
+        packages.install(package, self.games)
+        status, _, body = self.request('GET', '/library')
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)[0]['entrypoint'], '/games/test-game/index.html')
+        self.assertEqual(self.request('GET', '/games/test-game/index.html')[2], payload)
+        for path in ['/games/test-game/manifest.json', '/games/test-game/%2e%2e/manifest.json', '/guest/bootstrap.sh']:
+            self.assertEqual(self.request('GET', path)[0], 404)
 
 
 if __name__ == '__main__':
