@@ -22,9 +22,12 @@ class WebHostTests(unittest.TestCase):
             self.assertEqual((output / 'index.html').read_bytes(), (web.HERE / 'runtime/index.html').read_bytes())
             self.assertEqual((output / 'games/demo/index.html').read_bytes(), payload['index.html'])
             self.assertEqual(json.loads((output / 'library').read_text())[0]['entrypoint'], '/games/demo/index.html')
+            self.assertEqual(json.loads((output / 'catalog').read_text()), json.loads((output / 'library').read_text()))
+            self.assertEqual((output / 'runtime/core/hub.js').read_bytes(), (web.HERE / 'runtime/core/hub.js').read_bytes())
             self.assertFalse((output / 'vm.py').exists())
             self.assertEqual((output / 'runtime/core/input.js').read_bytes(), (web.HERE / 'runtime/core/input.js').read_bytes())
             self.assertEqual((output / 'runtime/core/screen.css').read_bytes(), (web.HERE / 'runtime/core/screen.css').read_bytes())
+            self.assertEqual((output / 'runtime/core/preferences.js').read_bytes(), (web.HERE / 'runtime/core/preferences.js').read_bytes())
             # An invalid replacement must leave the previous export intact.
             with zipfile.ZipFile(package, 'a') as archive: archive.writestr('bad.txt', 'extra')
             with self.assertRaises(ValueError): web.build(output, [package])

@@ -62,6 +62,12 @@ class RuntimeServerTests(unittest.TestCase):
         core.mkdir()
         (core / 'input.js').write_bytes(b'shared input')
         self.assertEqual(self.request('GET', '/runtime/core/input.js')[2], b'shared input')
+        (core / 'preferences.js').write_bytes(b'shared preferences')
+        self.assertEqual(self.request('GET', '/runtime/core/preferences.js')[2], b'shared preferences')
+        for name in ['hub.js', 'hub.css']:
+            (core / name).write_text('shared UI')
+            self.assertEqual(self.request('GET', '/runtime/core/' + name)[2], b'shared UI')
+        self.assertEqual(self.request('GET', '/catalog')[0], 200)
         for path in ['/runtime/server.py', '/runtime/core/unknown.js',
                      '/runtime/core/%2e%2e/server.py']:
             self.assertEqual(self.request('GET', path)[0], 404)

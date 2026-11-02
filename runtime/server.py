@@ -95,13 +95,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path == '/':
             path = '/runtime/index.html'
         if path not in {'/runtime/index.html', '/runtime/core/input.js',
-                         '/runtime/core/platform.js', '/runtime/core/sdk.js',
-                         '/runtime/core/controls.js', '/runtime/core/screen.css'}:
+                         '/runtime/core/preferences.js', '/runtime/core/platform.js', '/runtime/core/sdk.js',
+                         '/runtime/core/controls.js', '/runtime/core/screen.css',
+                         '/runtime/core/hub.js', '/runtime/core/hub.css'}:
             return str(ROOT / '.missing-runtime-asset')
         return str(ROOT / path.lstrip('/'))
 
     def do_GET(self):
-        if urlsplit(self.path).path == '/library':
+        if urlsplit(self.path).path in {'/library', '/catalog'}:
             content = json.dumps(packages.library(GAMES)).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')

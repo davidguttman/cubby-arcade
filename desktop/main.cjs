@@ -17,9 +17,9 @@ app.whenReady().then(async()=>{
       if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
       assetPath(request.url,site);
       const file=library.file(request.url);
-      const data=url.pathname==='/library'?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
+      const data=['/library','/catalog'].includes(url.pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
       const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.webm':'video/webm','.mp4':'video/mp4','.mp3':'audio/mpeg','.png':'image/png'};
-      const headers={'Content-Type':mime[path.extname(file)]||(url.pathname==='/library'?'application/json':'application/octet-stream'),'Accept-Ranges':'bytes','Cache-Control':'no-store'};
+      const headers={'Content-Type':mime[path.extname(file)]||(['/library','/catalog'].includes(url.pathname)?'application/json':'application/octet-stream'),'Accept-Ranges':'bytes','Cache-Control':'no-store'};
       let body=data,status=200;
       const range=request.headers.get('range');
       if(range){
@@ -55,6 +55,7 @@ app.whenReady().then(async()=>{
     const output=process.env.HUB_SMOKE_DIR;
     try{
       await new Promise(resolve=>setTimeout(resolve,1500));
+      const hub=await require('./hub-smoke.cjs').checkHub(win,output);
       const library=await win.webContents.executeJavaScript('fetch("/library").then(r=>r.json())');
       if(!library.length)throw Error('Empty smoke library');
       await win.loadURL('hub://app'+library[0].entrypoint);
@@ -64,8 +65,8 @@ app.whenReady().then(async()=>{
       await win.loadURL('hub://app/games/line-cutter/play.html');
       await new Promise(resolve=>setTimeout(resolve,1000));
       const report=await win.webContents.executeJavaScript(`(()=>{const p=HandheldPlatform.createPlatform(window.HandheldPlatformOptions);const s=p.saves('line-cutter');s.set('desktop-smoke',{ok:true});return {kind:p.kind,save:s.get('desktop-smoke'),node:typeof require,video:[...document.querySelectorAll('video')].map(v=>({time:v.currentTime,error:v.error?.message,paused:v.paused}))};})()`);
-      if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'desktop.png'),(await win.webContents.capturePage()).toPNG());await fs.writeFile(path.join(output,'report.json'),JSON.stringify({library,trailer,report},null,2));}
-      console.log(JSON.stringify({library,trailer,report}));
+      if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'desktop.png'),(await win.webContents.capturePage()).toPNG());await fs.writeFile(path.join(output,'report.json'),JSON.stringify({hub,library,trailer,report},null,2));}
+      console.log(JSON.stringify({hub,library,trailer,report}));
       if(report.kind!=='desktop'||!report.save?.ok||report.node!=='undefined'||!trailer.some(v=>v.time>0&&!v.paused&&!v.error))throw Error('Desktop bridge smoke failed');
       app.exit(0);
     }catch(error){console.error(error);app.exit(1);}

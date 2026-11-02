@@ -1,12 +1,10 @@
 /* Shared input for browsers and WPE. No platform or game dependencies. */
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('./preferences.js') : root.HandheldPreferences);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.HandheldInput = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (preferencesAPI) {
   'use strict';
-  const keys = {ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right',
-    KeyZ:'a', Space:'a', KeyX:'b', Enter:'start', KeyP:'start', KeyM:'select', ShiftRight:'select', Escape:'exit'};
   const buttons = {0:'a', 1:'b', 8:'select', 9:'start', 12:'up', 13:'down', 14:'left', 15:'right'};
   const directions = new Set(['up', 'down', 'left', 'right']);
   const semantic = {a:'confirm', b:'back', start:'pause'};
@@ -21,24 +19,42 @@
     const cancelFrame = options.cancelFrame || cancelAnimationFrame;
     const deadzone = options.deadzone === undefined ? 0.5 : options.deadzone;
     const repeatMs = options.repeatMs || 180;
-    const heldKeys = new Set(), cleanup = [];
+    const preferences = options.preferences || preferencesAPI.preferences;
+    let keys = {}, capture = null;
+    const heldKeys = new Set(), blockedKeys = new Set(), cleanup = [];
+    function updateKeyboard(value) {
+      heldKeys.forEach(code => blockedKeys.add(code));
+      heldKeys.clear(); keys = {};
+      Object.entries(value.keyboard).forEach(([button, codes]) => codes.forEach(code => keys[code] = button));
+    }
+    updateKeyboard(preferences.get());
+    cleanup.push(preferences.subscribe(updateKeyboard));
     let last = new Set(), repeated = {}, ready = false, identity = null, frameId, disposed = false;
     function emit(button, source) {
-      if (!disposed && active() && options.onAction) options.onAction({action:semantic[button] || button, button, source});
+      if (!disposed && !capture && active() && options.onAction) options.onAction({action:semantic[button] || button, button, source});
     }
     function listen(element, name, fn) {
       element.addEventListener(name, fn);
       cleanup.push(() => element.removeEventListener(name, fn));
     }
     listen(target, 'keydown', e => {
+      if (capture) {
+        e.preventDefault(); blockedKeys.add(e.code);
+        if (!e.repeat && active() && preferencesAPI.isKeyboardCode(e.code)) capture(e.code);
+        return;
+      }
       const button = keys[e.code];
       if (!button) return;
       e.preventDefault();
+      // A genuine new press proves release even when its keyup happened off-window.
+      // Keep repeats blocked until that press or an observed keyup arrives.
+      if (!e.repeat) blockedKeys.delete(e.code);
+      if (blockedKeys.has(e.code) || (e.repeat && !heldKeys.has(e.code))) return;
       // A repeated keydown can arrive on a new page after navigation.
-      if ((!heldKeys.has(e.code) && !e.repeat) || (e.repeat && directions.has(button))) emit(button, 'keyboard');
+      if ((!heldKeys.has(e.code) && !e.repeat) || (heldKeys.has(e.code) && e.repeat && directions.has(button))) emit(button, 'keyboard');
       heldKeys.add(e.code);
     });
-    listen(target, 'keyup', e => heldKeys.delete(e.code));
+    listen(target, 'keyup', e => { heldKeys.delete(e.code); blockedKeys.delete(e.code); });
     function reset() { heldKeys.clear(); last.clear(); repeated = {}; ready = false; identity = null; }
     listen(target, 'blur', () => { focused = false; reset(); });
     listen(target, 'focus', () => { focused = true; reset(); });
@@ -73,12 +89,19 @@
     }
     frameId = requestFrame(poll);
     return {
+      preferences,
+      captureKeyboard(onCode) {
+        if (disposed || capture || typeof onCode !== 'function') throw Error('Keyboard capture unavailable');
+        capture = onCode;
+        heldKeys.forEach(code => blockedKeys.add(code)); reset();
+        return () => { if (capture === onCode) { capture = null; reset(); } };
+      },
       attachPointer(element, chooseButton) {
         listen(element, 'pointerdown', e => { e.preventDefault(); emit(chooseButton ? chooseButton(e) : 'a', 'pointer'); });
       },
       dispose() {
         if (disposed) return;
-        disposed = true; cancelFrame(frameId); cleanup.forEach(fn => fn()); reset();
+        disposed = true; capture = null; cancelFrame(frameId); cleanup.forEach(fn => fn()); reset();
       }
     };
   }

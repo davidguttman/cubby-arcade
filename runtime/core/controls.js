@@ -14,8 +14,13 @@
       // Keyboard activation is handled by the shared keyboard input, not click.
       bar.appendChild(node);
     });
-    document.body.appendChild(bar);
-    return ()=>bar.remove();
+    const preferences=input.preferences;
+    const media=root.matchMedia && root.matchMedia('(any-pointer: coarse)');
+    const update=()=>{bar.hidden=!preferences.showTouchControls(root);bar.style.display=bar.hidden?'none':'';};
+    const unsubscribe=preferences.subscribe(update);
+    if(media && media.addEventListener)media.addEventListener('change',update);
+    update();document.body.appendChild(bar);
+    return ()=>{unsubscribe();if(media && media.removeEventListener)media.removeEventListener('change',update);bar.remove();};
   }
   root.HandheldControls={createControls};
 })(globalThis);

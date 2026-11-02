@@ -40,6 +40,7 @@ def build(output, archives):
                 shutil.copyfile(release / name, destination)
         (site / '.handheld-web-export').write_text('generated\n')
         (site / 'library').write_text(json.dumps(library, sort_keys=True) + '\n')
+        (site / 'catalog').write_text(json.dumps(library, sort_keys=True) + '\n')
         # The output directory is generated, never source, and explicitly selected.
         if output.exists():
             shutil.rmtree(output)

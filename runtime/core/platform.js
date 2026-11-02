@@ -57,6 +57,14 @@
         if (!Array.isArray(entries)) throw Error('Invalid library');
         return entries;
       },
+      async catalog() {
+        if (native.catalog) return native.catalog();
+        const response = await fetcher(options.catalogURL || '/catalog');
+        if (!response.ok) throw Error('Catalog unavailable');
+        const entries = await response.json();
+        if (!Array.isArray(entries)) throw Error('Invalid catalog');
+        return entries;
+      },
       async fullscreen() {
         if (!doc || !doc.documentElement || !doc.documentElement.requestFullscreen) return false;
         await doc.documentElement.requestFullscreen(); return true;

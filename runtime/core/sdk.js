@@ -14,7 +14,7 @@
     function visibility() { if (document.hidden) pause(); else resume(); }
     if (target.addEventListener) { target.addEventListener('blur', pause); target.addEventListener('focus', resume); }
     if (document && document.addEventListener) document.addEventListener('visibilitychange', visibility);
-    const input = (options.inputFactory || inputAPI.createInput)({onAction(event) {
+    const input = (options.inputFactory || inputAPI.createInput)({target, document, preferences:options.preferences, onAction(event) {
       if (event.action === 'exit') { if (options.onExit) options.onExit(); }
       else if (game) game.press(event.button);
     }});

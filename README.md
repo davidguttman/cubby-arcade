@@ -25,7 +25,7 @@ OS and games now have independent lifecycles:
 ```text
 /opt/handheld/runtime/                     OS launcher, server, installer
 /var/lib/handheld/games/line-cutter/
-  releases/0.1.9/                          complete installed package
+  releases/0.1.12/                          complete installed package
     manifest.json                         identity/version/integrity inventory
     cover.svg                             recognizable library artwork
     index.html                            wordless controls + recorded gameplay trailer
@@ -34,7 +34,7 @@ OS and games now have independent lifecycles:
     title-loop.mp3
     match-loop.mp3
     trailer-handheld.webm                 recorded gameplay, local/offline
-  current -> releases/0.1.9                atomically selected active release
+  current -> releases/0.1.12                atomically selected active release
 ```
 
 `GET /library` discovers installed manifests, never an upstream repo or catalog.
@@ -44,7 +44,7 @@ from that game's active release. The package owns title/start/attract, its input
 adapter, actual gameplay and all audio. Everything plays offline after install.
 
 Manifest schema 1 has `id`, `version`, `runtime: web`, `entrypoint`, `artwork`, an
-optional `attract` entrypoint, capabilities/provenance metadata and a SHA-256
+optional `attract` media asset (WebM/MP4 for inline discovery previews), capabilities/provenance metadata and a SHA-256
 inventory. These are local integrity checks, **not publisher authentication or
 signatures**. Use only trusted developer-built packages. Web games currently
 share the kiosk origin/profile, so this is **not isolation for untrusted games**.
@@ -67,7 +67,7 @@ From this repo on the prepared development host:
 ./vm.py fetch-games
 ./vm.py sync
 ./vm.py build-example
-./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.9.game.zip
+./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.12.game.zip
 ./vm.py view
 ```
 
@@ -175,6 +175,46 @@ input for both WPE and ordinary browsers. Actions are `confirm`, `back`, `pause`
 (`a`, `b`, `start`, etc.) and source. Analog dead zones, directional repeat,
 reconnect/neutral latching and listener teardown live here, not in individual
 screens. A/Start confirms in launcher/title; Escape or L1+R1 exits gameplay.
+
+`runtime/core/preferences.js` supplies `HandheldPreferences.preferences` (one
+shared instance per page). Preferences live under `handheld:preferences:v1` in
+host-origin/profile localStorage, separate from game saves; launcher, title and
+game packages read the same values. A denied/unavailable store falls back to
+session-only values. Defaults hide the controller overlay on desktop; `auto`
+shows it for touch-capable devices or a coarse pointer, `on`/`off` override it.
+Controls react immediately to preference and pointer-capability changes.
+
+Adult Options UI API (load preferences before input/controls):
+
+```js
+const prefs = HandheldPreferences.preferences;
+prefs.get(); // detached {touchOverlay: 'auto', keyboard: {up: ['ArrowUp'], …}}
+prefs.set({touchOverlay: 'off'}); // partial top-level update, validated atomically
+const edit = prefs.editKeyboard();
+const stopCapture = input.captureKeyboard(code => {
+  // No navigation/game actions while capturing; rejects unknown physical codes.
+  edit.setBinding('exit', [code]); // throws on conflicts/invalid codes
+  stopCapture();
+});
+// edit.get(), edit.set(fullMap), edit.reset() only change the draft.
+edit.apply(); // persists and updates all live input instances; edit.cancel() discards
+prefs.reset(); // restore both overlay and keyboard defaults
+const unsubscribe = prefs.subscribe(value => { /* detached current value */ });
+```
+
+All nine logical buttons (`up/down/left/right/a/b/start/select/exit`) must have
+1–16 unique physical `KeyboardEvent.code` bindings, with no key assigned twice.
+`BUTTONS`, `DEFAULT_KEYBOARD`, `isKeyboardCode` and `validateKeyboard` are exported
+for the remapping editor. Remapping is based on physical codes, not translated
+key labels. Defaults preserve Z/Space, X, Enter/P, M/right Shift and Escape.
+New mappings take effect without reload; old/captured held keys must release
+before activating anything. Capture returns a cancellation function; always call
+it on apply/cancel. It also suppresses pointer/gamepad actions until cancelled.
+Inputs accept an optional `preferences` instance for embedding/tests, expose it
+as `input.preferences`, and unsubscribe on disposal. SDK `createGameHost` forwards
+that option. Other same-origin windows receive changes via the storage event.
+Installed packages contain pinned copies, so existing old packages require an
+explicit package update to adopt this preferences contract.
 
 `runtime/core/platform.js` is the capability bridge. `createPlatform(options)`
 accepts a library URL/fetch, storage and an optional native bridge. Web/WPE
@@ -311,7 +351,7 @@ Create an offline example catalog and manage a disposable desktop profile:
 
 ```sh
 ./vm.py build-example
-uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.9.game.zip --output .cache/catalog/catalog.json
+uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.12.game.zip --output .cache/catalog/catalog.json
 uv run python -m runtime.catalog --developer-local list "file://$PWD/.cache/catalog/catalog.json"
 uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games install "file://$PWD/.cache/catalog/catalog.json" line-cutter
 HUB_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
@@ -351,3 +391,32 @@ isolation. Games still share an origin/profile. Production signing, third-party
 trust, permissions and publisher onboarding remain separate work, not claims of
 this example. Web downloads for offline browser installation are not implemented;
 native installation and static web export are intentionally different adapters.
+
+### Library, discovery, and options
+
+The shared hub starts on a **cover grid**, not a detail screen. Pointer hover,
+keyboard/controller focus, or tapping a cover opens the actual packaged trailer,
+a persistent favorite star, and a play control. Favorites are a binary preference,
+not a rating. The library, shopping-bag discovery tab, and gear options tab use
+pictures only; accessible names are available to assistive technology.
+
+The `/catalog` discovery feed currently contains the **packages available to that
+host**: exported packages in the static web build, installed packages in the VM
+and managed desktop host. This is a real separate browsing view, but not a remote
+commercial catalog. It does not pretend to purchase, download, or install a game.
+The adult CLI remains the installation mechanism. A future remote catalog can
+supply additional entries through the platform adapter without changing the hub;
+uninstalled entries have no play action.
+
+Options use three touch-control modes: automatic detection, always shown, and
+hidden. These control the game/title overlays; the hub's own large navigation and
+action buttons remain usable with a pointer regardless of that setting. The
+keyboard/person pictogram opens a separate **Adult setup** dialog. It captures
+physical keys for all nine logical controls, rejects duplicate bindings, and has
+explicit Save, Cancel, Reset keys, and Cancel capture actions. Draft edits never
+change live controls until saved. Adult text is confined to that dialog.
+
+`--smoke` now also exercises the actual rendered hub (grid/hover/favorites,
+discovery/options, key capture and draft cancellation). It briefly shows and
+focuses its window because key capture intentionally cannot run in a hidden,
+unfocused window.

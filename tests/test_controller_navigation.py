@@ -21,7 +21,7 @@ async function check(file,held,expected){
   const video={addEventListener:(event,fn)=>{mediaEvents[event]=fn},
     load:()=>mediaCalls.push('load'),play:()=>{mediaCalls.push('play');return Promise.resolve()}};
   const sandbox={document:{querySelector:selector=>selector==='video'?video:canvas,getElementById:()=>canvas,
-    createElement:()=>({setAttribute:noop,appendChild:noop,addEventListener:noop,removeEventListener:noop}),
+    createElement:()=>({style:{},setAttribute:noop,appendChild:noop,addEventListener:noop,removeEventListener:noop}),
     body:{classList:{add:noop},appendChild:noop},hasFocus:()=>true,hidden:false,visibilityState:'visible',
     addEventListener:noop,removeEventListener:noop},
     navigator:{getGamepads:()=>pad?[pad]:[]},location:{href:'',search:''},innerWidth:640,innerHeight:480,
@@ -34,7 +34,7 @@ async function check(file,held,expected){
       _debug:()=>false,width:240,height:160,state:'title'})}};
   sandbox.window=sandbox;
   vm.createContext(sandbox);
-  for(const source of ['input.js','platform.js','sdk.js','controls.js'])vm.runInContext(fs.readFileSync('runtime/core/'+source,'utf8'),sandbox);
+  for(const source of ['preferences.js','input.js','platform.js','sdk.js','controls.js'])vm.runInContext(fs.readFileSync('runtime/core/'+source,'utf8'),sandbox);
   for(const match of fs.readFileSync(file,'utf8').matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))
     vm.runInContext(match[1],sandbox);
   await new Promise(resolve=>setImmediate(resolve));
@@ -53,7 +53,6 @@ async function check(file,held,expected){
   else assert.equal(sandbox.location.href,expected,file+' rejected fresh input');
 }
 (async()=>{
-  await check('runtime/index.html',[0],'/games/example/index.html');
   await check('examples/line-cutter/index.html',[0],'play.html');
   await check('examples/line-cutter/index.html',[4,5],'/');
   await check('examples/line-cutter/play.html',[0],'press');

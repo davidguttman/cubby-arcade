@@ -1,20 +1,3 @@
-<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title>
-<link rel="stylesheet" href="/runtime/core/screen.css">
-<canvas class="library" width="240" height="160" aria-label="Game library"></canvas><script src="/runtime/core/input.js"></script><script src="/runtime/core/platform.js"></script><script src="/runtime/core/controls.js"></script><script>
-const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');let games=[],images=[],selected=0,error=false;
-function play(){if(games[selected])location.href=games[selected].entrypoint}
-function move(d){if(games.length)selected=(selected+d+games.length)%games.length}
-const platform=HandheldPlatform.createPlatform(window.HandheldPlatformOptions);
-const input=HandheldInput.createInput({onAction:e=>{
-  if(e.action==='confirm'||e.action==='pause')play();
-  if(e.action==='right'||e.action==='down')move(1);
-  if(e.action==='left'||e.action==='up')move(-1);
-}});
-input.attachPointer(canvas,e=>{const box=canvas.getBoundingClientRect(),pos=(e.clientX-box.left)/box.width;return pos<0.12?'left':pos>0.88?'right':'a'});
-HandheldControls.createControls(input,'library');
-addEventListener('pagehide',()=>input.dispose());
-platform.library().then(data=>{games=data;images=games.map(g=>{const image=new Image();image.src=g.artwork;return image})}).catch(()=>{error=true});
-function draw(t){ctx.fillStyle='#101614';ctx.fillRect(0,0,240,160);const img=images[selected];if(img&&img.complete&&img.naturalWidth){ctx.drawImage(img,20,7,200,115);ctx.strokeStyle='#a7d07a';ctx.lineWidth=3;ctx.strokeRect(18,5,204,119);ctx.fillStyle='#a7d07a';ctx.beginPath();ctx.moveTo(115,136);ctx.lineTo(132,145);ctx.lineTo(115,154);ctx.fill();if(games.length>1){ctx.fillStyle='#edf3dc';ctx.beginPath();ctx.moveTo(8,60);ctx.lineTo(2,68);ctx.lineTo(8,76);ctx.fill();ctx.beginPath();ctx.moveTo(232,60);ctx.lineTo(238,68);ctx.lineTo(232,76);ctx.fill()}}else{ctx.strokeStyle=error?'#e5664b':'#a7d07a';ctx.lineWidth=4;ctx.strokeRect(85,54,70,50);ctx.beginPath();ctx.moveTo(85,72);ctx.lineTo(108,72);ctx.lineTo(114,80);ctx.lineTo(127,80);ctx.lineTo(133,72);ctx.lineTo(155,72);ctx.stroke()}
-requestAnimationFrame(draw)}requestAnimationFrame(draw);
-fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
-</script></html>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title>
+<link rel="stylesheet" href="/runtime/core/screen.css"><link rel="stylesheet" href="/runtime/core/hub.css"></head>
+<body class="hub"><main id="hub"></main><script src="/runtime/core/preferences.js"></script><script src="/runtime/core/input.js"></script><script src="/runtime/core/platform.js"></script><script src="/runtime/core/hub.js"></script><script>HandheldHub.mount(document.getElementById('hub'));</script></body></html>

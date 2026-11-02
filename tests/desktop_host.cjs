@@ -6,6 +6,7 @@ const path=require('node:path');
 const {assetPath,gameScope,SaveStore,GameLibrary}=require('../desktop/host.cjs');
 test('desktop protocol confines assets and sender game scope',()=>{
   assert.equal(assetPath('hub://app/games/demo/index.html','/tmp/site'),'/tmp/site/games/demo/index.html');
+  assert.equal(assetPath('hub://app/runtime/core/preferences.js','/tmp/site'),'/tmp/site/runtime/core/preferences.js');
   for(const url of ['https://evil/index.html','hub://evil/index.html','hub://app/%2e%2e/%2fetc/passwd','hub://app/foo%00'])assert.throws(()=>assetPath(url,'/tmp/site'));
   assert.equal(gameScope('hub://app/games/demo/play.html'),'demo');
   assert.throws(()=>gameScope('hub://app/'));assert.throws(()=>gameScope('https://app/games/demo/'));

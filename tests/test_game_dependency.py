@@ -78,8 +78,9 @@ class GameDependencyTests(unittest.TestCase):
         with zipfile.ZipFile(package) as archive:
             self.assertEqual(archive.read('trailer.mp4'), trailer)
             metadata = json.loads(archive.read('manifest.json'))
-            self.assertEqual(metadata['version'], '0.1.9')
+            self.assertEqual(metadata['version'], '0.1.12')
             self.assertEqual(metadata['files']['trailer.mp4'], asset['sha256'])
+            self.assertEqual(metadata['attract'], 'trailer.mp4')
             self.assertIn(b'trailer-handheld.webm', archive.read('index.html'))
 
     def test_locked_rendition_build_is_offline_and_rejects_tampering(self):
