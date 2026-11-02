@@ -1,0 +1,14 @@
+"""Behavioral JS contract tests; Node is an interpreter, never a server."""
+from pathlib import Path
+import shutil
+import subprocess
+import unittest
+
+
+@unittest.skipUnless(shutil.which('node'), 'Node JS interpreter required')
+class SharedCoreTests(unittest.TestCase):
+    def test_shared_contract(self):
+        result = subprocess.run(['node', '--test', 'tests/shared_core.cjs'],
+                                cwd=Path(__file__).resolve().parents[1],
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

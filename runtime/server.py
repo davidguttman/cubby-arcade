@@ -94,9 +94,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return str(ROOT / '.missing-game-asset')
         if path == '/':
             path = '/runtime/index.html'
-        if path != '/runtime/index.html':
+        if path not in {'/runtime/index.html', '/runtime/core/input.js',
+                         '/runtime/core/platform.js', '/runtime/core/sdk.js',
+                         '/runtime/core/controls.js', '/runtime/core/screen.css'}:
             return str(ROOT / '.missing-runtime-asset')
-        return str(ROOT / 'runtime/index.html')
+        return str(ROOT / path.lstrip('/'))
 
     def do_GET(self):
         if urlsplit(self.path).path == '/library':

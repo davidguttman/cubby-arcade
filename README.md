@@ -25,7 +25,7 @@ OS and games now have independent lifecycles:
 ```text
 /opt/handheld/runtime/                     OS launcher, server, installer
 /var/lib/handheld/games/line-cutter/
-  releases/0.1.6/                          complete installed package
+  releases/0.1.9/                          complete installed package
     manifest.json                         identity/version/integrity inventory
     cover.svg                             recognizable library artwork
     index.html                            wordless controls + recorded gameplay trailer
@@ -34,7 +34,7 @@ OS and games now have independent lifecycles:
     title-loop.mp3
     match-loop.mp3
     trailer-handheld.webm                 recorded gameplay, local/offline
-  current -> releases/0.1.6                atomically selected active release
+  current -> releases/0.1.9                atomically selected active release
 ```
 
 `GET /library` discovers installed manifests, never an upstream repo or catalog.
@@ -54,8 +54,9 @@ and checks every hash before activation. It stages on the same filesystem,
 retains prior releases and atomically replaces `current`. A failed validation
 leaves the active install untouched. Identical reinstall is idempotent; reusing
 a version with different bytes fails. Old releases are intentionally retained.
-There is no automatic rollback UI, garbage collection, catalog/download flow,
-package signing or power-loss durability guarantee yet. Atomic selector changes
+Adult catalog/download/install management is described below. There is no
+automatic rollback UI, garbage collection, package signing or power-loss
+durability guarantee yet. Atomic selector changes
 protect against process interruption, not arbitrary storage failure.
 
 ### Build and install
@@ -66,7 +67,7 @@ From this repo on the prepared development host:
 ./vm.py fetch-games
 ./vm.py sync
 ./vm.py build-example
-./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.6.game.zip
+./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.9.game.zip
 ./vm.py view
 ```
 
@@ -102,7 +103,7 @@ Persistent saves remain in the existing guest user's WebKit profile, outside
 all replaceable game directories. The origin stays `http://127.0.0.1:8080`, and
 Line Cutter keeps its existing `linecutter_run` key: prior saves are preserved
 without copying/resetting the profile. This example is compatible with existing
-saves; a future SDK needs an explicit per-game save API/namespace for other games.
+saves; the shared SDK provides per-game save namespaces for new games.
 
 ## ARM64 development VM
 
@@ -165,3 +166,188 @@ H.264 control stalled after initial frames; VP8/WebM was verified advancing.
 Title diagnostics at `/report` include advancing media time, dimensions, ready
 state and decode errors for VM verification. Actual device video performance
 remains unverified; QEMU playback is not a handheld benchmark.
+
+## Shared runtime core
+
+`runtime/core/input.js` normalizes keyboard, pointer and standard Gamepad API
+input for both WPE and ordinary browsers. Actions are `confirm`, `back`, `pause`,
+`select`, directions and `exit`; events also carry the logical game button
+(`a`, `b`, `start`, etc.) and source. Analog dead zones, directional repeat,
+reconnect/neutral latching and listener teardown live here, not in individual
+screens. A/Start confirms in launcher/title; Escape or L1+R1 exits gameplay.
+
+`runtime/core/platform.js` is the capability bridge. `createPlatform(options)`
+accepts a library URL/fetch, storage and an optional native bridge. Web/WPE
+share HTTP library loading and browser-profile saves. Desktop supplies a native
+per-game save bridge; unsupported system controls are not advertised. Fullscreen is detected,
+and unsupported install/volume/sleep capabilities stay false. Future desktop
+hosts supply bridge methods without changing the launcher. `window.HandheldPlatformOptions`
+can configure hosts before boot; these screens use the same default `/library`.
+
+`runtime/core/sdk.js` owns input/lifecycle and a game-scoped JSON saves API.
+New games use `host.saves.get/set/remove`; Line Cutter remains byte-for-byte
+upstream and uses its existing storage internally. Its explicit compatibility
+alias maps `run` to `linecutter_run`, preserving old saves at the existing origin.
+Game packages include exact copies of these core source files, checksummed with
+the rest of the package; they do not depend on mutable host scripts. The generic
+launcher loads the same source under `/runtime/core/`. SDK changes only reach
+installed games through explicit versioned package updates, never OS sync.
+
+Run shared input/platform/lifecycle regression tests with
+`node --test tests/shared_core.cjs` or `uv run python -m unittest discover -s tests`.
+
+## Web host: same launcher and packages
+
+```sh
+uv run python web.py build
+jump.sh start handheld-os --json
+```
+
+The registered development preview is https://handheld-os.davidguttman.jump.sh .
+Check `jump.sh ls --json` for current status rather than assuming it is running.
+The repo's compose file runs only a Python static preview; Jump owns its lifecycle
+and HTTPS routing. Re-run the build after editing shared code/package sources.
+`web.py build path/to/game.game.zip ...` exports any explicitly selected trusted
+packages after the same installer validation. Default build uses the pinned
+Line Cutter example. Network/authenticated fetch is separate; cached builds work
+offline. Generated `.cache/web` and game assets are ignored, not checked in.
+
+The export copies `runtime/index.html` and shared core bytes, and copies only
+manifest-inventoried game assets from validated packages into `/games/<id>/`.
+It is not a second launcher. Package source changes bump the example version;
+web and handheld can install/export that same archive. A browser's saves stay
+local to its HTTPS origin/profile; they are not synced to the VM or another host.
+
+Library arrow pictures select, the play picture opens the title/trailer, and
+its play picture starts the game. A back-arrow picture returns. Gameplay has
+pictorial pointer/touch controls alongside keyboard and standard browser gamepads.
+New games should draw their own input demonstrations instead of written instructions.
+All surfaces fit narrow screens without scrolling. These controls are also shared
+with WPE; the 240×160 content remains centered at up to 480×320 on 640×480.
+The web preview is for UX testing, not RG353V hardware/performance validation.
+
+
+## Desktop / Steam host
+
+The Electron shell opens the same exported launcher and validated game assets;
+it does not run a Node HTTP server or create another launcher implementation.
+Electron and the packaging tool are pinned in `package-lock.json`.
+
+```sh
+npm ci
+npm run desktop:prepare
+npm run desktop:start
+npm run desktop:build
+# Result: dist/HandheldHub-linux-x64/HandheldHub
+```
+
+The Linux x64 folder is a self-contained local distribution (runtime and games
+included). Add its `HandheldHub` executable as a non-Steam game to open one
+fullscreen hub. Steam account integration, Steam Cloud, achievements, store
+publishing and Steam Deck verification are **not** implemented or claimed.
+Windows/macOS packaging and physical controller behavior remain unverified.
+Standard keyboard/Gamepad API/pictorial controls are the shared implementations.
+Close with the window-manager/Steam close action (e.g. Alt+F4); the child UI has
+no text menus. Blur suppresses input, suspends the game loop/audio and pauses
+video; focus resumes. Existing gameplay state is retained within that session.
+
+The `hub://app` protocol reads the generated launcher export and serves media byte
+ranges, without opening a network listener. With a managed games directory it
+discovers installed releases and serves only manifest-inventoried assets from
+their active selectors (see catalog commands below). Node integration is disabled in
+renderers, with context isolation and renderer sandbox enabled. The isolated
+preload exposes only game-scoped JSON saves; the main process validates sender
+origin, top-level frame, game scope, key and size. This is not an arbitrary-game
+sandbox: installed developer packages still share an origin/profile.
+
+SDK saves use `<Electron userData>/saves/<game>/<key>.json`, atomically written
+outside package assets. Native bridge calls are synchronous to preserve the
+existing SDK API. Explicit legacy aliases can migrate old browser saves on read.
+Unchanged Line Cutter still writes its original localStorage internally, so its
+legacy progress stays in the desktop browser profile; it is not automatically
+mirrored to disk JSON or Steam Cloud. Web/VM profiles remain separate and untouched.
+
+Run isolated, self-terminating smoke checks without using the live VM profile:
+
+```sh
+HUB_USER_DATA=/tmp/handheld-desktop-test HUB_SMOKE_DIR=/tmp/handheld-desktop-evidence npm run desktop:smoke -- --ozone-platform=x11 --disable-gpu
+```
+
+Smoke mode uses a hidden offscreen window and exits itself (X11 is needed for
+full-size screenshots on this host; headless Ozone can return a 1×1 capture); it checks local library,
+trailer playback, native saves and absent renderer Node APIs, writing screenshots
+and `report.json` when `HUB_SMOKE_DIR` is set. Without `HUB_USER_DATA`, smoke mode
+uses a dedicated temporary-directory profile, not the real app profile. The same
+`--smoke` arguments work with the built executable. No Steam credentials or App ID
+are required. Rebuild the web export and desktop bundle after package updates;
+OS/VM package installation is still explicit.
+
+## Adult catalog and install management
+
+`runtime.catalog` is the adult/developer management CLI, not a child-facing
+store screen. It runs on the host or handheld; there is no public write endpoint,
+no extra child text, no account/payment system and no production catalog yet.
+The static browser host exports selected validated packages; a browser cannot
+silently install native games. Its platform installation capability stays off.
+
+A schema-1 catalog contains `games`, one entry per game, with `id`, `version`,
+adult `title`, HTTPS package `url`, exact compressed `size` and `sha256`.
+`list` validates the full catalog; `install` downloads to temporary storage,
+checks size/hash and catalog/archive identity, validates every inventory entry,
+then atomically activates the versioned release using the existing installer.
+`update` requires an already installed game and selects the version in the
+chosen catalog; it does not guess version ordering or silently choose a catalog.
+Previous releases remain available on disk. Bad downloads/archives leave the
+active release unchanged. `remove` removes only the named game's package folder;
+SDK saves, legacy localStorage and browser profiles are never removed.
+
+HTTPS is required by default. Catalogs are limited to 1 MiB, packages to 128 MiB,
+with exact expected size/hash, 20-second request timeouts, 120-second transfer
+deadlines, and at most three redirects (no redirect to a file). The explicit
+`--developer-local` flag additionally allows file URIs and loopback-only HTTP
+for development. It does not allow arbitrary plain-HTTP hosts.
+
+Create an offline example catalog and manage a disposable desktop profile:
+
+```sh
+./vm.py build-example
+uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.9.game.zip --output .cache/catalog/catalog.json
+uv run python -m runtime.catalog --developer-local list "file://$PWD/.cache/catalog/catalog.json"
+uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games install "file://$PWD/.cache/catalog/catalog.json" line-cutter
+HUB_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
+# After publishing a newer version into the selected catalog:
+uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games update "file://$PWD/.cache/catalog/catalog.json" line-cutter
+uv run python -m runtime.catalog --root .cache/desktop-profile/games installed
+uv run python -m runtime.catalog --root .cache/desktop-profile/games remove line-cutter
+```
+
+Without a managed directory, a fresh desktop uses the bundled demo library.
+Once `<userData>/games` exists it becomes the **entire** game library, including
+when empty: removing a game cannot resurrect its bundled copy. `HUB_GAMES_DIR`
+can explicitly select another managed directory (create it before launching).
+The launcher/core still come from the app export; game bytes come from installed
+releases. Close/reopen a library page after management changes to refresh it.
+Run management operations serially and close a running game before updating or
+removing it. The desktop app does not need Python to play installed games; adult
+management currently uses the separate Python CLI.
+
+For a hosted trusted catalog, publish the created archives and catalog together:
+
+```sh
+uv run python -m runtime.catalog create path/to/game.game.zip --output .cache/publish/catalog.json --base-url https://your-host.example/games/
+uv run python -m runtime.catalog --root path/to/installed-games install https://your-host.example/games/catalog.json line-cutter
+```
+
+On the VM, `./vm.py sync` copies the management module without touching games or
+saves. Then use `./vm.py ssh 'cd /opt/handheld && sudo python3 -m runtime.catalog list https://your-host.example/games/catalog.json'`, or replace `list` with
+`install <catalog-url> <game-id>`, `update ...` or `remove <game-id>`.
+The guest defaults to `/var/lib/handheld/games`; restart `handheld-kiosk` or return
+to a fresh library page after changes. Existing `./vm.py install-game <archive>`
+remains the offline side-loading path for an already downloaded archive.
+
+These are **trusted developer catalogs/packages**. HTTPS and hashes detect
+transport/corruption mistakes; they are not publisher authentication or game
+isolation. Games still share an origin/profile. Production signing, third-party
+trust, permissions and publisher onboarding remain separate work, not claims of
+this example. Web downloads for offline browser installation are not implemented;
+native installation and static web export are intentionally different adapters.

@@ -1,0 +1,14 @@
+{
+  "name": "handheld-os-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "desktop:prepare": "uv run python web.py build",
+    "desktop:start": "electron .",
+    "desktop:smoke": "electron . --smoke",
+    "desktop:build": "npm run desktop:prepare && node desktop/build.cjs",
+    "test:desktop": "node --test tests/desktop_host.cjs"
+  },
+  "devDependencies": {"electron": "45.2.1", "@electron/packager": "20.3.0"}
+}

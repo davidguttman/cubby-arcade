@@ -14,17 +14,19 @@ class ControllerNavigationTests(unittest.TestCase):
         harness = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 async function check(file,held,expected){
-  let callback,pad=null,presses=[];
+  let callbacks=new Map(),nextFrame=0,pad=null,presses=[];
   const noop=()=>{},context=new Proxy({}, {get:()=>noop});
   const mediaEvents={},mediaCalls=[];
-  const canvas={getContext:()=>context,addEventListener:noop};
+  const canvas={getContext:()=>context,addEventListener:noop,removeEventListener:noop};
   const video={addEventListener:(event,fn)=>{mediaEvents[event]=fn},
     load:()=>mediaCalls.push('load'),play:()=>{mediaCalls.push('play');return Promise.resolve()}};
   const sandbox={document:{querySelector:selector=>selector==='video'?video:canvas,getElementById:()=>canvas,
-    body:{classList:{add:noop}},hasFocus:()=>true,visibilityState:'visible'},
+    createElement:()=>({setAttribute:noop,appendChild:noop,addEventListener:noop,removeEventListener:noop}),
+    body:{classList:{add:noop},appendChild:noop},hasFocus:()=>true,hidden:false,visibilityState:'visible',
+    addEventListener:noop,removeEventListener:noop},
     navigator:{getGamepads:()=>pad?[pad]:[]},location:{href:'',search:''},innerWidth:640,innerHeight:480,
-    performance:{now:()=>0},Image:class{},addEventListener:noop,
-    requestAnimationFrame:fn=>{callback=fn},setInterval:noop,
+    performance:{now:()=>0},Image:class{},addEventListener:noop,removeEventListener:noop,
+    requestAnimationFrame:fn=>{callbacks.set(++nextFrame,fn);return nextFrame},cancelAnimationFrame:id=>callbacks.delete(id),setInterval:noop,
     localStorage:{getItem:()=>null,setItem:noop},
     fetch:()=>Promise.resolve({ok:true,json:()=>Promise.resolve([
       {entrypoint:'/games/example/index.html',artwork:'cover.svg'}])}),
@@ -32,6 +34,7 @@ async function check(file,held,expected){
       _debug:()=>false,width:240,height:160,state:'title'})}};
   sandbox.window=sandbox;
   vm.createContext(sandbox);
+  for(const source of ['input.js','platform.js','sdk.js','controls.js'])vm.runInContext(fs.readFileSync('runtime/core/'+source,'utf8'),sandbox);
   for(const match of fs.readFileSync(file,'utf8').matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))
     vm.runInContext(match[1],sandbox);
   await new Promise(resolve=>setImmediate(resolve));
@@ -41,7 +44,7 @@ async function check(file,held,expected){
     assert.deepEqual(mediaCalls,['load','play']);
     assert.equal(sandbox.location.href,'');
   }
-  const frame=(buttons,axis=0)=>{pad=buttons===null?null:{buttons:Array.from({length:16},(_,i)=>({pressed:buttons.includes(i)})),axes:[axis,0],id:'test'};callback(1000)};
+  const frame=(buttons,axis=0)=>{pad=buttons===null?null:{buttons:Array.from({length:16},(_,i)=>({pressed:buttons.includes(i)})),axes:[axis,0],id:'test'};const pending=[...callbacks.values()];callbacks.clear();pending.forEach(fn=>fn(1000))};
   frame(null);frame(held);frame(held);
   assert.equal(sandbox.location.href,'',file+' accepted held navigation');
   assert.deepEqual(presses,[],file+' accepted held gameplay input');

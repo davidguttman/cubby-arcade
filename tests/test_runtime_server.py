@@ -57,6 +57,15 @@ class RuntimeServerTests(unittest.TestCase):
                 self.assertEqual(status, expected)
                 self.assertEqual(headers.get('Cache-Control'), 'no-store')
 
+    def test_shared_core_is_served_without_exposing_other_runtime_files(self):
+        core = self.root / 'runtime/core'
+        core.mkdir()
+        (core / 'input.js').write_bytes(b'shared input')
+        self.assertEqual(self.request('GET', '/runtime/core/input.js')[2], b'shared input')
+        for path in ['/runtime/server.py', '/runtime/core/unknown.js',
+                     '/runtime/core/%2e%2e/server.py']:
+            self.assertEqual(self.request('GET', path)[0], 404)
+
     def test_reload_delivers_synced_bytes_despite_matching_modified_time(self):
         status, headers, body = self.request('GET', '/')
         self.assertEqual((status, body), (200, b'old runtime'))

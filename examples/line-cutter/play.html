@@ -3,12 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title></title>
-<style>
-* { box-sizing: border-box; }
-html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101614; color: #edf3dc; font-family: monospace; cursor: none; }
-body { display: grid; place-items: center; }
-canvas { display: block; width: 480px; height: 320px; image-rendering: pixelated; }
-</style>
+<link rel="stylesheet" href="core/screen.css">
 <canvas id="screen" width="240" height="160"></canvas>
 <script>
 // Observe the real game AudioContext without changing its implementation.
@@ -19,10 +14,14 @@ if (NativeAudioContext) {
   }});
 }
 </script>
+<script src="core/input.js"></script>
+<script src="core/platform.js"></script>
+<script src="core/sdk.js"></script>
+<script src="core/controls.js"></script>
 <script src="line-cutter.js"></script>
 <script>
 'use strict';
-let game = null, frames = 0, started = performance.now(), lastButtons = [], lastAxis = {}, navigationTimes = {}, controllerReady = false;
+let game = null, frames = 0, started = performance.now(), host = null;
 
 const report = { userAgent: navigator.userAgent, viewport: [innerWidth, innerHeight],
   canvas2d: !!document.getElementById('screen').getContext('2d'),
@@ -38,7 +37,7 @@ function publish() {
   report.visibility=document.visibilityState; report.focused=document.hasFocus();
   report.elapsedSeconds = Math.round((performance.now() - started) / 100) / 10;
   report.canvas = game ? [game.width, game.height] : null;
-  try { report.hasSavedRun=!!localStorage.getItem('linecutter_run'); } catch(e) {}
+  try { report.hasSavedRun=!!host.saves.get('run'); } catch(e) {}
   if (window.handheldAudio) {
     report.audioState = window.handheldAudio.state;
     report.audioTime = window.handheldAudio.currentTime;
@@ -51,45 +50,20 @@ window.addEventListener('error', e => { report.errors.push(String(e.message).sli
 function play() {
   if (game) return;
   game = LineCutter.create({ canvas: document.getElementById('screen'), onFrame: () => frames++ });
-  game.wake(); publish();
+  host.start(game); publish();
 }
 function picker() {
   if (!game) return;
-  game.stop();
+  host.dispose();
   // Returning via navigation releases the game's AudioContext and keeps its localStorage saves.
   location.href = './index.html';
 }
-function press(button) { if (game) game.press(button); else if (button === 'a' || button === 'start') play(); }
-document.getElementById('screen').addEventListener('pointerdown', () => press('a'));
-const keys = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', KeyZ:'a', Space:'a', KeyX:'b', Enter:'start', KeyP:'start', KeyM:'select', ShiftRight:'select' };
-addEventListener('keydown', e => {
-  if (e.code === 'Escape') { e.preventDefault(); picker(); return; }
-  if (keys[e.code]) { e.preventDefault(); if (!e.repeat || ['up','down','left','right'].includes(keys[e.code])) press(keys[e.code]); }
-});
-function poll(t) {
-  const pad = navigator.getGamepads && Array.from(navigator.getGamepads()).find(Boolean);
-  if (pad) {
-    const down = pad.buttons.map(b => b.pressed);
-    // Navigation may load this page while A or the exit chord is still held.
-    // Arm only after a neutral frame, including analog controls.
-    if (!controllerReady) {
-      controllerReady = !down.some(Boolean) && pad.axes.every(a => Math.abs(a) < 0.5);
-      lastButtons = down;
-    } else {
-    if (down[4] && down[5] && !(lastButtons[4] && lastButtons[5])) picker();
-    const map = {0:'a',1:'b',8:'select',9:'start',12:'up',13:'down',14:'left',15:'right'};
-    Object.keys(map).forEach(i => {
-      if (down[i] && (!lastButtons[i] || (Number(i)>=12 && t-(navigationTimes[i]||0)>180))) {
-        press(map[i]); navigationTimes[i]=t;
-      }
-    });
-    const axis = { left:pad.axes[0] < -0.5, right:pad.axes[0] > 0.5, up:pad.axes[1] < -0.5, down:pad.axes[1] > 0.5 };
-    Object.keys(axis).forEach(k => { if (axis[k] && (!lastAxis[k] || t-(navigationTimes[k]||0)>180)) { press(k); navigationTimes[k]=t; } });
-    lastButtons=down; lastAxis=axis; report.controller=pad.id;
-    }
-  } else { controllerReady=false; lastButtons=[]; lastAxis={}; navigationTimes={}; }
-  requestAnimationFrame(poll);
-}
-play(); requestAnimationFrame(poll); setInterval(publish,5000); publish();
+const platform = HandheldPlatform.createPlatform(window.HandheldPlatformOptions);
+host = HandheldSDK.createGameHost({platform, gameId:'line-cutter',
+  legacySaveKeys:{run:'linecutter_run'}, onExit:picker});
+host.input.attachPointer(document.getElementById('screen'));
+HandheldControls.createControls(host.input,'game');
+addEventListener('pagehide',()=>host.dispose());
+play(); setInterval(publish,5000); publish();
 </script>
 </html>

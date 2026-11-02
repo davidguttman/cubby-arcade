@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .cache/
 .venv/
+dev.log
+
+node_modules/
+dist/

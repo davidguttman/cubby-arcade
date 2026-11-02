@@ -1,9 +1,9 @@
 <!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title>
-<style>html,body{margin:0;height:100%;background:#101614;overflow:hidden;cursor:none}body{display:grid;place-items:center}.screen{position:relative;width:480px;height:320px}video{position:absolute;top:0;width:480px;height:290px;object-fit:contain;image-rendering:pixelated}canvas{position:absolute;inset:0;width:480px;height:320px;image-rendering:pixelated}</style>
-<div class="screen"><video src="trailer-handheld.webm" autoplay muted playsinline preload="auto"></video><canvas width="240" height="160" aria-label="Play"></canvas></div><script>
+<link rel="stylesheet" href="core/screen.css">
+<div class="screen"><video src="trailer-handheld.webm" autoplay muted playsinline preload="auto"></video><canvas width="240" height="160" aria-label="Play"></canvas></div><script src="core/input.js"></script><script src="core/controls.js"></script><script>
 const c=document.querySelector('canvas'),x=c.getContext('2d'),cover=new Image();cover.src='cover.svg';
 const trailer=document.querySelector('video');
-let last=[],controllerReady=false;
+
 function publish(){fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'attract',trailer:{time:trailer.currentTime,duration:trailer.duration,width:trailer.videoWidth,height:trailer.videoHeight,paused:trailer.paused,muted:trailer.muted,loop:true,readyState:trailer.readyState,error:trailer.error?trailer.error.code:null}})}).catch(()=>{})}
 setInterval(publish,2000);
 trailer.addEventListener('error',publish);
@@ -12,8 +12,14 @@ trailer.addEventListener('error',publish);
 trailer.addEventListener('ended',()=>{trailer.load();trailer.play().catch(()=>{})});
 function play(){location.href='play.html'}
 function back(){location.href='/'}
-addEventListener('keydown',e=>{if(['Enter','Space','KeyZ'].includes(e.code)){e.preventDefault();play()}if(['Escape','KeyX'].includes(e.code))back()});c.onclick=play;
+const input=HandheldInput.createInput({onAction:e=>{
+  if(e.action==='confirm'||e.action==='pause')play();
+  if(e.action==='back'||e.action==='exit')back();
+}});
+input.attachPointer(c);
+HandheldControls.createControls(input,'title');
+addEventListener('pagehide',()=>input.dispose());
 function frame(t){x.clearRect(0,0,240,160);if(trailer.readyState<2&&cover.complete&&cover.naturalWidth)x.drawImage(cover,20,3,200,125);
 x.fillStyle='#a7d07a';x.beginPath();x.arc(120,143,13+Math.sin(t/400),0,Math.PI*2);x.fill();x.fillStyle='#101614';x.beginPath();x.moveTo(116,135);x.lineTo(128,143);x.lineTo(116,151);x.fill();
-const p=navigator.getGamepads&&Array.from(navigator.getGamepads()).find(Boolean);if(p){const d=p.buttons.map(b=>b.pressed);if(!controllerReady){controllerReady=!d.some(Boolean)&&p.axes.every(a=>Math.abs(a)<0.5);last=d}else{if((d[0]&&!last[0])||(d[9]&&!last[9]))play();if(d[1]&&!last[1]||d[4]&&d[5])back();last=d}}else{controllerReady=false;last=[]}requestAnimationFrame(frame)}requestAnimationFrame(frame);
+requestAnimationFrame(frame)}requestAnimationFrame(frame);
 </script></html>
