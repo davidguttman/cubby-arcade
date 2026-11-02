@@ -78,7 +78,7 @@ class GameDependencyTests(unittest.TestCase):
         with zipfile.ZipFile(package) as archive:
             self.assertEqual(archive.read('trailer.mp4'), trailer)
             metadata = json.loads(archive.read('manifest.json'))
-            self.assertEqual(metadata['version'], '0.1.15')
+            self.assertEqual(metadata['version'], '0.1.16')
             self.assertEqual(metadata['files']['trailer.mp4'], asset['sha256'])
             self.assertEqual(metadata['attract'], 'trailer.mp4')
             self.assertIn(b'trailer-handheld.webm', archive.read('index.html'))
