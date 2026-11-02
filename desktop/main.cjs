@@ -1,6 +1,7 @@
 const {app,BrowserWindow,protocol,ipcMain}=require('electron');
 const fs=require('node:fs/promises');
 const path=require('node:path');
+const {CloudHub}=require('./cloud.cjs');
 const {assetPath,gameScope,SaveStore,GameLibrary}=require('./host.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 const smoke=process.argv.includes('--smoke');
@@ -10,6 +11,9 @@ app.whenReady().then(async()=>{
   const site=app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
   const store=new SaveStore(path.join(app.getPath('userData'),'saves'));
   const library=new GameLibrary(site,process.env.HUB_GAMES_DIR?path.resolve(process.env.HUB_GAMES_DIR):path.join(app.getPath('userData'),'games'));
+  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:process.env.HUB_CLOUD_ORIGIN,...(smoke&&process.env.HUB_SMOKE_OFFLINE==='1'?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
+  await cloud.refresh();
+  console.log('Hub shell: '+cloud.source);
   protocol.handle('hub',async request=>{
     try{
       const url=new URL(request.url);
@@ -17,7 +21,18 @@ app.whenReady().then(async()=>{
       if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
       assetPath(request.url,site);
       const file=library.file(request.url);
-      let data=['/library','/catalog'].includes(url.pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
+      let data=await cloud.read(url.pathname);
+      if(data&&url.pathname==='/catalog'){
+        const catalog=JSON.parse(data);if(!Array.isArray(catalog))throw Error('Invalid cloud catalog');
+        // Installed previews stay offline; other store media comes from the same trusted host.
+        const local=library.entries();
+        data=Buffer.from(JSON.stringify(catalog.map(entry=>{
+          const installed=local.find(game=>game.id===entry.id);
+          return {...entry,artwork:installed?.artwork||new URL(entry.artwork,cloud.origin).href,
+            ...(entry.attract?{attract:installed?.attract||new URL(entry.attract,cloud.origin).href}:{})};
+        })));
+      }
+      if(!data)data=['/library','/catalog'].includes(url.pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
       if(url.pathname.startsWith('/games/')&&path.extname(file).toLowerCase()==='.html'){
         let html=data.toString('utf8');const tag='<script src="/runtime/core/preferences.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script>';
         if(!html.includes(tag)){const match=/<!doctype[^>]*>/i.exec(html),at=match?match.index+match[0].length:0;data=Buffer.from(html.slice(0,at)+tag+html.slice(at));}
@@ -59,6 +74,7 @@ app.whenReady().then(async()=>{
     const output=process.env.HUB_SMOKE_DIR;
     try{
       await new Promise(resolve=>setTimeout(resolve,1500));
+      const shell={source:cloud.source,...await win.webContents.executeJavaScript(`(()=>{const previous=localStorage.getItem('cloud-smoke-visits');localStorage.setItem('cloud-smoke-visits',String(Number(previous||0)+1));return {marker:document.documentElement.dataset.cloudSmoke||null,previousVisits:previous};})()`)};
       const hub=await require('./hub-smoke.cjs').checkHub(win,output);
       const library=await win.webContents.executeJavaScript('fetch("/library").then(r=>r.json())');
       if(!library.length)throw Error('Empty smoke library');
@@ -69,8 +85,8 @@ app.whenReady().then(async()=>{
       await win.webContents.executeJavaScript(`document.querySelector('.play-game').click();`);
       await new Promise(resolve=>setTimeout(resolve,1000));
       const report=await win.webContents.executeJavaScript(`(()=>{const p=HandheldPlatform.createPlatform(window.HandheldPlatformOptions);const s=p.saves('line-cutter');s.set('desktop-smoke',{ok:true});return {kind:p.kind,save:s.get('desktop-smoke'),node:typeof require,url:location.href,canvas:!!document.getElementById('screen'),video:[...document.querySelectorAll('video')].map(v=>({time:v.currentTime,error:v.error?.message,paused:v.paused}))};})()`);
-      if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'desktop.png'),(await win.webContents.capturePage()).toPNG());await fs.writeFile(path.join(output,'report.json'),JSON.stringify({hub,library,trailer,report},null,2));}
-      console.log(JSON.stringify({hub,library,trailer,report}));
+      if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'desktop.png'),(await win.webContents.capturePage()).toPNG());await fs.writeFile(path.join(output,'report.json'),JSON.stringify({shell,hub,library,trailer,report},null,2));}
+      console.log(JSON.stringify({shell,hub,library,trailer,report}));
       if(report.kind!=='desktop'||!report.save?.ok||report.node!=='undefined'||!report.canvas||report.video.length||!report.url.endsWith(library[0].entrypoint)||!trailer.some(v=>v.time>0&&!v.paused&&!v.error))throw Error('Desktop bridge smoke failed');
       // Exercise the host-owned menu, not the game's optional Quit callback.
       win.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});

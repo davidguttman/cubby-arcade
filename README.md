@@ -444,3 +444,28 @@ Non-SDK games still have blocked keyboard/pointer/controller input and a reliabl
 route out, but may keep simulating or playing audio behind the menu. This is not
 a browser/process-crash recovery mechanism, nor a sandbox against malicious games.
 The shared-origin catalog continues to require trusted developer game packages.
+
+### Cloud-backed desktop launcher
+
+The desktop executable is a thin, sandboxed shell. On launch it requests
+`https://handheld-os.davidguttman.jump.sh/hub-manifest.json`, downloads the small
+launcher UI/core/catalog snapshot, verifies its size/hash inventory, and caches
+it coherently before opening the hub. Rebuilding/publishing the web export is
+all that is needed to deliver launcher/store UI changes on the next app launch.
+There is no binary self-updater, update menu, mid-game reload, or restart loop.
+
+The internal `hub://app` origin remains stable, preserving browser preferences,
+favorites, and legacy localStorage. `/library`, `/games/`, and native SDK saves
+remain local. Games are **not** silently downloaded or updated with the UI.
+Installed-game previews work offline; store media for uninstalled games requires
+connectivity. A failed or incompatible refresh retains the last verified cached
+shell; first-run offline falls back to the bundled shell. Startup network work
+has a five-second total deadline. The current shell stays fixed for that process.
+
+The HTTPS cloud host is trusted to supply launcher JavaScript, but never gets
+Node access or arbitrary filesystem/native bridge access. `bridge_version: 1`
+is the compatibility gate; future native-runtime changes still require a new
+executable. This currently uses the development Jump host, not a production CDN.
+`HUB_CLOUD_ORIGIN` can select another HTTPS root for adult deployment/testing.
+For the built-executable offline smoke only, `HUB_SMOKE_OFFLINE=1` simulates a
+network failure while keeping the same origin/profile and cache.

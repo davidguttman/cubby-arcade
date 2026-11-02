@@ -2,6 +2,7 @@
 """Export the shared launcher and validated game packages for a static web host."""
 import argparse
 import http.server
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -44,6 +45,12 @@ def build(output, archives):
         (site / '.handheld-web-export').write_text('generated\n')
         (site / 'library').write_text(json.dumps(library, sort_keys=True) + '\n')
         (site / 'catalog').write_text(json.dumps(library, sort_keys=True) + '\n')
+        # Small coherent cloud-shell inventory: game payloads are deliberately excluded.
+        shell = [site / 'index.html', site / 'catalog', *sorted((site / 'runtime/core').glob('*'))]
+        cloud_files = {'/' + str(p.relative_to(site)): {'size': p.stat().st_size,
+            'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in shell if p.is_file()}
+        (site / 'hub-manifest.json').write_text(json.dumps({'schema_version': 1,
+            'bridge_version': 1, 'files': cloud_files}, sort_keys=True) + '\n')
         # The output directory is generated, never source, and explicitly selected.
         if output.exists():
             shutil.rmtree(output)
