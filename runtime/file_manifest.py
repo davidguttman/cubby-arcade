@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import stat
 import tempfile
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 MAX_BYTES = 128 * 1024 * 1024
 MAX_MANIFEST = 256 * 1024
@@ -37,7 +37,32 @@ def check_url(value, developer=False):
     raise ValueError('HTTPS required')
 
 
-def validate(document, game_id, developer=False):
+def resolve_url(value, manifest_url=None, developer=False, allow_relative=False):
+    """Validate a download reference; resolve it only against its manifest URL."""
+    if (not isinstance(value, str) or not value or re.search(r'[\\\x00-\x20\x7f#]', value)
+            or re.search(r'%(?![0-9a-fA-F]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f|5c)', value, re.I)
+            or value.startswith('//')):
+        raise ValueError('Invalid download URL')
+    parsed = urlsplit(value)
+    if parsed.scheme:
+        if not re.match(r'^[a-z][a-z0-9+.-]*://', value, re.I):
+            raise ValueError('Absolute URL requires an authority separator')
+        if '@' in parsed.netloc:
+            raise ValueError('URL credentials rejected')
+        # Reading the port also rejects malformed authorities consistently.
+        parsed.port
+        return check_url(value, developer)
+    if parsed.netloc or not parsed.path or ':' in parsed.path.split('/')[0]:
+        raise ValueError('Invalid relative download URL')
+    if manifest_url is not None:
+        base = resolve_url(manifest_url, developer=developer)
+        return resolve_url(urljoin(base, value), developer=developer)
+    if allow_relative:
+        return value
+    raise ValueError('Relative download URL requires the manifest URL')
+
+
+def validate(document, game_id, developer=False, manifest_url=None, allow_relative=False):
     if (not isinstance(document, dict) or type(document.get('schema_version')) is not int
             or document['schema_version'] != 2 or document.get('runtime') != 'web'
             or not isinstance(game_id, str) or not ID.fullmatch(game_id) or document.get('id') != game_id):
@@ -62,7 +87,7 @@ def validate(document, game_id, developer=False):
         total += item['size']
         if total > MAX_BYTES:
             raise ValueError('Release too large')
-        check_url(item.get('url'), developer)
+        resolve_url(item.get('url'), manifest_url, developer, allow_relative)
     for key in ('entrypoint', 'artwork', 'attract'):
         if key != 'attract' or key in document:
             if safe_path(document.get(key)) not in files:
@@ -75,6 +100,9 @@ def validate(document, game_id, developer=False):
             raise ValueError('Missing screenshot')
     if len(encode(document)) > MAX_MANIFEST:
         raise ValueError('Manifest too large')
+    if manifest_url is not None:
+        return dict(document, files={name: dict(item, url=resolve_url(item['url'], manifest_url, developer))
+                                     for name, item in files.items()})
     return document
 
 
@@ -98,12 +126,12 @@ def no_symlinks(root, target):
             raise ValueError('Symlinked file path')
 
 
-def generate(build, game_id, version, entrypoint, artwork, base_url, attract=None, screenshots=None):
+def generate(build, game_id, version, entrypoint, artwork, base_url='./', attract=None, screenshots=None):
     build = Path(build).absolute()
     no_symlinks(Path(build.anchor), build)
     if not build.is_dir():
         raise ValueError('Build directory required')
-    check_url(base_url)
+    resolve_url(base_url, allow_relative=True)
     parsed = urlsplit(base_url)
     if parsed.query:
         raise ValueError('Base URL must not contain a query')
@@ -134,14 +162,15 @@ def generate(build, game_id, version, entrypoint, artwork, base_url, attract=Non
         result['attract'] = attract
     if screenshots is not None:
         result['screenshots'] = screenshots
-    return validate(result, game_id)
+    return validate(result, game_id, allow_relative=True)
 
 
 def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('build', type=Path)
-    for name in ('id', 'version', 'entrypoint', 'artwork', 'base-url'):
+    for name in ('id', 'version', 'entrypoint', 'artwork'):
         parser.add_argument('--' + name, required=True)
+    parser.add_argument('--base-url', default='./', help='Download directory relative to the hosted manifest (default: ./), or an absolute HTTPS URL')
     parser.add_argument('--attract')
     parser.add_argument('--screenshot', action='append', default=None)
     parser.add_argument('--output', type=Path, required=True, help='Manifest destination outside the build directory')

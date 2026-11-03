@@ -155,4 +155,89 @@ class FileManifestTests(unittest.TestCase):
         document['package'] = {}
         with self.assertRaises(ValueError): catalog.validate_release(document, 'demo')
 
+    def test_relative_generator_and_resolution_use_manifest_not_catalog_origin(self):
+        from runtime import file_manifest
+        document = file_manifest.generate(self.build, 'demo', '1', 'index.html', 'cover.svg', '../releases/1/')
+        self.assertEqual(document['files']['index.html']['url'], '../releases/1/index.html')
+        stable = 'https://publisher.example/store/demo/manifest.json'
+        resolved = catalog.validate_release(document, 'demo', manifest_url=stable)
+        self.assertEqual(resolved['files']['index.html']['url'], 'https://publisher.example/store/releases/1/index.html')
+        self.assertEqual(document['files']['index.html']['url'], '../releases/1/index.html')
+        with self.assertRaises(ValueError): catalog.install_files(document, self.root/'games')
+
+    def test_generator_defaults_domain_free_and_cli_accepts_relative_base(self):
+        from runtime import file_manifest
+        document = file_manifest.generate(self.build, 'demo', '1', 'index.html', 'cover.svg')
+        self.assertEqual(document['files']['index.html']['url'], './index.html')
+        for base in [None, '/store/demo/1/files/']:
+            output = self.root/'manifest.json'
+            command = ['uv', 'run', 'python', 'runtime/file_manifest.py', str(self.build), '--id', 'demo',
+                       '--version', '1', '--entrypoint', 'index.html', '--artwork', 'cover.svg', '--output', str(output)]
+            if base is not None: command += ['--base-url', base]
+            subprocess.run(command, check=True)
+            actual = json.loads(output.read_text())['files']['index.html']['url']
+            self.assertEqual(actual, (base or './') + 'index.html')
+
+    def test_relative_zip_package_resolves_without_changing_metadata(self):
+        document = dict(schema_version=1, id='demo', version='1', runtime='web', entrypoint='index.html',
+                        package=dict(url='../releases/demo.zip', size=123, sha256='0'*64))
+        resolved = catalog.validate_release(document, 'demo', manifest_url='https://game.example/store/demo/manifest.json')
+        self.assertEqual(resolved['package']['url'], 'https://game.example/store/releases/demo.zip')
+        self.assertEqual(document['package']['url'], '../releases/demo.zip')
+        with self.assertRaises(ValueError): catalog.validate_release(document, 'demo')
+
+    def test_relative_fresh_install_and_update_preserve_saves_and_previous_release(self):
+        from runtime import file_manifest
+        manifest = file_manifest.generate(self.build, 'demo', '1', 'index.html', 'cover.svg', '1/files/')
+        stable = 'https://publisher.example/store/demo/manifest.json'
+        registry = dict(id='demo', title='Demo', manifest_url=stable, artwork='https://publisher.example/cover.svg')
+        requests = []
+        def fetch(url, destination, limit, developer=False, expected_size=None, digest=None, **kwargs):
+            requests.append(url)
+            if url == stable:
+                Path(destination).write_text(json.dumps(manifest))
+            else:
+                self.assertIn(url, ['https://publisher.example/store/demo/1/files/index.html',
+                                    'https://cdn.example/cover.svg',
+                                    'https://publisher.example/store/demo/2/files/index.html'])
+                content = (self.build/url.rsplit('/', 1)[-1]).read_bytes()
+                self.assertEqual(len(content), expected_size)
+                self.assertEqual(hashlib.sha256(content).hexdigest(), digest)
+                Path(destination).write_bytes(content)
+        manifest['files']['cover.svg']['url'] = 'https://cdn.example/cover.svg'
+        games = self.root/'games'
+        with patch.object(catalog, 'download', side_effect=fetch):
+            catalog.install_entry(registry, games)
+            save = games/'demo/save.json'
+            save.write_text('keep')
+            (self.build/'index.html').write_text('new')
+            manifest = file_manifest.generate(self.build, 'demo', '2', 'index.html', 'cover.svg', '2/files/')
+            catalog.install_entry(registry, games, update=True)
+        self.assertEqual((games/'demo/current/index.html').read_text(), 'new')
+        self.assertEqual((games/'demo/releases/1/index.html').read_text(), 'hello')
+        self.assertEqual(save.read_text(), 'keep')
+
+    def test_relative_url_safety_and_root_resolution(self):
+        for value in ['//evil.example/a', '\\evil', 'x\\y', 'x\n/y', '', '?query', '#fragment',
+                      'http://evil.example/a', 'javascript:alert(1)', 'https://u:p@a.example/x', 'https://@a.example/x',
+                      'https://a.example/x#f', 'https:relative', 'https:///missing', 'bad%xx', 'x%0ay']:
+            document = self.generate()
+            document['files']['index.html']['url'] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                catalog.validate_release(document, 'demo', manifest_url='https://publisher.example/store/manifest.json')
+        document = self.generate()
+        document['files']['index.html']['url'] = '/releases/1/index.html'
+        resolved = catalog.validate_release(document, 'demo', manifest_url='https://publisher.example/store/manifest.json')
+        self.assertEqual(resolved['files']['index.html']['url'], 'https://publisher.example/releases/1/index.html')
+
+    def test_relative_developer_file_transport_is_explicit(self):
+        document = self.generate()
+        for name, item in document['files'].items(): item['url'] = 'build/' + name
+        stable = self.root/'manifest.json'
+        stable.write_text(json.dumps(document))
+        registry = dict(id='demo', title='Demo', manifest_url=stable.as_uri(), artwork=(self.build/'cover.svg').as_uri())
+        with self.assertRaises(ValueError): catalog.install_entry(registry, self.root/'games')
+        catalog.install_entry(registry, self.root/'games', developer=True)
+        self.assertEqual((self.root/'games/demo/current/index.html').read_text(), 'hello')
+
 if __name__ == '__main__': unittest.main()

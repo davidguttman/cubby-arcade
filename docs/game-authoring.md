@@ -62,12 +62,20 @@ The injected menu alone cannot automatically pause an arbitrary game loop.
 uv run python tools/cubby_manifest.py dist/game \
   --id my-game --version "$RELEASE_VERSION" \
   --entrypoint index.html --artwork cover.png \
-  --base-url "https://my-game.example/releases/$RELEASE_VERSION/" \
+  --base-url "/releases/$RELEASE_VERSION/" \
   --output dist/release-manifest.json
 ```
 
 The generator is Python 3.11+ and standard-library only; copying it into your
 repo does not require installing Cubby. Keep its output outside `dist/game/`.
+The game does not need to know its deployment domain. Omit `--base-url` when
+the payload files sit beside the hosted manifest (the default is `./`). For a
+stable manifest pointing at versioned files, supply a relative directory such
+as `releases/$RELEASE_VERSION/`, or a root-relative directory as above. Cubby
+resolves download references against the requested manifest URL, not the
+catalog's origin. Explicit absolute HTTPS bases remain supported for CDNs.
+If the same manifest is served at both a stable and version-specific path,
+use a root-relative base so its download references mean the same thing at both.
 See the [complete release manifest specification](/docs/game-release-manifest.html)
 for fields, validation, size limits, media and compatibility.
 
@@ -102,8 +110,11 @@ There are no real-money payments, creator payouts or cloud accounts yet.
 
 Cubby verifies every file, stages a complete release and activates updates only
 outside gameplay. Existing ZIP schema 1 releases remain supported. New schema 2
-file releases require Cubby Arcade desktop 0.3.0 or newer. A child's existing
-0.2.0 executable must be replaced once to gain the new installer.
+file releases with absolute URLs require Cubby Arcade desktop 0.3.0 or newer.
+Relative download URLs require the updated relative-URL installer; existing
+0.3.0 bundles do not support them. Update the executable before switching a
+game's stable manifest to relative URLs. A child's existing 0.2.0 executable
+must also be replaced to gain the file installer.
 
 ## Before handing off
 

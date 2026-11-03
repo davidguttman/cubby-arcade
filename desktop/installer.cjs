@@ -12,12 +12,19 @@ const idPattern=/^[a-z0-9][a-z0-9-]{0,79}$/,versionPattern=/^[a-z0-9][a-z0-9.-]{
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 function safePath(name){if(typeof name!=='string'||!name||name.includes('\\')||name.includes('\0')||name.startsWith('/')||name.split('/').some(p=>!p||p==='.'||p==='..'))throw Error('Invalid package path');return name;}
 function httpsURL(value){if(typeof value!=='string')throw Error('Invalid download URL');const url=new URL(value);if(url.protocol!=='https:'||!url.hostname||url.username||url.password||url.hash)throw Error('HTTPS download required');return url;}
-function validateRelease(m,id){
+function downloadURL(value,manifestURL){
+ if(typeof value!=='string'||!value||/[\\\x00-\x20\x7f#]/.test(value)||/%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f|5c)/i.test(value)||value.startsWith('//'))throw Error('Invalid download URL');
+ const absolute=/^[a-z][a-z0-9+.-]*:/i.test(value);
+ if(absolute){if(!/^https:\/\/[^/]/i.test(value)||/^https:\/\/[^/?]*@/i.test(value))throw Error('HTTPS download required');return httpsURL(value).href;}
+ if(!value.split('?')[0]||value.split('/')[0].includes(':')||!manifestURL)throw Error('Relative download URL requires the manifest URL');
+ return httpsURL(new URL(value,downloadURL(manifestURL)).href).href;
+}
+function validateRelease(m,id,manifestURL){
  if(!m||Array.isArray(m)||![1,2].includes(m.schema_version)||m.id!==id||!idPattern.test(id)||m.runtime!=='web'||typeof m.version!=='string'||!versionPattern.test(m.version)||m.version.includes('..'))throw Error('Invalid release identity/runtime');
  safePath(m.entrypoint);
  if(m.schema_version===1){
   if(Object.hasOwn(m,'files'))throw Error('Ambiguous release manifest');
-  const p=m.package;if(!p||!Number.isSafeInteger(p.size)||p.size<=0||p.size>MAX_BYTES||typeof p.sha256!=='string'||!/^[a-f0-9]{64}$/.test(p.sha256))throw Error('Invalid release package');httpsURL(p.url);
+  const p=m.package;if(!p||!Number.isSafeInteger(p.size)||p.size<=0||p.size>MAX_BYTES||typeof p.sha256!=='string'||!/^[a-f0-9]{64}$/.test(p.sha256))throw Error('Invalid release package');downloadURL(p.url,manifestURL);
  }else{
   if(Object.hasOwn(m,'package')||!m.files||typeof m.files!=='object'||Array.isArray(m.files))throw Error('Invalid file release');
   const names=Object.keys(m.files);if(!names.length||names.length>1000)throw Error('Invalid file inventory');
@@ -26,12 +33,16 @@ function validateRelease(m,id){
    safePath(name);if(/[%?#\x00-\x1f\x7f]/.test(name)||name.endsWith(' '))throw Error('Invalid file path');
    if(name==='manifest.json'||name.startsWith('manifest.json/'))throw Error('Reserved manifest path');
    const parts=name.split('/');for(let i=1;i<parts.length;i++)if(Object.hasOwn(m.files,parts.slice(0,i).join('/')))throw Error('Conflicting file paths');
-   const file=m.files[name];if(!file||typeof file!=='object'||Array.isArray(file)||!Number.isSafeInteger(file.size)||file.size<0||(total+=file.size)>MAX_BYTES||typeof file.sha256!=='string'||!/^[a-f0-9]{64}$/.test(file.sha256))throw Error('Invalid file metadata');httpsURL(file.url);
+   const file=m.files[name];if(!file||typeof file!=='object'||Array.isArray(file)||!Number.isSafeInteger(file.size)||file.size<0||(total+=file.size)>MAX_BYTES||typeof file.sha256!=='string'||!/^[a-f0-9]{64}$/.test(file.sha256))throw Error('Invalid file metadata');downloadURL(file.url,manifestURL);
   }
   for(const name of ['entrypoint','artwork',...(m.attract!==undefined?['attract']:[])])if(!Object.hasOwn(m.files,safePath(m[name])))throw Error('Missing game asset');
   if(m.screenshots!==undefined&&(!Array.isArray(m.screenshots)||m.screenshots.length>12))throw Error('Invalid screenshots');
   for(const name of m.screenshots||[])if(!Object.hasOwn(m.files,safePath(name)))throw Error('Missing screenshot');
   if(Buffer.byteLength(JSON.stringify(m))>MAX_MANIFEST)throw Error('Manifest too large');
+ }
+ if(manifestURL){
+  if(m.schema_version===1)return {...m,package:{...m.package,url:downloadURL(m.package.url,manifestURL)}};
+  return {...m,files:Object.fromEntries(Object.entries(m.files).map(([name,file])=>[name,{...file,url:downloadURL(file.url,manifestURL)}]))};
  }
  return m;
 }
@@ -99,7 +110,7 @@ class GameInstaller{
  }
  async run(entry){
   const id=entry.id;this.state(id,'checking');const signal=AbortSignal.timeout(120000);
-  const release=validateRelease(JSON.parse((await download(this.fetch,entry.manifest_url,MAX_MANIFEST,signal)).toString('utf8')),id);
+  const release=validateRelease(JSON.parse((await download(this.fetch,entry.manifest_url,MAX_MANIFEST,signal)).toString('utf8')),id,entry.manifest_url);
   if(release.schema_version===2)return this.stageFiles(release,signal);
   const installed=this.library.entries().find(e=>e.id===id);
   if(installed?.version===release.version){this.state(id,'installed',{version:release.version});return installed;}

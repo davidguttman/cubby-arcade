@@ -126,9 +126,9 @@ def validate_registry(document, developer=False):
     return document
 
 
-def validate_release(document, game_id, developer=False):
+def validate_release(document, game_id, developer=False, manifest_url=None):
     if isinstance(document, dict) and document.get('schema_version') == 2:
-        return file_manifest.validate(document, game_id, developer)
+        return file_manifest.validate(document, game_id, developer, manifest_url)
     if not isinstance(document, dict) or document.get('schema_version') != 1 or document.get('runtime') != 'web':
         raise ValueError('Unsupported release manifest/runtime')
     if document.get('id') != game_id or not isinstance(game_id, str) or not ID.fullmatch(game_id):
@@ -143,8 +143,9 @@ def validate_release(document, game_id, developer=False):
     if not isinstance(package, dict):
         raise ValueError('Invalid release package')
     # Reuse the legacy package transport checks, not its discovery shape.
-    validate({'schema_version': 1, 'games': [dict(package, id=game_id, version=version, title=game_id)]}, developer)
-    return document
+    resolved = dict(package, url=file_manifest.resolve_url(package.get('url'), manifest_url, developer))
+    validate({'schema_version': 1, 'games': [dict(resolved, id=game_id, version=version, title=game_id)]}, developer)
+    return dict(document, package=resolved)
 
 
 def resolve_entry(entry, developer=False):
@@ -156,7 +157,7 @@ def resolve_entry(entry, developer=False):
     with tempfile.TemporaryDirectory(prefix='hub-release-') as temporary:
         target = Path(temporary) / 'release.json'
         download(entry['manifest_url'], target, MAX_RELEASE, developer)
-        release = validate_release(json.loads(target.read_text()), entry['id'], developer)
+        release = validate_release(json.loads(target.read_text()), entry['id'], developer, entry['manifest_url'])
     if release['schema_version'] == 2:
         return release
     return dict(release['package'], id=release['id'], version=release['version'],
