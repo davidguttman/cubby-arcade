@@ -101,8 +101,8 @@ is accepted. No version-ordering/downgrade policy is introduced by this contract
 Existing desktop bundles still seed from their ZIP archives without a network
 dependency. Games publishing schema 2 require an updated native installer; old
 desktop clients support schema 1 only. Desktop 0.3.0 supports schema 2 with
-absolute URLs but rejects relative download URLs; install a bundle containing
-relative-URL support before changing a stable manifest to use them. The format
+absolute URLs but rejects relative download URLs; install **desktop 0.4.0 or
+newer** before changing a stable manifest to use them. The format
 remains schema 2, and absolute URLs stay supported. Cubby's legacy manifest
 forwarding endpoint resolves relative references at the upstream publisher URL
 before forwarding, so moving metadata does not change its meaning.

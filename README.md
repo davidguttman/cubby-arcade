@@ -636,8 +636,10 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.3.0**; source-hosted previews now pin upstream Line Cutter **0.3.0**.
-This dependency migration does not require replacing the desktop executable. No external
+desktop **0.4.0**, adding domain-free relative download URLs for both file and
+ZIP releases while retaining absolute-URL compatibility. Replace older desktop
+executables before publishing relative-path game manifests. Source-hosted previews
+still pin upstream Line Cutter **0.3.0** as their historical offline seed. No external
 store release or hardware certification is implied by local packaging.
 
 Run native budget tests with `node --test tests/launch_tokens.cjs`. The isolated

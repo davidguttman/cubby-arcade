@@ -111,7 +111,7 @@ There are no real-money payments, creator payouts or cloud accounts yet.
 Cubby verifies every file, stages a complete release and activates updates only
 outside gameplay. Existing ZIP schema 1 releases remain supported. New schema 2
 file releases with absolute URLs require Cubby Arcade desktop 0.3.0 or newer.
-Relative download URLs require the updated relative-URL installer; existing
+Relative download URLs require Cubby Arcade desktop **0.4.0 or newer**; existing
 0.3.0 bundles do not support them. Update the executable before switching a
 game's stable manifest to relative URLs. A child's existing 0.2.0 executable
 must also be replaced to gain the file installer.
