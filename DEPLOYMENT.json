@@ -7,5 +7,9 @@
     "line-cutter": "0.2.0",
     "little-camp": "0.1.0"
   },
-  "tokens": "excluded-uncommitted-WIP"
+  "tokens": "excluded-uncommitted-WIP",
+  "hosting": "Render free Python web_service",
+  "start_command": "python serve.py",
+  "build_command": "true",
+  "health_check": "/hub-manifest.json"
 }

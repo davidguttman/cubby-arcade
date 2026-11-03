@@ -1,58 +1,11 @@
 services:
   - type: web
     name: cubby-arcade
-    runtime: static
+    runtime: python
+    plan: free
     repo: https://github.com/davidguttman/cubby-arcade
     branch: render-site
     buildCommand: "true"
-    staticPublishPath: public
+    startCommand: python serve.py
+    healthCheckPath: /hub-manifest.json
     autoDeployTrigger: off
-    headers:
-      - path: "/*"
-        name: "Access-Control-Allow-Origin"
-        value: "*"
-      - path: "/*"
-        name: "Access-Control-Allow-Methods"
-        value: "GET, HEAD, OPTIONS"
-      - path: "/"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/index.html"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/library"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/catalog"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/hub-manifest.json"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/store/line-cutter/manifest.json"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/store/little-camp/manifest.json"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/runtime/*"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/games/*"
-        name: "Cache-Control"
-        value: "public, max-age=0, must-revalidate"
-      - path: "/library"
-        name: "Content-Type"
-        value: "application/json; charset=utf-8"
-      - path: "/catalog"
-        name: "Content-Type"
-        value: "application/json; charset=utf-8"
-      - path: "/hub-manifest.json"
-        name: "Content-Type"
-        value: "application/json; charset=utf-8"
-      - path: "/store/line-cutter/0.2.0/*"
-        name: "Cache-Control"
-        value: "public, max-age=31536000, immutable"
-      - path: "/store/little-camp/0.1.0/*"
-        name: "Cache-Control"
-        value: "public, max-age=31536000, immutable"

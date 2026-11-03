@@ -1,4 +1,4 @@
-# Cubby Arcade — Render static deployment
+# Cubby Arcade — Render browser preview
 
 Generated deployment-only branch: `render-site`. This branch is not application
 source and should not be merged back into the development branch.
@@ -15,16 +15,18 @@ source and should not be merged back into the development branch.
 
 ## Render
 
-`render.yaml` describes a static site, publishing `public/`, with no runtime
-server or Node build. No SPA catch-all rewrite is used: missing asset, catalog,
-and package URLs must return 404 rather than HTML.
+`render.yaml` describes a **free Python web service**, running `python serve.py`.
+`serve.py` uses only the standard library and serves the fixed `public/` directory
+on `0.0.0.0:$PORT`. There is no Node server, dependency install, or application
+build. Render free-service cold starts apply.
 
 The public JSON pointers revalidate on each request. Only the exact immutable
-version directories receive year-long immutable caching. Public read-only CORS
-allows the native app to consume the catalog/package host. If creating the service
-through the CLI/API rather than a Blueprint, apply the same headers explicitly
-using Render's static-site header API; merely committing this file does not apply
-configuration to an existing non-Blueprint service.
+version directories receive year-long immutable caching. The server supplies
+read-only public CORS, JSON MIME types for extensionless catalog/library paths,
+single byte ranges for video seeking/package reads, HEAD/OPTIONS, and discarded
+`POST /report` responses. Missing paths and directory listings return 404; no SPA
+catch-all rewrite exposes HTML for missing package assets. `headers.json` is
+retained as documentation; the Python server supplies its headers directly.
 
 ## Regeneration
 
