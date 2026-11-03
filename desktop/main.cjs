@@ -145,9 +145,9 @@ app.whenReady().then(async()=>{
       // verified Store path a user invokes, never by importing bundle bytes.
       const initialLibrary=installer.library.entries();
       if(!initialLibrary.length){
-        const empty=await win.webContents.executeJavaScript('!document.querySelector(".game-card") && !!document.querySelector(".shelf-status.empty")');
-        if(!empty)throw Error('Fresh Library is not empty');
-        if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'empty-library.png'),(await win.webContents.capturePage()).toPNG());}
+        const store=await win.webContents.executeJavaScript('document.querySelector("[aria-current=page]")?.getAttribute("aria-label")==="store" && !!document.querySelector(".game-card")');
+        if(!store)throw Error('Fresh empty Library did not start on Store');
+        if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'empty-library-store.png'),(await win.webContents.capturePage()).toPNG());}
         if(!registry.length)throw Error('Smoke needs an explicit Store offer');
         await installer.install(registry[0].id);
         await win.loadURL('hub://app/');

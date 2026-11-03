@@ -180,16 +180,16 @@ screens. A/Start confirms in launcher/title; Escape or L1+R1 exits gameplay.
 shared instance per page). Preferences live under `handheld:preferences:v1` in
 host-origin/profile localStorage, separate from game saves; launcher, title and
 game packages read the same values. A denied/unavailable store falls back to
-session-only values. Defaults hide the controller overlay on desktop; `auto`
-shows it for touch-capable devices or a coarse pointer, `on`/`off` override it.
-Controls react immediately to preference and pointer-capability changes.
+session-only values. Controller visibility is always automatic: hidden on desktop,
+shown for touch-capable devices or a coarse pointer. Legacy `on`/`off` values
+normalize to `auto` without changing saved keyboard bindings. Controls react
+immediately to pointer-capability changes; there is no manual visibility setting.
 
 Adult Options UI API (load preferences before input/controls):
 
 ```js
 const prefs = HandheldPreferences.preferences;
 prefs.get(); // detached {touchOverlay: 'auto', keyboard: {up: ['ArrowUp'], …}}
-prefs.set({touchOverlay: 'off'}); // partial top-level update, validated atomically
 const edit = prefs.editKeyboard();
 const stopCapture = input.captureKeyboard(code => {
   // No navigation/game actions while capturing; rejects unknown physical codes.
@@ -198,7 +198,7 @@ const stopCapture = input.captureKeyboard(code => {
 });
 // edit.get(), edit.set(fullMap), edit.reset() only change the draft.
 edit.apply(); // persists and updates all live input instances; edit.cancel() discards
-prefs.reset(); // restore both overlay and keyboard defaults
+prefs.reset(); // restore keyboard defaults
 const unsubscribe = prefs.subscribe(value => { /* detached current value */ });
 ```
 
@@ -727,7 +727,15 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.8.0**, making the on-screen controller a Cubby-owned host module
+desktop **0.8.3**. Nonempty libraries select a game and show its preview and Play
+control by default. Library refreshes preserve a valid selection or select a
+remaining game; closing a preview retains its selected-card highlight. No game
+payloads changed. Touch controls always follow device detection; the manual
+selector is removed and legacy on/off preferences normalize to automatic.
+Empty libraries start on Store, Store opens its first game's
+preview and controls automatically, and Trail Mix is first in the catalog.
+Manual tab choices remain intact during startup. The 0.8.0 release made the
+on-screen controller a Cubby-owned host module
 that supplies standard virtual gamepad input. Existing game packages work
 unchanged: legacy bundled overlays are suppressed without rewriting installed
 bytes. OSD layout, visibility and lifecycle updates require only a Cubby update,

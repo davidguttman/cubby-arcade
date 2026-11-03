@@ -6,14 +6,14 @@ function createState(storage){
  let favorites=[];try{const value=JSON.parse(storage?.getItem(favoriteKey)||'[]');if(Array.isArray(value))favorites=value.filter(x=>typeof x==='string');}catch{}
  return {view:'library',detail:null,show(view){if(!['library','store','options'].includes(view))throw Error('Unknown view');this.view=view;this.detail=null;},select(game){this.detail=game;},isFavorite:id=>favorites.includes(id),favorite(id){favorites=favorites.includes(id)?favorites.filter(x=>x!==id):[...favorites,id];try{storage?.setItem(favoriteKey,JSON.stringify(favorites));}catch{}return favorites.includes(id);}};
 }
-const paths={trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6.6l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5Z',library:'M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v7H3zM14 15h7v7h-7z',store:'M4 8h16l1 14H3ZM8 8V6a4 4 0 0 1 8 0v2',options:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM10 2h4l1 3 3 1 3 1v4l-2 1v3l1 3-3 3-3-1-2 2-3-1-1-3-3-1-2-3 2-3V7l3-1Z',play:'m8 4 13 8-13 8Z',back:'m14 4-8 8 8 8M6 12h16',star:'m12 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1Z',check:'m4 12 5 5L21 5',touch:'M9 13V5a2 2 0 0 1 4 0v6l2-2 5 3v6l-4 4h-6l-6-7a2 2 0 0 1 3-2l2 2',auto:'M4 12a8 8 0 0 1 14-5l3 3M21 4v6h-6M20 14a8 8 0 0 1-14 5l-3-3M3 22v-6h6',off:'M3 3 21 21M8 8v7l4 6h6M13 8V4M18 12l3 2v4',keyboard:'M2 5h20v14H2ZM5 9h2m2 0h2m2 0h2m2 0h2M5 13h2m2 0h2m2 0h2m2 0h2M7 16h10',adult:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM5 23v-5a7 7 0 0 1 14 0v5',empty:'M3 9h18v12H3ZM3 9l3-5h12l3 5M9 13h6',error:'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9ZM9.5 12.5h.01M14.5 12.5h.01M9.5 16.2q2.5-2 5 0',quit:'M12 2v10M6 5a9 9 0 1 0 12 0',cancel:'m5 5 14 14M19 5 5 19',loading:'M12 3a9 9 0 1 1-9 9',down:'M12 2v13m-5-5 5 5 5-5M3 18v4h18v-4',pick:'m6 9 6 6 6-6',alert:'m12 2 11 20H1ZM12 8v6m0 3v1'};
+const paths={trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6.6l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5Z',library:'M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v7H3zM14 15h7v7h-7z',store:'M4 8h16l1 14H3ZM8 8V6a4 4 0 0 1 8 0v2',options:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM10 2h4l1 3 3 1 3 1v4l-2 1v3l1 3-3 3-3-1-2 2-3-1-1-3-3-1-2-3 2-3V7l3-1Z',play:'m8 4 13 8-13 8Z',back:'m14 4-8 8 8 8M6 12h16',star:'m12 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1Z',check:'m4 12 5 5L21 5',keyboard:'M2 5h20v14H2ZM5 9h2m2 0h2m2 0h2m2 0h2M5 13h2m2 0h2m2 0h2m2 0h2M7 16h10',adult:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM5 23v-5a7 7 0 0 1 14 0v5',empty:'M3 9h18v12H3ZM3 9l3-5h12l3 5M9 13h6',error:'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9ZM9.5 12.5h.01M14.5 12.5h.01M9.5 16.2q2.5-2 5 0',quit:'M12 2v10M6 5a9 9 0 1 0 12 0',cancel:'m5 5 14 14M19 5 5 19',loading:'M12 3a9 9 0 1 1-9 9',down:'M12 2v13m-5-5 5 5 5-5M3 18v4h18v-4',pick:'m6 9 6 6 6-6',alert:'m12 2 11 20H1ZM12 8v6m0 3v1'};
 function icon(name){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+paths[name]+'"/></svg>';}
 // Picture-only brand mark: a smiling cubby house.
 const brand='<svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><path class="brand-roof" d="M24 3.5 44 18.5V39a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V18.5Z"/><rect class="brand-door" x="11" y="20" width="26" height="18" rx="6"/><g class="brand-face"><circle cx="19" cy="27.5" r="2.4"/><circle cx="29" cy="27.5" r="2.4"/><path d="M19.5 32.5q4.5 3.4 9 0"/></g></svg>';
 function mount(host){
  const doc=host.ownerDocument,win=doc.defaultView;let storage;try{storage=win.localStorage;}catch{}
  const state=createState(storage),prefs=win.HandheldPreferences.preferences,platform=win.HandheldPlatform.createPlatform(win.HandheldPlatformOptions);
- let account=null,launchBusy=false,featured=null;
+ let account=null,launchBusy=false,featured=null,initialViewPending=true;
  let installStates={},library=[],catalog=[],loading={library:true,store:true},failed={library:false,store:false},adult=false,draft=null,cancelCapture=null,disposed=false;
  host.innerHTML='<header class="topbar"><div class="brand" aria-hidden="true">'+brand+'</div><nav class="view-nav" aria-label="Views"><span class="nav-pill" aria-hidden="true"></span></nav><div class="hud"></div></header>'+
   '<section class="view-body"><div class="hero"><div class="hero-backdrop" aria-hidden="true"></div><aside class="detail" hidden></aside><div class="hero-rest" aria-hidden="true"><div class="stage"><img class="rest-media" alt=""></div><div class="rest-hint">'+icon('pick')+'</div></div></div><div class="shelf-rail"><div class="shelf"></div></div></section>'+
@@ -62,7 +62,7 @@ function mount(host){
  uninstallDialog.addEventListener('cancel',e=>{e.preventDefault();closeUninstall();});
 
  const views=['library','store','options'],tabs={};for(const name of views)tabs[name]=button(nav,name,name,()=>show(name),'view-tab');
- function show(view){if(adult)return;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
+ function show(view,initial=false){if(adult)return;if(!initial)initialViewPending=false;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
  function primaryAction(){return detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')||detail.querySelector('.favorite');}
  function pausePreview(){detail.querySelector('video')?.pause();}
  function entries(){return state.view==='store'?catalog:library;}
@@ -70,15 +70,20 @@ function mount(host){
  function setBadge(badge,id){badge.innerHTML=badgeFor(id);badge.dataset.kind=state.isFavorite(id)?'favorite':badge.innerHTML?'installed':'';}
  // The hero always shows a game: the open preview, or a resting cover that invites a pick below.
  function feature(game){featured=game||null;const art=game?.artwork||'';if(restArt.getAttribute('src')!==art){if(art)restArt.src=art;else restArt.removeAttribute('src');}backdrop.style.backgroundImage=art?'url("'+art.replace(/["\\]/g,'\\$&')+'")':'';markSelection();}
- function markSelection(){const id=detail.hidden?null:state.detail?.id;shelf.classList.toggle('has-selection',!!id);for(const card of shelf.querySelectorAll('.game-card'))card.classList.toggle('is-selected',card.dataset.gameId===id);}
+ function markSelection(){const id=detail.hidden?(state.view==='library'?featured?.id:null):state.detail?.id;shelf.classList.toggle('has-selection',!!id);for(const card of shelf.querySelectorAll('.game-card'))card.classList.toggle('is-selected',card.dataset.gameId===id);}
  function renderGrid(){shelf.replaceChildren();const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'';body.classList.toggle('is-status',!!status);
- if(status){const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');feature(null);return;}
+ if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');feature(null);return;}
  for(const game of entries()){
  const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');image.src=game.artwork;image.alt='';
  setBadge(element(card,'span','card-badge'),game.id);
  card.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')preview(game);});card.addEventListener('focus',()=>preview(game));
  }
- const keep=entries().find(g=>g.id===(state.detail?.id||featured?.id));feature(keep||entries()[0]);}
+ // Library always starts with a selection and keeps it through refreshes.
+ const keep=entries().find(g=>g.id===(state.detail?.id||featured?.id));
+ if(state.view==='library'){preview(keep||entries()[0]);markSelection();return;}
+ // Entering Store opens its first offer; later ownership updates preserve it.
+ if(state.view==='store'&&!state.detail){preview(entries()[0]);return;}
+ feature(keep||entries()[0]);}
  function preview(game){if(state.detail?.id===game.id&&!detail.hidden)return;pausePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
  const stage=element(detail,'div','stage');
  button(stage,'back','Close preview',()=>closePreview(true),'detail-close');
@@ -119,12 +124,10 @@ function mount(host){
  let suppressPreview=false;
  // Closing via back must leave focus on the card without reopening its preview.
  shelf.addEventListener('focusin',()=>{if(suppressPreview)hideDetail();});
- function renderOptions(){options.replaceChildren();const touch=element(options,'div','touch-settings');touch.setAttribute('role','group');touch.setAttribute('aria-label','Touch controls');touch.innerHTML='<div class="setting-symbol">'+icon('touch')+'</div>';const modes=element(touch,'div','setting-choices');
- for(const [mode,glyph,label] of [['auto','auto','Automatic touch controls'],['on','touch','Show touch controls'],['off','off','Hide touch controls']]){const b=button(modes,glyph,label,()=>{prefs.set({touchOverlay:mode});updateTouch();});b.dataset.mode=mode;b.setAttribute('aria-pressed',String(prefs.get().touchOverlay===mode));}
+ function renderOptions(){options.replaceChildren();
  if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');
  const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
  }
- function updateTouch(){options.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(prefs.get().touchOverlay===b.dataset.mode)));}
  function stopCapture(){if(cancelCapture){cancelCapture();cancelCapture=null;}}
  function closeAdult(apply){stopCapture();if(draft){if(apply)draft.apply();else draft.cancel();}draft=null;adult=false;dialog.close();tabs.options.focus();}
  function openAdult(){if(adult)return;adult=true;draft=prefs.editKeyboard();dialog.replaceChildren();const heading=element(dialog,'h1');heading.textContent='Adult setup';const instruction=element(dialog,'p','adult-lead');instruction.textContent='Choose a control, then press a key. Changes apply only when saved.';
@@ -143,11 +146,11 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&active?.classList.contains('game-card'))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- const unsubscribe=prefs.subscribe(updateTouch);
- function dispose(){if(disposed)return;disposed=true;pausePreview();stopCapture();unsubscribe();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();}
+ function dispose(){if(disposed)return;disposed=true;pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',()=>{if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});});
- for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(state.view===view)renderGrid();if(view==='library')refreshOwnership();}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(state.view===view)renderGrid();});show('library');
+ // Only initial discovery may choose Store; explicit navigation always wins.
+ for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length)show('store');else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;refreshOwnership();}}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();});show('library',true);
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose};
 }

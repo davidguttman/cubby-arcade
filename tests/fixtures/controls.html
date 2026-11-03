@@ -10,7 +10,9 @@
 <script>
 const canvas=document.getElementById('screen'),ctx=canvas.getContext('2d');
 ctx.fillStyle='#263c30';ctx.fillRect(0,0,240,160);ctx.strokeStyle='#a7d07a';ctx.strokeRect(1,1,238,158);
-const preferences=HandheldPreferences.createPreferences({storage:null});preferences.set({touchOverlay:'on'});
+// This layout fixture emulates a touch-capable device.
+Object.defineProperty(navigator,'maxTouchPoints',{configurable:true,get:()=>1});
+const preferences=HandheldPreferences.createPreferences({storage:null});
 const input=HandheldInput.createInput({preferences,onAction:e=>document.body.dataset.lastButton=e.button});
 HandheldControls.createControls(input,new URLSearchParams(location.search).get('mode')||'game');
 // Call from a browser test after changing the viewport; throws on regression.

@@ -3,7 +3,8 @@
 <script src="/runtime/core/preferences.js"></script><script src="/runtime/core/host-osd.js"></script><script src="/runtime/core/game-shell.js"></script>
 </head><body><canvas id="screen" width="240" height="160"></canvas>
 <script>
-HandheldPreferences.preferences.set({touchOverlay:'on'});
+// This layout fixture emulates a touch-capable device.
+Object.defineProperty(navigator,'maxTouchPoints',{configurable:true,get:()=>1});
 window.HandheldOSD=HandheldHostOSD.install(window);
 window.HandheldGameShell=HandheldGameShellAPI.install(window);
 window.osdEvents=[];
