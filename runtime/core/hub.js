@@ -11,7 +11,7 @@ function icon(name){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d=
 function mount(host){
  const doc=host.ownerDocument,win=doc.defaultView;let storage;try{storage=win.localStorage;}catch{}
  const state=createState(storage),prefs=win.HandheldPreferences.preferences,platform=win.HandheldPlatform.createPlatform(win.HandheldPlatformOptions);
- let library=[],catalog=[],loading={library:true,store:true},failed={library:false,store:false},adult=false,draft=null,cancelCapture=null,disposed=false;
+ let installStates={},library=[],catalog=[],loading={library:true,store:true},failed={library:false,store:false},adult=false,draft=null,cancelCapture=null,disposed=false;
  host.innerHTML='<nav class="view-nav" aria-label="Views"></nav><section class="view-body"><div class="shelf"></div><aside class="detail" hidden></aside></section><section class="options-panel" hidden></section><dialog class="adult-setup" aria-label="Adult keyboard setup"></dialog>';
  const nav=host.querySelector('.view-nav'),body=host.querySelector('.view-body'),shelf=host.querySelector('.shelf'),detail=host.querySelector('.detail'),options=host.querySelector('.options-panel'),dialog=host.querySelector('dialog');
  function button(parent,name,label,fn,cls){const b=doc.createElement('button');b.type='button';b.className=cls||'';b.setAttribute('aria-label',label);b.innerHTML=icon(name);b.addEventListener('click',fn);parent.appendChild(b);return b;}
@@ -43,9 +43,22 @@ function mount(host){
  for(const card of shelf.querySelectorAll('.game-card')){const id=card.dataset.gameId,badge=card.querySelector('.card-badge');if(badge)badge.innerHTML=state.isFavorite(id)?icon('star'):state.view==='store'&&library.some(x=>x.id===id)?icon('check'):'';}
  if(detail.hidden||!state.detail)return;
  const actions=detail.querySelector('.detail-actions'),installed=library.find(x=>x.id===state.detail.id);if(!actions)return;
- if(installed){actions.querySelector('.not-installed')?.remove();if(!actions.querySelector('.play-game'))button(actions,'play','Play game',()=>{win.location.href=installed.entrypoint;},'play-game');}
+ if(installed){const previous=actions.querySelector('.download-game'),focused=previous===doc.activeElement;actions.querySelector('.not-installed')?.remove();previous?.remove();actions.querySelector('.install-progress')?.remove();if(!actions.querySelector('.play-game'))button(actions,'play','Play game',()=>{const latest=library.find(game=>game.id===installed.id);if(latest)win.location.href=latest.entrypoint;},'play-game');if(focused)actions.querySelector('.play-game')?.focus();}
+ else if(platform.capabilities?.install&&state.detail.manifest_url){
+  actions.querySelector('.not-installed')?.remove();
+  let download=actions.querySelector('.download-game');
+  if(!download)download=button(actions,'down','Download game',()=>installGame(state.detail.id),'download-game');
+  const status=installStates[state.detail.id],busy=status&&['checking','downloading','verifying','pending'].includes(status.phase);
+  download.disabled=!!busy;download.innerHTML=icon(status?.phase==='error'?'auto':busy?'loading':'down');download.classList.toggle('loading',!!busy);download.setAttribute('aria-label',status?.phase==='error'?'Retry download':busy?'Downloading game':'Download game');
+  let progress=actions.querySelector('.install-progress');if(!progress){progress=doc.createElement('progress');progress.className='install-progress';progress.setAttribute('aria-label','Download progress');actions.appendChild(progress);}
+  progress.hidden=!busy;if(status?.total){progress.max=status.total;progress.value=status.received||0;}else progress.removeAttribute('value');
+ }
  else if(!actions.querySelector('.not-installed')){const status=doc.createElement('span');status.className='not-installed';status.setAttribute('aria-label','Not installed; adult installation required');status.innerHTML=icon('down');actions.appendChild(status);}
  }
+ async function refreshLibrary(){try{const entries=await platform.library();if(disposed)return;const changed=JSON.stringify(entries)!==JSON.stringify(library);library=entries;if(changed&&state.view==='library'){const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)shelf.querySelector('[data-game-id="'+focusedId+'"]')?.focus();}refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
+ async function installGame(id){if(disposed)return;installStates[id]={phase:'checking'};refreshOwnership();try{await platform.install(id);await refreshLibrary();}catch{installStates[id]={phase:'error'};refreshOwnership();}}
+ const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(installedChanged)refreshLibrary();});
+ platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
  function closePreview(focusCard){const id=state.detail?.id;pausePreview();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');if(focusCard){const card=shelf.querySelector('[data-game-id="'+id+'"]');if(card){suppressPreview=true;card.focus();suppressPreview=false;}}}
  let suppressPreview=false;
  // Closing via back must leave focus on the card without reopening its preview.
@@ -74,11 +87,12 @@ function mount(host){
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const candidates=nodes.filter(n=>n!==active).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
  const unsubscribe=prefs.subscribe(updateTouch);
- win.addEventListener('pagehide',()=>{disposed=true;pausePreview();stopCapture();unsubscribe();input.dispose();});
+ function dispose(){if(disposed)return;disposed=true;pausePreview();stopCapture();unsubscribe();unsubscribeInstall?.();input.dispose();}
+ win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',()=>{if(!detail.hidden)detail.querySelector('video')?.play().catch(()=>{});});
  for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(state.view===view)renderGrid();if(view==='library')refreshOwnership();}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(state.view===view)renderGrid();});show('library');
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
- return {state,show,dispose:()=>input.dispose()};
+ return {state,show,dispose};
 }
 return {createState,mount};
 });

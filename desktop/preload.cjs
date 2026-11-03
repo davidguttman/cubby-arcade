@@ -4,7 +4,12 @@ function save(operation,game,key,value){
   if(result.error)throw Error(result.error);return result.value;
 }
 contextBridge.exposeInMainWorld('HandheldPlatformOptions',{
-  kind:'desktop',bridge:{quit:()=>ipcRenderer.invoke('hub:quit'),saves(game){return {
+  kind:'desktop',bridge:{
+    library:()=>ipcRenderer.invoke('hub:library'),
+    install:id=>ipcRenderer.invoke('hub:install',id),
+    installStatus:()=>ipcRenderer.invoke('hub:install-status'),
+    onInstallState:callback=>{const listener=(_event,state)=>callback(state);ipcRenderer.on('hub:install-state',listener);return ()=>ipcRenderer.removeListener('hub:install-state',listener);},
+    quit:()=>ipcRenderer.invoke('hub:quit'),saves(game){return {
     get:key=>save('get',game,key),set:(key,value)=>save('set',game,key,value),remove:key=>save('remove',game,key)
   };}}
 });

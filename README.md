@@ -473,8 +473,9 @@ The static/cloud `/catalog` is a **store registry**, separate from `/library`.
 Entries advertise a stable manifest URL and remotely hosted cover, trailer, and
 optional screenshots, so discovery does not depend on installing the game.
 The VM's local catalog still reflects installed packages. The desktop can browse
-the hosted registry; native one-button installation is a separate adapter.
-Uninstalled entries have no play action yet; the adult CLI can install them.
+the hosted registry and provides pictorial one-button installation through its
+native adapter. Uninstalled entries show a download action, then become playable
+after installation. Unsupported browser/VM hosts require the adult CLI.
 
 Options use three touch-control modes: automatic detection, always shown, and
 hidden. These control the game/title overlays; the hub's own large navigation and
@@ -524,7 +525,9 @@ There is no binary self-updater, update menu, mid-game reload, or restart loop.
 
 The internal `hub://app` origin remains stable, preserving browser preferences,
 favorites, and legacy localStorage. `/library`, `/games/`, and native SDK saves
-remain local. Games are **not** silently downloaded or updated with the UI.
+remain local. Shell refreshes do not download or update game packages. Independently,
+the native installer checks installed games' stable manifests on hub entry,
+downloads updates in the background, and activates them only while in the hub.
 Installed-game previews work offline; store media for uninstalled games requires
 connectivity. A failed or incompatible refresh retains the last verified cached
 shell; first-run offline falls back to the bundled shell. Startup network work
@@ -537,3 +540,40 @@ executable. This currently uses the development Jump host, not a production CDN.
 `HUB_CLOUD_ORIGIN` can select another HTTPS root for adult deployment/testing.
 For the built-executable offline smoke only, `HUB_SMOKE_OFFLINE=1` simulates a
 network failure while keeping the same origin/profile and cache.
+
+### Desktop downloads and automatic game updates
+
+The desktop bridge exposes installation only to the main launcher frame. A Store
+entry with a release manifest gets a pictorial download control; downloading
+shows progress and disables duplicate requests, and an interrupted download shows
+a retry picture. Installed games appear in Library and retain offline play.
+Unsupported browser/VM hosts do not pretend to install packages.
+
+The native host resolves the selected ID from its validated catalog, fetches its
+HTTPS release manifest and archive, verifies compressed size/SHA-256 and every
+inventory file, and rejects unsupported runtimes, identity mismatches, ZIP path
+traversal, duplicate/unlisted files, directories, symlinks, and oversized content.
+It requires no system Python. A pristine desktop imports its bundled archives
+atomically so adding a downloaded game does not hide the shipped game. Existing
+externally managed libraries remain authoritative.
+
+Every return to the hub checks installed games' stable manifest URLs in the
+background. Downloads may finish during gameplay, but activation waits until the
+native window has returned to the hub. Previous releases and separate saves are
+retained; failed or offline checks leave the current game playable. Downloads
+and updates do not charge tokens. Native capabilities are optional, so the shared
+shell remains compatible with bridge-version-1 hosts that lack installation.
+
+Run the native archive regressions with:
+
+```sh
+node --test tests/desktop_installer.cjs
+```
+
+The self-terminating `--install-smoke` option additionally accepts an isolated
+`HUB_USER_DATA`, a freshly generated `HUB_SMOKE_SITE`, and
+`HUB_SMOKE_INSTALL_DIR` containing `demo-1.zip` and `demo-2.zip` fixture packages
+(ID `demo`, entrypoint `index.html`). It exercises the real Electron IPC and UI
+with HTTPS fetch fixtures, without running a server. `HUB_SMOKE_DIR` captures
+retry/progress/installed/mobile evidence. Keep fixture profiles separate from
+family/test profiles; this smoke installs its demo and stages updates.

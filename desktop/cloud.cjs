@@ -93,4 +93,4 @@ class CloudHub{
  }
  async read(name){name=name==='/'?'/index.html':name;if(!this.directory||!shellPath(name)||!Object.hasOwn(this.manifest.files,name))return null;return fs.readFile(path.join(this.directory,name.slice(1)));}
 }
-module.exports={CloudHub,validate,DEFAULT_ORIGIN};
+module.exports={CloudHub,validate,validateCatalog,DEFAULT_ORIGIN};

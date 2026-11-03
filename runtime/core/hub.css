@@ -4,3 +4,5 @@ body.hub{display:block;touch-action:manipulation;background:radial-gradient(elli
 @media(prefers-reduced-motion:reduce){.loading svg{animation:none}}
 
 .quit-confirm{border:2px solid #719061;border-radius:24px;background:#182b22;color:#f1f4e8;padding:24px}.quit-confirm::backdrop{background:#060c09d9}.quit-picture{display:flex;justify-content:center;padding:8px 0 24px}.quit-picture svg{width:64px;height:64px}.quit-actions{display:flex;gap:24px}.hub .quit-actions button{min-width:76px;min-height:64px}.hub .confirm-quit{background:#a7d07a;color:#14251b}
+
+.install-progress{width:96px;height:18px;accent-color:#a7d07a}.download-game:disabled{opacity:.65}

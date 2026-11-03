@@ -21,6 +21,22 @@ async function checkHub(win,output){
       if(host.querySelector('.preview-media')!==media||document.activeElement!==favorite)throw Error('Ownership refresh interrupted preview or focus');
     }finally{hub?.dispose();host.remove();HandheldPlatform.createPlatform=original;}
   })()`);
+  // A live update may change the entrypoint while its preview stays open.
+  await win.webContents.executeJavaScript(`(async()=>{
+    const host=document.createElement('main');document.body.appendChild(host);
+    let entries=[{id:'live-update',version:'1',artwork:'/missing-test-art',entrypoint:'/games/live-update/old.html'}],notify,hub;
+    const location={href:''},platform={capabilities:{install:true},library:async()=>entries,catalog:async()=>entries,onInstallState:callback=>(notify=callback,()=>{})};
+    const fakeWindow={HandheldPlatform:{createPlatform:()=>platform},HandheldPreferences,HandheldInput:{createInput:()=>({dispose(){}})},localStorage:window.localStorage,location,addEventListener(){},fetch:async()=>({ok:true})};
+    const owner=new Proxy(document,{get(target,key){if(key==='defaultView')return fakeWindow;const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    const scopedHost=new Proxy(host,{set(target,key,value){return Reflect.set(target,key,value,target);},get(target,key){if(key==='ownerDocument')return owner;const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    try{
+      hub=HandheldHub.mount(scopedHost);await new Promise(r=>setTimeout(r,0));hub.show('store');host.querySelector('.game-card').click();
+      const media=host.querySelector('.preview-media'),play=host.querySelector('.play-game');play.focus();
+      entries=[{...entries[0],version:'2',entrypoint:'/games/live-update/new.html'}];notify({'live-update':{phase:'installed',version:'2'}});await new Promise(r=>setTimeout(r,0));
+      if(host.querySelector('.preview-media')!==media||host.querySelector('.play-game')!==play||document.activeElement!==play)throw Error('Live update disrupted preview/focus');
+      play.click();if(location.href!=='/games/live-update/new.html')throw Error('Live update Play used stale entrypoint: '+location.href);
+    }finally{hub?.dispose();host.remove();}
+  })()`);
   // Exercise pictorial Quit without closing the verification window.
   await win.webContents.executeJavaScript(`(async()=>{
     const originalPlatform=HandheldPlatform.createPlatform,originalInput=HandheldInput.createInput;

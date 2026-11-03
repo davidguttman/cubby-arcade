@@ -71,6 +71,8 @@
       },
       quit: typeof native.quit === 'function' ? native.quit.bind(native) : undefined,
       install: native.install && native.install.bind(native),
+      installStatus: native.installStatus && native.installStatus.bind(native),
+      onInstallState: native.onInstallState && native.onInstallState.bind(native),
       setVolume: native.setVolume && native.setVolume.bind(native),
       sleep: native.sleep && native.sleep.bind(native)
     };

@@ -2,18 +2,27 @@ const {app,BrowserWindow,protocol,ipcMain}=require('electron');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const {CloudHub}=require('./cloud.cjs');
+const {GameInstaller}=require('./installer.cjs');
 const {assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=require('./host.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
-const smoke=process.argv.includes('--smoke');
+const installSmoke=process.argv.includes('--install-smoke');
+const smoke=process.argv.includes('--smoke')||installSmoke;
 if(process.env.HUB_USER_DATA)app.setPath('userData',path.resolve(process.env.HUB_USER_DATA));
 else if(smoke)app.setPath('userData',path.join(app.getPath('temp'),'handheld-hub-smoke-profile'));
 app.whenReady().then(async()=>{
-  const site=app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
+  const site=smoke&&process.env.HUB_SMOKE_SITE?path.resolve(process.env.HUB_SMOKE_SITE):app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
   const store=new SaveStore(path.join(app.getPath('userData'),'saves'));
   const library=new GameLibrary(site,process.env.HUB_GAMES_DIR?path.resolve(process.env.HUB_GAMES_DIR):path.join(app.getPath('userData'),'games'));
   const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:process.env.HUB_CLOUD_ORIGIN,...(smoke&&process.env.HUB_SMOKE_OFFLINE==='1'?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
   await cloud.refresh();
   console.log('Hub shell: '+cloud.source);
+  let hubActive=true,win;
+  const installer=new GameInstaller(library,{canActivate:()=>hubActive,onChange:states=>{
+    if(win&&!win.isDestroyed()&&hubActive)win.webContents.send('hub:install-state',states);
+  }});
+  const registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
+  installer.setCatalog(registry);
+  await installer.seedBundle();
   protocol.handle('hub',async request=>{
     try{
       const url=new URL(request.url);
@@ -22,11 +31,9 @@ app.whenReady().then(async()=>{
       assetPath(request.url,site);
       const file=library.file(request.url);
       let data=await cloud.read(url.pathname);
-      if(data&&url.pathname==='/catalog'){
-        const catalog=JSON.parse(data);if(!Array.isArray(catalog))throw Error('Invalid cloud catalog');
-        // Installed previews stay offline; other store media comes from the same trusted host.
+      if(url.pathname==='/catalog'){
         const local=library.entries();
-        data=Buffer.from(JSON.stringify(catalog.map(entry=>{
+        data=Buffer.from(JSON.stringify(registry.map(entry=>{
           const installed=local.find(game=>game.id===entry.id);
           return {...entry,artwork:installed?.artwork||new URL(entry.artwork,cloud.origin).href,
             ...(entry.attract?{attract:installed?.attract||new URL(entry.attract,cloud.origin).href}:{})};
@@ -60,12 +67,23 @@ app.whenReady().then(async()=>{
       event.returnValue={value:store[message.operation](game,message.key,message.value)??null};
     }catch{event.returnValue={error:'Save operation rejected'};}
   });
-  const win=new BrowserWindow({show:!smoke,width:960,height:640,fullscreen:!smoke,autoHideMenuBar:true,backgroundColor:'#101614',
+  win=new BrowserWindow({show:!smoke,width:960,height:640,fullscreen:!smoke,autoHideMenuBar:true,backgroundColor:'#101614',
     webPreferences:{offscreen:smoke,preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  function authorizeHub(event){requireHubFrame(event);if(event.sender!==win.webContents)throw Error('Unknown hub window');}
+  ipcMain.handle('hub:library',event=>{authorizeHub(event);return library.entries();});
+  ipcMain.handle('hub:install',async(event,id)=>{authorizeHub(event);await installer.install(id);return library.entries();});
+  ipcMain.handle('hub:install-status',event=>{authorizeHub(event);return installer.status();});
   ipcMain.handle('hub:quit',event=>{
     requireHubFrame(event);
     if(event.sender!==win.webContents)throw Error('Unknown hub window');
     win.close();
+  });
+  win.webContents.on('did-start-navigation',(_event,url,_inPlace,isMainFrame)=>{
+    if(isMainFrame)hubActive=false;
+  });
+  win.webContents.on('did-navigate',(_event,url)=>{
+    const parsed=new URL(url);hubActive=parsed.protocol==='hub:'&&parsed.hostname==='app'&&['/','/index.html'].includes(parsed.pathname);
+    if(hubActive)installer.checkUpdates().catch(error=>console.error('Game update check:',error.message));
   });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
@@ -75,6 +93,10 @@ app.whenReady().then(async()=>{
   win.on('blur',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.pause()); window.handheldAudio?.suspend();').catch(()=>{}));
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
+  if(installSmoke){
+    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:process.env.HUB_SMOKE_DIR});app.exit(0);}
+    catch(error){console.error(error);app.exit(1);}return;
+  }
   if(smoke){
     const output=process.env.HUB_SMOKE_DIR;
     try{
