@@ -640,7 +640,7 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.2.0**, with the revised Line Cutter test package **0.2.1**. No external
+desktop **0.3.0**, with the revised Line Cutter test package **0.2.1**. No external
 store release or hardware certification is implied by local packaging.
 
 Run native budget tests with `node --test tests/launch_tokens.cjs`. The isolated
@@ -656,3 +656,26 @@ For game-owned, ZIP-free releases, see [the standalone manifest generator and
 single release workflow](docs/game-release-manifest.md#generate-in-the-games-repository).
 The desktop and adult catalog CLI accept schema-2 per-file manifests while
 retaining compatibility with existing ZIP releases.
+
+
+### Public website and game-author specifications
+
+The adult-facing landing page at `https://cubby.david.app/` links to the
+[game-author guide](docs/game-authoring.md), the
+[file release specification](docs/game-release-manifest.md), browsable HTML
+copies, and a downloadable standalone generator. The wordless launcher remains
+separate; `/play` is the free browser demo on the public deployment.
+
+`web.py build` exports website assets under `site/`, documentation under `docs/`,
+and `tools/cubby_manifest.py`. Its physical `index.html` remains the native hub,
+with an identical `native/index.html` transport alias. The deployment-only Render
+adapter maps `/` and `/index.html` to `site/index.html`, `/play` and `/play/` to
+the wordless hub, and `/native/index.html` to the hub. Do not replace the native
+shell inventory with landing-page bytes. The current desktop fetches that native
+route first, verifies its inventory hash, and falls back to `/index.html` only for
+legacy hosts. Older desktop clients that request the now-public `/index.html`
+reject its mismatching hash and use their previously verified cache or bundle;
+they never install the landing page as the launcher. Browser demo return-to-home
+returns to the browser hub at `/play`; the native app returns to its wordless hub.
+The root Jump/VM preview may continue showing the hub until its adapter adopts
+these routes; this does not change the installed launcher or children's UI.

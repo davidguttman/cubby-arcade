@@ -8,6 +8,11 @@ import web
 from runtime import game_shell
 
 class WebHostTests(unittest.TestCase):
+    def test_browser_play_alias_resolves_preview_launcher_not_site_landing(self):
+        handler = object.__new__(web.PreviewHandler)
+        handler.directory = '/tmp/cubby-preview'
+        self.assertEqual(handler.translate_path('/play?demo=1'), '/tmp/cubby-preview/index.html')
+
     def test_export_validates_package_and_adds_host_shell_and_shared_launcher(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -37,6 +42,13 @@ class WebHostTests(unittest.TestCase):
             for name, metadata in cloud['files'].items():
                 content = (output / name.lstrip('/')).read_bytes()
                 self.assertEqual(metadata, {'size':len(content), 'sha256':hashlib.sha256(content).hexdigest()})
+            self.assertIn('Little games.<br>Big discoveries.', (output / 'site/index.html').read_text())
+            self.assertIn('/docs/game-authoring.html', (output / 'site/index.html').read_text())
+            self.assertIn('schema_version', (output / 'docs/game-release-manifest.html').read_text())
+            self.assertEqual((output / 'docs/game-release-manifest.md').read_bytes(), (web.HERE / 'docs/game-release-manifest.md').read_bytes())
+            self.assertEqual((output / 'tools/cubby_manifest.py').read_bytes(), (web.HERE / 'runtime/file_manifest.py').read_bytes())
+            self.assertEqual((output / 'native/index.html').read_bytes(), (output / 'index.html').read_bytes())
+            self.assertTrue(all(not name.startswith(('/site/', '/docs/', '/tools/')) for name in cloud['files']))
             self.assertFalse((output / 'vm.py').exists())
             self.assertEqual((output / 'runtime/core/input.js').read_bytes(), (web.HERE / 'runtime/core/input.js').read_bytes())
             self.assertEqual((output / 'runtime/core/screen.css').read_bytes(), (web.HERE / 'runtime/core/screen.css').read_bytes())

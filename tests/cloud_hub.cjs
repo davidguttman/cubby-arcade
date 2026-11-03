@@ -58,3 +58,13 @@ test('registry discovery accepts independent HTTPS media without requiring a loc
   }
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+
+test('landing page cannot replace native launcher; native route and legacy host both work',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'cloud-landing-'));
+ try{
+  const good=fixture('native arcade');const requested=[];
+  const fetch=async url=>{const name=new URL(url).pathname;requested.push(name);if(name==='/index.html')return new Response('public landing');if(name==='/native/index.html')return new Response(good.files['/index.html']);return transport(good)(url);};
+  let hub=new CloudHub(root,{fetch});await hub.refresh();assert.equal(hub.source,'cloud');assert.equal((await hub.read('/')).toString(),'native arcade');assert.ok(requested.includes('/native/index.html'));assert.ok(!requested.includes('/index.html'));
+  hub=new CloudHub(root,{fetch:transport(good)});await hub.refresh();assert.equal(hub.source,'cloud');assert.equal((await hub.read('/')).toString(),'native arcade');
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});

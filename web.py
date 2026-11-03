@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
-from runtime import packages, game_shell, publishing
+from runtime import packages, game_shell, publishing, public_site
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE / '.cache/web'
@@ -50,6 +50,7 @@ def build(output, archives, base_url=DEFAULT_ORIGIN):
             publishing.publish(archive, site, base_url)
         if not archives:
             (site / 'catalog').write_text('[]\n')
+        public_site.build(site)
         # Small coherent cloud-shell inventory: game payloads are deliberately excluded.
         shell = [site / 'index.html', site / 'catalog', *sorted((site / 'runtime/core').glob('*'))]
         cloud_files = {'/' + str(p.relative_to(site)): {'size': p.stat().st_size,
@@ -64,6 +65,12 @@ def build(output, archives, base_url=DEFAULT_ORIGIN):
 
 
 class PreviewHandler(http.server.SimpleHTTPRequestHandler):
+    def translate_path(self, path):
+        # Browser system-menu returns here; keep static previews usable too.
+        if path.split('?', 1)[0] == '/play':
+            path = '/index.html'
+        return super().translate_path(path)
+
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store')
         super().end_headers()

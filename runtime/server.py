@@ -100,7 +100,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return str(target)
             except (ValueError, OSError, StopIteration, KeyError, TypeError):
                 return str(ROOT / '.missing-game-asset')
-        if path == '/':
+        if path in {'/', '/play'}:
             path = '/runtime/index.html'
         if path not in {'/runtime/index.html', '/runtime/core/input.js',
                          '/runtime/core/preferences.js', '/runtime/core/platform.js', '/runtime/core/sdk.js',
