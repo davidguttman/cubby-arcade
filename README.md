@@ -297,14 +297,34 @@ The web preview is for UX testing, not RG353V hardware/performance validation.
 
 The landing-page download defaults to Windows (including without JavaScript),
 switching to Linux for desktop Linux user agents, not Android. Both CTAs target
-the latest release. Every desktop release must upload the stable platform asset
-names `CubbyArcade-win32-x64.zip` and `CubbyArcade-linux-x64.tar.gz`; versioned
-asset names may also be retained. Publish the Windows ZIP before deploying this
-landing-page change.
+the latest release's stable platform filenames `CubbyArcade-win32-x64.zip` and
+`CubbyArcade-linux-x64.tar.gz`. The desktop release workflow publishes both
+automatically, together with their SHA-256 checksum files.
+
+### Automatic desktop releases (adult/developer flow)
+
+Bump the desktop version in `package.json` and `package-lock.json` according to
+SemVer, commit the release, then push its matching stable `vX.Y.Z` tag. The
+`Desktop builds and releases` GitHub Actions workflow validates that the tag
+matches `package.json`, builds on native Windows and Linux runners, and runs
+packaged install/update/play/offline and uninstall/save-retention smokes.
+Only after **both** platform jobs succeed does its publishing job create a
+draft GitHub Release, upload both archives and checksums, verify every remote
+asset's size and SHA-256 digest, then publish it as the latest release. The
+landing-page download links follow it without source edits or manual uploads.
+Branch pushes and manual workflow runs only build/test; they cannot publish.
+No npm, app-store or executable self-update publication is involved.
+
+An upload failure leaves an unpublished draft, never a half-complete latest
+release. Matching reruns can resume missing uploads; differing draft assets
+are rejected rather than overwritten (inspect and remove only that failed
+draft before retrying if new builds produce different bytes). Published
+release assets are immutable: a rerun must match every archive and checksum.
+Deploy the landing page only after its first Windows release is published.
 
 Windows 10/11 x64 uses the same launcher, Store, controller input and offline
 game library as Linux. Download the portable `CubbyArcade-win32-x64.zip` from
-the verified Windows desktop build artifact. Extract **the entire ZIP**, then
+the latest GitHub Release. Extract **the entire ZIP**, then
 open `CubbyArcade-win32-x64/CubbyArcade.exe`; moving only the EXE will not work.
 No Python, Node, administrator access or Developer Mode is needed to play or
 install games. This build is unsigned; no code-signing or Microsoft Store
@@ -341,6 +361,7 @@ npm run desktop:prepare
 npm run desktop:start
 npm run desktop:build
 # Result: dist/CubbyArcade-linux-x64/CubbyArcade
+# Archive: dist/CubbyArcade-linux-x64.tar.gz and .tar.gz.sha256
 ```
 
 The Linux x64 folder is a self-contained local distribution (runtime and games

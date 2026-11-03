@@ -1,7 +1,8 @@
-name: Windows desktop
+name: Desktop builds and releases
 on:
   push:
     branches: [main, windows-desktop]
+    tags: ['v*']
     paths:
       - 'desktop/**'
       - 'runtime/**'
@@ -11,12 +12,33 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'hosting/**'
+      - 'website/**'
       - '.github/workflows/windows-desktop.yml'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate release tag and package version
+        run: |
+          node <<'JS'
+          const ref=process.env.GITHUB_REF;
+          if(ref.startsWith('refs/tags/')){
+            const tag=process.env.GITHUB_REF_NAME;
+            if(!/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(tag)||tag.slice(1)!==require('./package.json').version)throw Error('Stable tag must match package.json version');
+          }
+          JS
   windows:
+    needs: validate
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -51,3 +73,60 @@ jobs:
           name: windows-smoke-evidence
           path: dist/windows-smoke
           if-no-files-found: warn
+  linux:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.7'
+      - name: Install native smoke dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgtk-3-0t64 libnss3 libasound2t64 libgbm1
+      - run: npm ci
+      - name: Regression tests
+        run: |
+          node --test tests/*.cjs
+          uv run python -m unittest discover -s tests -q
+      - name: Build portable Linux archive
+        run: npm run desktop:build
+      - name: Exercise packaged Linux app
+        timeout-minutes: 5
+        run: bash desktop/linux-smoke.sh
+      - name: Upload portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: CubbyArcade-linux-x64
+          path: |
+            dist/CubbyArcade-linux-x64.tar.gz
+            dist/CubbyArcade-linux-x64.tar.gz.sha256
+          if-no-files-found: error
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-smoke-evidence
+          path: dist/linux-smoke
+          if-no-files-found: warn
+  publish:
+    needs: [windows, linux]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: CubbyArcade-*
+          merge-multiple: true
+          path: dist/release
+      - name: Publish both verified desktop downloads together
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 desktop/release.py

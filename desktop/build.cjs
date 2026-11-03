@@ -29,6 +29,6 @@ const {execFileSync}=require('node:child_process');
       asar:true,prune:false,extraResource:[path.join(root,'.cache/web')],
       ...(platform==='win32'?{win32metadata:{CompanyName:'David Guttman',FileDescription:'Cubby Arcade',ProductName:'Cubby Arcade'}}:{})});
     console.log(outputs);
-    if(platform==='win32')execFileSync('uv',['run','python',path.join(__dirname,'archive.py'),outputs[0]],{cwd:root,stdio:'inherit'});
+    execFileSync('uv',['run','python',path.join(__dirname,'archive.py'),outputs[0],platform==='win32'?'zip':'tar.gz'],{cwd:root,stdio:'inherit'});
   }finally{await fs.rm(stage,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1;});
