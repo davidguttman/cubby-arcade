@@ -99,7 +99,14 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError('Upstream manifest too large')
                 if expected_length is not None and len(body) != expected_length:
                     raise ValueError('Upstream manifest size mismatch')
-                catalog.validate_release(json.loads(body), game_id, self.server.developer_local)
+                document = json.loads(body)
+                resolved = catalog.validate_release(document, game_id, self.server.developer_local, target)
+                # The legacy endpoint has a different URL/origin. Preserve the
+                # publisher's relative-reference meaning when forwarding it.
+                if resolved != document:
+                    body = (json.dumps(resolved, separators=(',', ':')) + '\n').encode('utf-8')
+                    if len(body) > catalog.MAX_RELEASE:
+                        raise ValueError('Resolved upstream manifest too large')
         except (OSError, HTTPException, ValueError, TypeError, RecursionError):
             self.send_error(502, 'Unable to read release metadata')
             return None

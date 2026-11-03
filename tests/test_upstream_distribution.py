@@ -188,6 +188,17 @@ class UpstreamDistribution(unittest.TestCase):
                     updated = catalog.install_entry(entry, games, developer=True, update=True)
                     self.assertEqual(updated['version'], '1.1.0')
                     self.assertTrue((games / 'line-cutter/releases/1.0.0').is_dir())
+                    release('1.2.0')
+                    relative = json.loads(state['body'])
+                    for item in relative['files'].values():
+                        item['url'] = item['url'].removeprefix(upstream + '/')
+                    state['body'] = json.dumps(relative).encode()
+                    # Forwarding must resolve at the publisher, not the Cubby
+                    # endpoint's /store/line-cutter/ directory or origin.
+                    updated = catalog.install_entry(entry, games, developer=True, update=True)
+                    self.assertEqual(updated['version'], '1.2.0')
+                    self.assertEqual((games/'line-cutter/current/play.html').read_bytes(), b'game 1.2.0')
+                    self.assertIn('/releases/1.2.0/play.html', state['requests'])
                     active = (games / 'line-cutter/current').resolve()
                     valid_manifest = state['body']
                     failures = [(valid_manifest, 200, 0, True, None),

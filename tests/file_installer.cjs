@@ -77,3 +77,43 @@ test('file releases reject host-ambiguous URL paths but permit spaces and Unicod
  const m=offer(f);m.files['snow 雪.html']=m.files['index.html'];m.entrypoint='snow 雪.html';
  assert.equal(validateRelease(m,'demo'),m);
 });
+
+test('relative files resolve against nested publisher manifest; updates preserve saves and old files',async t=>{
+ const f=fixture(t),stable='https://publisher.test/store/demo/manifest.json';
+ f.installer.setCatalog([{id:'demo',title:'Demo',manifest_url:stable,artwork:'https://publisher.test/art.svg'}]);
+ function relativeOffer(version,payload){
+  const m=offer(f,version,payload);
+  for(const [name,file] of Object.entries(m.files)){
+   const body=f.docs.get(file.url);file.url=name==='art.svg'?'https://cdn.test/art.svg':version+'/files/'+name;
+   f.docs.set(new URL(file.url,stable).href,body);
+  }
+  f.docs.set(stable,JSON.stringify(m));return m;
+ }
+ relativeOffer('1',{'index.html':'first','art.svg':'<svg/>'});
+ await f.installer.install('demo');
+ assert.deepEqual(f.requests,[stable,'https://publisher.test/store/demo/1/files/index.html','https://cdn.test/art.svg']);
+ fs.writeFileSync(path.join(f.root,'save.json'),'keep');f.requests.length=0;
+ relativeOffer('2',{'index.html':'second','art.svg':'<svg/>'});await f.installer.install('demo');
+ assert.deepEqual(f.requests,[stable,'https://publisher.test/store/demo/2/files/index.html']);
+ assert.equal(fs.readFileSync(path.join(f.root,'save.json'),'utf8'),'keep');
+ assert.equal(fs.readFileSync(path.join(f.lib.games,'demo/releases/1/index.html'),'utf8'),'first');
+ assert.equal(f.lib.entries()[0].version,'2');
+});
+
+test('relative URL validation rejects ambiguous and unsafe values before payload writes',async t=>{
+ const f=fixture(t);
+ for(const value of ['//evil.test/a','\\evil','x\\y','x\n/y','','?query','#fragment','http://evil.test/a','javascript:alert(1)','https://u:p@a.test/x','https://@a.test/x','https://a.test/x#f','https:relative','https:///missing','bad%xx','x%0ay']){
+  const m=offer(f);m.files['index.html'].url=value;f.docs.set('https://game.test/manifest.json',JSON.stringify(m));f.requests.length=0;
+  await assert.rejects(f.installer.install('demo'),undefined,value);assert.deepEqual(f.requests,['https://game.test/manifest.json']);
+ }
+ assert(!fs.existsSync(path.join(f.lib.games,'demo/current')));
+});
+
+test('root and parent relative URLs resolve without changing installed file paths',t=>{
+ const f=fixture(t),m=offer(f);m.files['index.html'].url='../releases/1/index.html';m.files['art.svg'].url='/media/art.svg';
+ assert.throws(()=>validateRelease(m,'demo'));
+ const resolved=validateRelease(m,'demo','https://game.test/store/demo/manifest.json');
+ assert.equal(resolved.files['index.html'].url,'https://game.test/store/releases/1/index.html');
+ assert.equal(resolved.files['art.svg'].url,'https://game.test/media/art.svg');
+ assert.equal(m.files['index.html'].url,'../releases/1/index.html');
+});

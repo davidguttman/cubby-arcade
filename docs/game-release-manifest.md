@@ -16,12 +16,12 @@ require a Cubby registry edit or a second GitHub release to insert checksums.
   "artwork": "cover.svg",
   "files": {
     "index.html": {
-      "url": "https://example.com/releases/1.0.0/index.html",
+      "url": "releases/1.0.0/index.html",
       "size": 15,
       "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     },
     "cover.svg": {
-      "url": "https://example.com/releases/1.0.0/cover.svg",
+      "url": "releases/1.0.0/cover.svg",
       "size": 6,
       "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     }
@@ -38,9 +38,20 @@ from the exact build files before uploading; the manifest is not self-hashed.
 - `entrypoint` and `artwork` are required relative installed file paths. Optional
   `attract` names the trailer file; optional `screenshots` is an array of up to
   12 relative file paths. All must occur in `files`.
-- Every `files` value has an absolute HTTPS `url`, exact nonnegative integer
-  byte `size`, and lowercase hexadecimal SHA-256. Download hosts may differ
-  from the manifest host. Redirects, URL credentials, and URL fragments fail.
+- Every `files` value has a download `url`, exact nonnegative integer byte
+  `size`, and lowercase hexadecimal SHA-256. URLs may be relative to the
+  requested manifest URL, root-relative on its host, or absolute HTTPS URLs.
+  For a manifest at `https://game.example/store/demo/manifest.json`, `1/files/a.js`
+  resolves to `https://game.example/store/demo/1/files/a.js`, while `/releases/1/a.js`
+  resolves to `https://game.example/releases/1/a.js`. Parent-relative paths work
+  using normal URL resolution, not installed-file path rules. Absolute download
+  hosts may differ from the manifest host. The resolved transport must be HTTPS.
+  Protocol-relative URLs (`//host/path`), redirects, URL credentials/fragments,
+  backslashes, whitespace/control characters, malformed escapes, and encoded
+  controls/backslashes fail. URL-encode spaces and Unicode in remote references.
+  Relative references require the source manifest URL; they never use the
+  catalog origin or process working directory. Legacy schema-1 `package.url`
+  supports the same download-reference rules.
 - Files are regular files only: no absolute/traversal/backslash/NUL/empty path
   segments, file/directory prefix collisions, or `manifest.json` payload. That
   filename is reserved for Cubby's installed inventory. Paths also reject `%`,
@@ -89,7 +100,13 @@ is accepted. No version-ordering/downgrade policy is introduced by this contract
 
 Existing desktop bundles still seed from their ZIP archives without a network
 dependency. Games publishing schema 2 require an updated native installer; old
-desktop clients support schema 1 only. Checksums prove byte integrity, not
+desktop clients support schema 1 only. Desktop 0.3.0 supports schema 2 with
+absolute URLs but rejects relative download URLs; install a bundle containing
+relative-URL support before changing a stable manifest to use them. The format
+remains schema 2, and absolute URLs stay supported. Cubby's legacy manifest
+forwarding endpoint resolves relative references at the upstream publisher URL
+before forwarding, so moving metadata does not change its meaning.
+Checksums prove byte integrity, not
 publisher identity; the registry remains a trusted-developer list.
 
 ## Generate in the game's repository
@@ -107,7 +124,7 @@ uv run python tools/cubby_manifest.py dist/game \
   --id line-cutter --version "$RELEASE_VERSION" \
   --entrypoint play.html --artwork cover.png \
   --attract trailer.webm \
-  --base-url "https://linecutter.david.app/releases/$RELEASE_VERSION/" \
+  --base-url "/releases/$RELEASE_VERSION/" \
   --output dist/release-manifest.json
 ```
 
@@ -116,6 +133,12 @@ and safely URL-encoded file names come from the exact build output. The output
 manifest must be **outside** the payload directory; `manifest.json` is reserved
 inside a game installation. Existing payload manifests, symlinks, special files,
 unsafe paths, and oversized releases fail before publication.
+
+`--base-url` is optional and defaults to `./`: generated file references then
+point beside the hosted manifest. Supply a relative version directory when
+publishing a stable manifest elsewhere, or a root-relative version directory
+when identical metadata is served at several paths on the same domain. No
+deployment hostname is needed. An explicit absolute HTTPS base is still allowed.
 
 Then, in that same CI job, use the game's hosting deploy command to upload
 `dist/game/` to the versioned URL, verify the files, and publish
