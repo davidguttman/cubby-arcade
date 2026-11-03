@@ -16,7 +16,8 @@ function downloadURL(value,manifestURL){
  if(typeof value!=='string'||!value||/[\\\x00-\x20\x7f#]/.test(value)||/%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f|5c)/i.test(value)||value.startsWith('//'))throw Error('Invalid download URL');
  const absolute=/^[a-z][a-z0-9+.-]*:/i.test(value);
  if(absolute){if(!/^https:\/\/[^/]/i.test(value)||/^https:\/\/[^/?]*@/i.test(value))throw Error('HTTPS download required');return httpsURL(value).href;}
- if(!value.split('?')[0]||value.split('/')[0].includes(':')||!manifestURL)throw Error('Relative download URL requires the manifest URL');
+ const pathname=value.split('?')[0];
+ if(!pathname||pathname.split('/')[0].includes(':')||!manifestURL)throw Error('Relative download URL requires the manifest URL');
  return httpsURL(new URL(value,downloadURL(manifestURL)).href).href;
 }
 function validateRelease(m,id,manifestURL){

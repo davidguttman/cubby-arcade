@@ -186,6 +186,25 @@ class FileManifestTests(unittest.TestCase):
         self.assertEqual(document['package']['url'], '../releases/demo.zip')
         with self.assertRaises(ValueError): catalog.validate_release(document, 'demo')
 
+    def test_relative_query_colons_have_native_resolution_parity(self):
+        stable = 'https://game.example/store/demo/manifest.json'
+        query = '?date=2026-11-02T12:00:00Z&next=https://cdn.example/a'
+        for schema in (1, 2):
+            for prefix in ('', './', '../', '/'):
+                with self.subTest(schema=schema, prefix=prefix):
+                    if schema == 1:
+                        document = dict(schema_version=1, id='demo', version='1', runtime='web', entrypoint='index.html',
+                                        package=dict(url=prefix + 'demo.zip' + query, size=123, sha256='0'*64))
+                    else:
+                        document = self.generate()
+                        document['files']['index.html']['url'] = prefix + 'index.html' + query
+                    resolved = catalog.validate_release(document, 'demo', manifest_url=stable)
+                    native = subprocess.run(['node', '-e',
+                        "console.log(JSON.stringify(require('./desktop/installer.cjs').validateRelease(JSON.parse(process.argv[1]),'demo',process.argv[2])))",
+                        json.dumps(document), stable], capture_output=True, text=True)
+                    self.assertEqual(native.returncode, 0, native.stderr)
+                    self.assertEqual(json.loads(native.stdout), resolved)
+
     def test_relative_fresh_install_and_update_preserve_saves_and_previous_release(self):
         from runtime import file_manifest
         manifest = file_manifest.generate(self.build, 'demo', '1', 'index.html', 'cover.svg', '1/files/')
