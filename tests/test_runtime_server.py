@@ -50,6 +50,7 @@ class RuntimeServerTests(unittest.TestCase):
 
     def test_success_head_and_error_responses_disallow_storage(self):
         for method, path, expected in [('GET', '/', 200),
+                                       ('GET', '/play', 200),
                                        ('HEAD', '/runtime/index.html', 200),
                                        ('GET', '/missing', 404)]:
             with self.subTest(method=method, path=path):

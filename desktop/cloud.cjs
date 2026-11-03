@@ -67,7 +67,14 @@ class CloudHub{
    const manifest=validate(JSON.parse((await this.download('/hub-manifest.json',65536,signal)).toString('utf8')));
    await fs.mkdir(this.root,{recursive:true});stage=await fs.mkdtemp(path.join(this.root,'.stage-'));
    const downloads=await Promise.allSettled(Object.entries(manifest.files).map(async([name,entry])=>{
-    const data=await this.download(name,entry.size,signal);if(data.length!==entry.size||hash(data)!==entry.sha256)throw Error('Hub integrity mismatch');
+    // Public /index.html may be a landing page. Keep native cache keys stable,
+    // but fetch the dedicated shell; old hosts can still serve the legacy URL.
+    let data;
+    if(name==='/index.html'){
+     try{data=await this.download('/native/index.html',entry.size,signal);}catch{data=null;}
+     if(!data||data.length!==entry.size||hash(data)!==entry.sha256)data=await this.download(name,entry.size,signal);
+    }else data=await this.download(name,entry.size,signal);
+    if(data.length!==entry.size||hash(data)!==entry.sha256)throw Error('Hub integrity mismatch');
     const file=path.join(stage,name.slice(1));await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,data);
    }));
    const failed=downloads.find(r=>r.status==='rejected');if(failed)throw failed.reason;

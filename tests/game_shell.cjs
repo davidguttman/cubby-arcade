@@ -13,3 +13,10 @@ test('controller shortcut masks game input until neutral; menu confirm cannot le
 test('touch opening and cancellation use the same system menu',()=>{const h=harness();h.shell.open();assert.equal(h.shell.isOpen(),true);h.shell.resume();assert.equal(h.shell.isOpen(),false);});
 
 test('configured exit key works for a game without an input adapter',()=>{const h=harness();h.env.HandheldPreferences={preferences:{get:()=>({keyboard:{exit:['F10']}})}};assert.equal(h.key('F10'),true);assert.equal(h.shell.isOpen(),true);h.key('F10');assert.equal(h.shell.isOpen(),false);});
+
+test('browser system-menu return stays in arcade demo while native return stays at hub root',()=>{
+ for(const protocol of ['https:', 'http:', 'hub:']){
+  const h=harness();h.env.location.protocol=protocol;h.key('Escape');h.key('ArrowRight');h.key('Enter');
+  assert.equal(h.env.location.href,protocol==='hub:'?'/':'/play');
+ }
+});
