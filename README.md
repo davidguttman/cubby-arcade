@@ -644,7 +644,9 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.5.1**, correcting static hosting and the canonical cloud origin after
+desktop **0.6.0**, adding browser installation, offline play, save-preserving
+uninstall, and continuous install progress animation on the static site. The
+0.5.1 release corrected static hosting and the canonical cloud origin after
 0.5.0 added Store-only game discovery and save-preserving uninstall
 with a pictorial confirmation. Fresh libraries contain no bundled games; Line
 Cutter and Trail Mix are installed explicitly from their game-owned publishers.
