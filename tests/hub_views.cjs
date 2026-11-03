@@ -8,3 +8,8 @@ test('grid is default and details are explicit hover/focus/tap selections',()=>{
  assert.equal(Hub.createState({getItem:k=>store.get(k)||null}).isFavorite('demo'),true);
  s.show('options');assert.equal(s.detail,null);assert.throws(()=>s.show('unknown'));
 });
+
+test('options contain adult setup but no manual touch controls',()=>{
+ const source=require('node:fs').readFileSync('runtime/core/hub.js','utf8');
+ assert.match(source,/Adult keyboard setup/);assert.doesNotMatch(source,/touch-settings|data-mode|Automatic touch controls|Show touch controls|Hide touch controls/);
+});
