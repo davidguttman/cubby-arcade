@@ -77,3 +77,37 @@ test('file releases reject host-ambiguous URL paths but permit spaces and Unicod
  const m=offer(f);m.files['snow 雪.html']=m.files['index.html'];m.entrypoint='snow 雪.html';
  assert.equal(validateRelease(m,'demo'),m);
 });
+
+test('uninstall removes all release bytes, survives restart and preserves saves on reinstall',async t=>{
+ const {SaveStore}=require('../desktop/host.cjs');
+ const f=fixture(t),saves=new SaveStore(path.join(f.root,'saves'));offer(f);await f.installer.install('demo');
+ offer(f,'2');await f.installer.install('demo');saves.set('demo','run',{level:7});
+ const other=path.join(f.lib.games,'other');fs.mkdirSync(other);fs.writeFileSync(path.join(other,'keep'),'yes');
+ await f.installer.uninstall('demo');assert.equal(fs.existsSync(path.join(f.lib.games,'demo')),false);assert.deepEqual(f.lib.entries(),[]);
+ assert.equal(f.installer.status().demo.phase,'uninstalled');assert.deepEqual(new GameLibrary(f.lib.site,f.lib.games).entries(),[]);
+ assert.deepEqual(saves.get('demo','run'),{level:7});assert.equal(fs.readFileSync(path.join(other,'keep'),'utf8'),'yes');
+ await f.installer.install('demo');assert.equal(f.lib.entries()[0].version,'2');assert.deepEqual(saves.get('demo','run'),{level:7});
+});
+test('uninstall refuses playing, busy update, active job, pending release and unsafe paths',async t=>{
+ const f=fixture(t);offer(f);await f.installer.install('demo');
+ f.hub(false);await assert.rejects(f.installer.uninstall('demo'),/hub|playing/i);f.hub(true);
+ f.installer.checking=Promise.resolve();await assert.rejects(f.installer.uninstall('demo'),/busy/i);f.installer.checking=null;
+ f.installer.jobs.set('demo',Promise.resolve());await assert.rejects(f.installer.uninstall('demo'),/busy/i);f.installer.jobs.delete('demo');
+ f.installer.pending.set('demo',{});await assert.rejects(f.installer.uninstall('demo'),/busy/i);f.installer.pending.delete('demo');
+ for(const id of ['../demo','/demo','demo/../other','',null,{},'unknown'])await assert.rejects(f.installer.uninstall(id));
+ const original=path.join(f.root,'original');fs.renameSync(path.join(f.lib.games,'demo'),original);fs.symlinkSync(original,path.join(f.lib.games,'demo'));
+ await assert.rejects(f.installer.uninstall('demo'),/symlink/i);assert(fs.existsSync(path.join(original,'current')));
+ fs.unlinkSync(path.join(f.lib.games,'demo'));fs.renameSync(original,path.join(f.lib.games,'demo'));
+ const games=f.lib.games;fs.renameSync(games,games+'-original');fs.symlinkSync(games+'-original',games);
+ await assert.rejects(f.installer.uninstall('demo'),/symlink/i);assert.equal(f.lib.entries()[0].version,'1');
+});
+
+test('uninstall rejects an actual in-flight auto-update and refuses escaped release directories',async t=>{
+ const f=fixture(t);offer(f);await f.installer.install('demo');offer(f,'2');
+ let release;const fetching=f.installer.fetch;f.installer.fetch=async(...args)=>{await new Promise(resolve=>release=resolve);return fetching(...args);};
+ const check=f.installer.checkUpdates();await new Promise(r=>setImmediate(r));
+ await assert.rejects(f.installer.uninstall('demo'),/busy/);assert.equal(f.lib.entries()[0].version,'1');
+ f.installer.fetch=fetching;release();await check;assert.equal(f.lib.entries()[0].version,'2');
+ const releases=path.join(f.lib.games,'demo/releases');fs.renameSync(releases,releases+'-original');fs.symlinkSync(f.root,releases);
+ await assert.rejects(f.installer.uninstall('demo'),/symlink/i);assert(fs.existsSync(releases+'-original/2/index.html'));
+});

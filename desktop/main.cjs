@@ -8,7 +8,8 @@ const {assetName,assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=requ
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 const tokenSmoke=process.argv.includes('--token-smoke');
 const installSmoke=process.argv.includes('--install-smoke');
-const smoke=process.argv.includes('--smoke')||installSmoke||tokenSmoke;
+const uninstallSmoke=process.argv.includes('--uninstall-smoke');
+const smoke=process.argv.includes('--smoke')||installSmoke||tokenSmoke||uninstallSmoke;
 const env=name=>process.env['CUBBY_ARCADE_'+name]??process.env['HUB_'+name];
 const {userDataPath}=require('./profile.cjs');
 app.setName('Cubby Arcade');
@@ -19,12 +20,12 @@ app.whenReady().then(async()=>{
   const site=smoke&&env('SMOKE_SITE')?path.resolve(env('SMOKE_SITE')):app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
   const store=new SaveStore(path.join(app.getPath('userData'),'saves'));
   const library=new GameLibrary(site,env('GAMES_DIR')?path.resolve(env('GAMES_DIR')):path.join(app.getPath('userData'),'games'));
-  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),...(smoke&&env('SMOKE_OFFLINE')==='1'?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
+  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),...(uninstallSmoke||(smoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
   await cloud.refresh();
   console.log('Hub shell: '+cloud.source);
   let hubActive=true,win,launcher,servedDocuments=new Set();
   const account=new TokenAccount(path.join(app.getPath('userData'),'account.json'));
-  const installer=new GameInstaller(library,{canActivate:()=>hubActive,onChange:states=>{
+  const installer=new GameInstaller(library,{canActivate:()=>hubActive&&!launcher?.pending,onChange:states=>{
     if(win&&!win.isDestroyed()&&hubActive)win.webContents.send('hub:install-state',states);
   }});
   const registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
@@ -87,6 +88,7 @@ app.whenReady().then(async()=>{
   ipcMain.handle('hub:launch',(event,id)=>{authorizeHub(event);return launchGame(id);});
   ipcMain.handle('hub:library',event=>{authorizeHub(event);return library.entries();});
   ipcMain.handle('hub:install',async(event,id)=>{authorizeHub(event);await installer.install(id);return library.entries();});
+  ipcMain.handle('hub:uninstall',async(event,id)=>{authorizeHub(event);await installer.uninstall(id);return library.entries();});
   ipcMain.handle('hub:install-status',event=>{authorizeHub(event);return installer.status();});
   ipcMain.handle('hub:quit',event=>{
     requireHubFrame(event);
@@ -124,6 +126,10 @@ app.whenReady().then(async()=>{
   win.on('blur',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.pause()); window.handheldAudio?.suspend();').catch(()=>{}));
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
+  if(uninstallSmoke){
+    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,store,account,{output:env('SMOKE_DIR')});app.exit(0);}
+    catch(error){console.error(error);app.exit(1);}return;
+  }
   if(installSmoke){
     try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:env('SMOKE_DIR')});app.exit(0);}
     catch(error){console.error(error);app.exit(1);}return;

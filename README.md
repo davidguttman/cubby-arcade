@@ -739,3 +739,28 @@ Never rebuild or edit game bytes inside the launcher repository.
 Build dependencies are pinned in `pyproject.toml` / `uv.lock`. Regenerate Render’s
 `requirements.txt` with `uv export --locked --no-dev --no-hashes --no-emit-project --output-file requirements.txt`.
 Static serving itself uses only the Python standard library.
+
+### Uninstalling installed games
+
+Native game previews include a separate trash control. It opens a picture-only
+confirmation showing that game's cover. Cancel is initially selected; Back/Escape
+also cancels. Removing a game deletes its managed downloaded releases, not saves,
+favorites, settings, or tokens. The Store offers it for installation again, and
+reinstallation picks up the retained saves. Removal is unavailable during a launch,
+an install/update, or gameplay. Discovery-only web and older native bridges do not
+show an unsupported uninstall control.
+
+An isolated offline native smoke uses the checked-in historical test package and
+checks cancellation/default focus/repeat protection, failure/retry, actual IPC
+removal and reinstall, save retention, and game-frame rejection:
+
+```bash
+uv run python web.py build --output /tmp/cubby-uninstall-site
+CUBBY_ARCADE_USER_DATA="$(mktemp -d /tmp/cubby-uninstall-profile-XXXXXX)" \
+  CUBBY_ARCADE_SMOKE_SITE=/tmp/cubby-uninstall-site \
+  CUBBY_ARCADE_SMOKE_DIR=/tmp/cubby-uninstall-evidence \
+  ./node_modules/.bin/electron . --uninstall-smoke --ozone-platform=x11 --disable-gpu
+```
+
+Never run smoke modes against a family profile. The smoke captures desktop and
+narrow confirmation screenshots plus a JSON report in `CUBBY_ARCADE_SMOKE_DIR`.

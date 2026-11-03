@@ -97,6 +97,23 @@ class GameInstaller{
   const entry=this.catalog.find(e=>e.id===id&&e.manifest_url);if(!entry)return Promise.reject(Error('Game not offered'));
   const job=this.run(entry).catch(e=>{this.state(id,'error');throw e;}).finally(()=>this.jobs.delete(id));this.jobs.set(id,job);return job;
  }
+ // Removal is synchronous inside this async API: navigation, update discovery,
+ // and installs cannot interleave between the safety check and disk removal.
+ async uninstall(id){
+  if(typeof id!=='string'||!idPattern.test(id))throw Error('Invalid game id');
+  if(!this.canActivate())throw Error('Return to hub before uninstalling');
+  if(this.checking||this.jobs.has(id)||this.pending.has(id))throw Error('Game installer busy');
+  const root=this.library.games,game=path.join(root,id);
+  if(fs.lstatSync(root).isSymbolicLink())throw Error('Symlinked games root');
+  noSymlinks(root,path.join(game,'releases'));
+  // A valid managed current selector proves ownership; do not remove arbitrary
+  // directories or follow a symlink supplied in place of a managed game.
+  const {directory}=this.library.release(id);noSymlinks(root,directory);
+  this.state(id,'uninstalling');
+  try{fs.rmSync(game,{recursive:true});this.state(id,'uninstalled');}
+  catch(error){this.state(id,'error');throw error;}
+  return this.library.entries();
+ }
  async run(entry){
   const id=entry.id;this.state(id,'checking');const signal=AbortSignal.timeout(120000);
   const release=validateRelease(JSON.parse((await download(this.fetch,entry.manifest_url,MAX_MANIFEST,signal)).toString('utf8')),id);

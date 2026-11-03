@@ -91,3 +91,12 @@ test('quit is only advertised by platforms with native support',async()=>{
  const web=createPlatform({document:{}});assert.equal(web.capabilities.quit,false);assert.equal(web.quit,undefined);
  let count=0;const desktop=createPlatform({document:{},bridge:{quit:async()=>++count}});assert.equal(desktop.capabilities.quit,true);await desktop.quit();assert.equal(count,1);
 });
+
+test('uninstall capability is optional and never advertised by discovery-only or legacy bridges',async()=>{
+ const {createPlatform}=require('../runtime/core/platform.js');
+ for(const bridge of [{},{install:async()=>{}}]){
+  const platform=createPlatform({bridge,storage:{getItem(){return null;}}});assert.equal(platform.capabilities.uninstall,false);assert.equal(platform.uninstall,undefined);
+ }
+ const calls=[],bridge={uninstall(id){calls.push(id);return Promise.resolve([]);}};
+ const platform=createPlatform({bridge});assert.equal(platform.capabilities.uninstall,true);await platform.uninstall('demo');assert.deepEqual(calls,['demo']);
+});
