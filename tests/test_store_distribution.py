@@ -46,7 +46,7 @@ class StoreDistribution(unittest.TestCase):
             site = web.build(Path(tmp) / 'site', registry=web.default_registry())
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['line-cutter', 'trail-mix'])
+                             ['trail-mix', 'line-cutter'])
             trail = next(e for e in json.loads((site / 'catalog').read_text()) if e['id'] == 'trail-mix')
             self.assertEqual(trail['manifest_url'], 'https://trailmix.david.app/arcade/manifest.json')
             self.assertEqual(trail['artwork'], 'https://trailmix.david.app/discovery/cover.png')
@@ -67,7 +67,7 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertFalse((site / 'games').exists())
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['line-cutter', 'trail-mix'])
+                             ['trail-mix', 'line-cutter'])
             self.assertEqual((site / 'store/little-camp/1/little-camp-1.game.zip').read_bytes(), old.read_bytes())
             self.assertFalse((site / 'store/trail-mix').exists())
             self.assertTrue((site / 'store/line-cutter/1/line-cutter-1.game.zip').is_file())

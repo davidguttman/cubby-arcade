@@ -1,8 +1,82 @@
+/* Startup selection is exercised against real DOM with deferred discovery. */
+async function checkStartup(win){
+  return win.webContents.executeJavaScript(`(async()=>{
+    const original=HandheldPlatform.createPlatform,game={id:'startup-test',artwork:'/missing-test-art',entrypoint:'/test-play',manifest_url:'/manifest'};
+    const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+    const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
+    async function fixture(check){
+      const host=document.createElement('main'),firstLibrary=deferred(),firstCatalog=deferred();
+      let hub,entries=[],calls=0,notify;
+      HandheldPlatform.createPlatform=()=>({capabilities:{install:true,uninstall:true},
+        library:()=>++calls===1?firstLibrary.promise:Promise.resolve(entries),catalog:()=>firstCatalog.promise,
+        install:async()=>{entries=[game];notify({[game.id]:{phase:'installed',version:'1'}});},uninstall:async()=>{entries=[];},
+        onInstallState:callback=>(notify=callback,()=>{})});
+      document.body.appendChild(host);
+      const assert=(ok,message)=>{if(!ok)throw Error(message);};
+      const selected=view=>assert(hub.state.view===view&&host.querySelector('[aria-current="page"]')?.getAttribute('aria-label')===view,'Expected active '+view+', got '+hub.state.view);
+      try{hub=HandheldHub.mount(host);await check({host,hub,selected,assert,library:firstLibrary,catalog:firstCatalog,setEntries:value=>{entries=value;},notify:states=>notify(states)});}
+      finally{hub?.dispose();host.remove();HandheldPlatform.createPlatform=original;}
+    }
+    await fixture(async({host,selected,assert,library,catalog})=>{
+      catalog.resolve([game]);await tick();library.resolve([]);await tick();selected('store');
+      assert(host.querySelector('.game-card'),'Empty startup did not show ready catalog');
+      assert(!host.querySelector('.detail').hidden&&host.querySelector('.download-game'),'Store startup must open the first game preview and download action');
+      host.querySelector('[aria-label="library"]').click();selected('library');
+      assert(host.querySelector('.shelf-status.empty'),'Manually chosen empty Library missing');
+    });
+    await fixture(async({host,selected,assert,library,catalog})=>{
+      library.resolve([]);await tick();selected('store');assert(host.querySelector('.shelf-status.loading'),'Store must retain catalog loading state');
+      catalog.resolve([game]);await tick();assert(host.querySelector('.game-card'),'Late catalog did not populate Store');
+      assert(!host.querySelector('.detail').hidden,'Late catalog must open its first game');
+      host.querySelector('.game-card').click();host.querySelector('.download-game').click();await tick();selected('store');
+      host.querySelector('[aria-label="library"]').click();host.querySelector('.game-card').click();
+      host.querySelector('.uninstall-game').click();host.querySelector('.confirm-uninstall').click();await tick();selected('library');
+      assert(host.querySelector('.shelf-status.empty'),'Last uninstall did not leave empty Library in place');
+    });
+    await fixture(async({host,selected,assert,library,catalog})=>{
+      library.resolve([]);catalog.resolve([]);await tick();selected('store');assert(host.querySelector('.shelf-status.empty'),'Empty catalog should stay on Store');
+    });
+    await fixture(async({selected,library,catalog})=>{catalog.resolve([game]);library.resolve([game]);await tick();selected('library');});
+    await fixture(async({host,hub,selected,assert,library,catalog})=>{
+      const first={...game,id:'catalog-first'},second={...game,id:'catalog-second'};
+      library.resolve([game]);catalog.resolve([first,second]);await tick();selected('library');
+      assert(host.querySelector('.detail').hidden,'Library must keep its resting grid');
+      host.querySelector('[aria-label="store"]').click();selected('store');
+      assert(hub.state.detail?.id===first.id&&!host.querySelector('.detail').hidden,'Store must select the first catalog game');
+      assert(host.querySelector('.game-card.is-selected')?.dataset.gameId===first.id,'First Store card must be visibly selected');
+      host.querySelector('[data-game-id="'+second.id+'"]').click();
+      const media=host.querySelector('.preview-media'),favorite=host.querySelector('.favorite');favorite.focus();
+      await tick();assert(hub.state.detail?.id===second.id&&host.querySelector('.preview-media')===media&&document.activeElement===favorite,'Explicit second-game preview/focus was replaced');
+      host.querySelector('[aria-label="options"]').click();host.querySelector('[aria-label="store"]').click();
+      assert(hub.state.detail?.id===first.id,'Entering Store must default to its first game, not the prior featured cover');
+    });
+    await fixture(async({host,selected,assert,library,catalog})=>{
+      catalog.resolve([game]);library.reject(Error('Discovery failed'));await tick();selected('library');assert(host.querySelector('.shelf-status.error'),'Failed discovery was treated as empty');
+    });
+    for(const view of ['library','options'])await fixture(async({host,selected,library,catalog})=>{
+      host.querySelector('[aria-label="'+view+'"]').click();catalog.resolve([game]);library.resolve([]);await tick();selected(view);
+    });
+    await fixture(async({host,selected,assert,library,catalog})=>{
+      catalog.resolve([game]);await tick();host.querySelector('[aria-label="store"]').click();host.querySelector('.game-card').click();
+      const media=host.querySelector('.preview-media'),favorite=host.querySelector('.favorite');favorite.focus();
+      library.resolve([]);await tick();selected('store');
+      assert(host.querySelector('.preview-media')===media&&document.activeElement===favorite,'Empty discovery interrupted explicit Store preview/focus');
+    });
+    await fixture(async({host,selected,library,catalog,notify,setEntries})=>{
+      host.querySelector('[aria-label="store"]').click();host.querySelector('[aria-label="library"]').click();
+      catalog.resolve([game]);library.resolve([]);await tick();selected('library');
+      setEntries([game]);notify({[game.id]:{phase:'installed',version:'1'}});await tick();selected('library');
+      setEntries([]);notify({[game.id]:{phase:'installed',version:'2'}});await tick();selected('library');
+    });
+    return {emptyStartup:true,nonemptyStartup:true,failedDiscovery:true,pendingNavigation:true,previewPreserved:true,laterRefresh:true,storeFirstGame:true};
+  })()`);
+}
 /* Exercised inside the real renderer by --smoke, not a mocked UI. */
 async function checkHub(win,output){
   // Keyboard capture intentionally requires a visible, focused window.
   win.show();win.focus();
   await new Promise(resolve=>setTimeout(resolve,200));
+  const startup=await checkStartup(win);
   // A fast catalog must not permanently classify a slow-loading library as unowned.
   await win.webContents.executeJavaScript(`(async()=>{
     const original=HandheldPlatform.createPlatform,host=document.createElement('main');
@@ -99,6 +173,6 @@ async function checkHub(win,output){
     await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:640,height:480,deviceScaleFactor:1,mobile:false});await capture('handheld-library', "document.querySelector('[aria-label=library]').click()");
     await capture('handheld-detail', "document.querySelector('.game-card').click()");await win.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride');win.webContents.debugger.detach();
   }
-  return report;
+  return {...report,startup};
 }
-module.exports={checkHub};
+module.exports={checkHub,checkStartup};
