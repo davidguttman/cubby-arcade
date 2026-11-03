@@ -244,7 +244,7 @@ jump.sh start cubby-arcade --json
 ```
 
 The local development preview is https://cubby-arcade.davidguttman.jump.sh .
-The public browser preview and package registry use https://cubby.david.app .
+The public browser app and package registry use https://cubby.david.app .
 Check `jump.sh ls --json` for current status rather than assuming it is running.
 The repo's compose file runs only a Python static preview; Jump owns its lifecycle
 and HTTPS routing. Re-run the build after editing shared code/package sources.
@@ -255,7 +255,7 @@ game payloads. Generated `.cache/web` is ignored, not checked in.
 
 The export copies `runtime/index.html` and shared core bytes, never preinstalled
 `/games/<id>/` assets. It is not a second launcher. Package changes are released
-by their game repository; native hosts install validated releases through the Store. A browser's saves stay
+by their game repository; native and browser hosts install validated releases through the Store. A browser's saves stay
 local to its HTTPS origin/profile; they are not synced to the VM or another host.
 
 Library arrow pictures select, the play picture opens the title/trailer, and
@@ -327,8 +327,15 @@ OS/VM package installation is still explicit.
 `runtime.catalog` is the adult/developer management CLI, not a child-facing
 store screen. It runs on the host or handheld; there is no public write endpoint,
 no extra child text, no account/payment system and no production catalog yet.
-The static browser host exports selected validated packages; a browser cannot
-silently install native games. Its platform installation capability stays off.
+The static browser host installs schema-2 web game files into Cache Storage, with
+IndexedDB atomically selecting the verified active release. A root service worker
+serves installed files and caches the launcher for offline play. Installation
+requires HTTPS, service workers, IndexedDB and site storage. Publisher downloads
+must allow CORS. No application server is required. Browser installs are local
+to the current origin/profile; clearing site data removes them. Browsers may
+evict storage despite the best-effort persistence request. Uninstall uses the
+same Cancel-default confirmation as native, removes managed releases, and keeps
+saves and favorites. Native game files are not installed into a browser.
 
 A schema-1 catalog contains `games`, one entry per game, with `id`, `version`,
 adult `title`, HTTPS package `url`, exact compressed `size` and `sha256`.
@@ -390,8 +397,9 @@ These are **trusted developer catalogs/packages**. HTTPS and hashes detect
 transport/corruption mistakes; they are not publisher authentication or game
 isolation. Games still share an origin/profile. Production signing, third-party
 trust, permissions and publisher onboarding remain separate work, not claims of
-this example. Web downloads for offline browser installation are not implemented;
-native installation and static web export are intentionally different adapters.
+this example. Browser and native installation use separate storage adapters with
+the same release integrity checks; browser downloads currently require schema-2
+file manifests rather than legacy ZIP releases.
 
 ### Store registry and stable release manifests
 

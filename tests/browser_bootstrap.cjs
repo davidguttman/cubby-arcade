@@ -1,0 +1,8 @@
+const test=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');
+const source=()=>fs.readFileSync('runtime/core/browser-bootstrap.js','utf8');
+function env(extra={}){let mounted=0;const host={replaceChildren(){},appendChild(){}};const win={document:{getElementById:()=>host,createElement:()=>({setAttribute(){}})},HandheldHub:{mount(){mounted++;}},...extra};return {win,run:()=>vm.runInNewContext(source(),{window:win,Promise,setTimeout,clearTimeout}),mounted:()=>mounted};}
+test('native bridge bypasses worker and browser storage entirely',async()=>{const e=env({HandheldPlatformOptions:{kind:'desktop',bridge:{}}});await e.run();assert.equal(e.mounted(),1);});
+test('browser waits for worker control and storage readiness before mounting',async()=>{let ready=false;const controller={};const e=env({isSecureContext:true,navigator:{serviceWorker:{controller,register:async()=>({}),ready:Promise.resolve({})}},HandheldBrowserStore:{createBridge(){return {async ready(){ready=true;}};}}});await e.run();assert(ready);assert.equal(e.win.HandheldPlatformOptions.kind,'web');assert.equal(e.mounted(),1);});
+test('unsupported browser reports accessible failure instead of fake install capability',async()=>{let label='';const e=env();e.win.document.createElement=()=>({setAttribute(k,v){if(k==='aria-label')label=v;}});await e.run();assert.match(label,/storage unavailable/i);assert.equal(e.mounted(),0);});
+
+test('explicit loopback kiosk host mounts without browser storage or worker',async()=>{const options={kind:'kiosk'};const e=env({HandheldPlatformOptions:options});await e.run();assert.equal(e.mounted(),1);assert.equal(e.win.HandheldPlatformOptions,options);});
