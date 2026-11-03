@@ -13,7 +13,7 @@ test('preferences persist/reload, validate all mappings atomically and do not to
  const storage=memory();storage.setItem('linecutter_run','{"round":3}');
  const p=createPreferences({storage}),keyboard=p.get().keyboard;keyboard.exit=['KeyQ'];
  p.set({touchOverlay:'off',keyboard});
- const loaded=createPreferences({storage});assert.equal(loaded.get().touchOverlay,'off');assert.deepEqual(loaded.get().keyboard.exit,['KeyQ']);
+ const loaded=createPreferences({storage});assert.equal(loaded.get().touchOverlay,'auto');assert.deepEqual(loaded.get().keyboard.exit,['KeyQ']);
  const external=loaded.get();external.keyboard.a.push('KeyQ');assert.deepEqual(loaded.get().keyboard.a,DEFAULT_KEYBOARD.a);
  for(const bad of [{touchOverlay:'maybe'},{keyboard:{a:['KeyQ']}},{keyboard:{...keyboard,exit:['KeyZ']}},{keyboard:{...keyboard,exit:['not a code']}}])assert.throws(()=>loaded.set(bad));
  assert.deepEqual(loaded.get().keyboard.exit,['KeyQ']);loaded.reset();assert.deepEqual(loaded.get().keyboard,DEFAULT_KEYBOARD);assert.equal(loaded.get().touchOverlay,'auto');
@@ -21,7 +21,7 @@ test('preferences persist/reload, validate all mappings atomically and do not to
 });
 test('invalid persisted data falls back, unavailable storage remains usable',()=>{
  assert.equal(createPreferences({storage:{getItem:()=>'{broken'}}).get().touchOverlay,'auto');
- const p=createPreferences({storage:{getItem(){throw Error()},setItem(){throw Error()}}});p.set({touchOverlay:'on'});assert.equal(p.get().touchOverlay,'on');
+ const p=createPreferences({storage:{getItem(){throw Error()},setItem(){throw Error()}}});p.set({touchOverlay:'on'});assert.equal(p.get().touchOverlay,'auto');
 });
 test('draft remapping supports cancel/apply/reset without mutating preferences early',()=>{
  const p=createPreferences({storage:memory()}),edit=p.editKeyboard();edit.setBinding('exit',['KeyQ']);assert.deepEqual(p.get().keyboard.exit,['Escape']);edit.cancel();assert.throws(()=>edit.apply());
@@ -37,12 +37,12 @@ test('live remapping routes every button, latches held keys, preserves repeat/fo
  let captured;const cancel=f.input.captureKeyboard(code=>captured=code);f.fire('keydown',{code:'F1'});assert.equal(captured,'F1');cancel();f.fire('keydown',{code:'F1',repeat:true});assert.equal(f.events.length,10);f.fire('keyup',{code:'F1'});f.fire('keydown',{code:'F1'});assert.equal(f.events.at(-1),'up');
  f.fire('blur');f.fire('keydown',{code:'F2'});assert.equal(f.events.at(-1),'up');f.fire('focus');f.fire('keydown',{code:'F2',repeat:true});assert.equal(f.events.at(-1),'up');f.fire('keyup',{code:'F2'});f.fire('keydown',{code:'F2'});assert.equal(f.events.at(-1),'down');f.input.dispose();
 });
-test('touch auto is off on desktop, on with touch or coarse pointer; overrides and subscriptions react',()=>{
+test('touch detection is automatic even when legacy callers try on/off overrides',()=>{
  const p=createPreferences({storage:memory()}),values=[];const unsubscribe=p.subscribe(value=>values.push(value.touchOverlay));
  assert.equal(p.showTouchControls({navigator:{},matchMedia:()=>({matches:false})}),false);
  assert.equal(p.showTouchControls({navigator:{maxTouchPoints:1}}),true);assert.equal(p.showTouchControls({matchMedia:()=>({matches:true})}),true);
- p.set({touchOverlay:'on'});assert.equal(p.showTouchControls({navigator:{}}),true);p.set({touchOverlay:'off'});assert.equal(p.showTouchControls({navigator:{maxTouchPoints:1}}),false);
- unsubscribe();p.reset();assert.deepEqual(values,['on','off']);
+ p.set({touchOverlay:'on'});assert.equal(p.showTouchControls({navigator:{}}),false);p.set({touchOverlay:'off'});assert.equal(p.showTouchControls({navigator:{maxTouchPoints:1}}),true);
+ unsubscribe();p.reset();assert.deepEqual(values,['auto','auto']);
 });
 test('fresh key presses recover stale remap and capture blocks after blur without accepting repeats',()=>{
  const p=createPreferences({storage:memory()}),f=fixture(p);
@@ -71,6 +71,17 @@ test('real overlay reacts to preferences/media changes and cleans subscriptions'
  const sandbox={navigator:{maxTouchPoints:0},matchMedia:()=>media,document:{createElement:()=>({style:{},setAttribute(){},appendChild(){},remove(){removed=true}}),body:{appendChild:node=>bar=node}}};
  vm.createContext(sandbox);vm.runInContext(fs.readFileSync('runtime/core/controls.js','utf8'),sandbox);
  const remove=sandbox.HandheldControls.createControls({preferences:p,attachPointer(){}},'game');assert.equal(bar.hidden,true);assert.equal(bar.style.display,'none');
- p.set({touchOverlay:'on'});assert.equal(bar.hidden,false);p.set({touchOverlay:'auto'});coarse=true;mediaUpdate();assert.equal(bar.hidden,false);
+ p.set({touchOverlay:'on'});assert.equal(bar.hidden,true);coarse=true;mediaUpdate();assert.equal(bar.hidden,false);coarse=false;mediaUpdate();assert.equal(bar.hidden,true);coarse=true;mediaUpdate();
  remove();assert.equal(removed,true);assert.equal(mediaUpdate,null);p.set({touchOverlay:'off'});assert.equal(bar.hidden,false);
+});
+
+test('saved legacy touch modes normalize to auto without losing keyboard bindings or saves',()=>{
+ const {STORAGE_KEY}=require('../runtime/core/preferences.js');
+ for(const mode of ['on','off']){
+  const storage=memory(),keyboard={...DEFAULT_KEYBOARD,exit:['KeyQ']};
+  storage.setItem(STORAGE_KEY,JSON.stringify({touchOverlay:mode,keyboard}));storage.setItem('linecutter_run','saved');
+  const p=createPreferences({storage});assert.equal(p.get().touchOverlay,'auto');assert.deepEqual(p.get().keyboard.exit,['KeyQ']);
+  assert.equal(p.showTouchControls({navigator:{maxTouchPoints:0}}),false);assert.equal(p.showTouchControls({navigator:{maxTouchPoints:2}}),true);
+  p.set({keyboard});assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)).touchOverlay,'auto');assert.equal(storage.getItem('linecutter_run'),'saved');
+ }
 });

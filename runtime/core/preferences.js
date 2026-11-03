@@ -31,7 +31,8 @@
   }
   function validate(value) {
     if (!value || !['auto','on','off'].includes(value.touchOverlay)) throw Error('Invalid touch overlay mode');
-    return {touchOverlay:value.touchOverlay, keyboard:validateKeyboard(value.keyboard)};
+    // Keep the v1 shape for old callers, but retire manual visibility overrides.
+    return {touchOverlay:'auto', keyboard:validateKeyboard(value.keyboard)};
   }
   function createPreferences(options) {
     options = options || {};
@@ -62,7 +63,6 @@
       reset() { return api.set(defaults()); },
       subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
       showTouchControls(environment) {
-        if (value.touchOverlay !== 'auto') return value.touchOverlay === 'on';
         environment = environment || root;
         const nav = environment.navigator || {};
         return Number(nav.maxTouchPoints) > 0 || !!(environment.matchMedia && environment.matchMedia('(any-pointer: coarse)').matches);
