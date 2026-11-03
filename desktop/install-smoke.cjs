@@ -30,7 +30,9 @@ async function run(win,installer,library,registry,options={}){
  async function evaluate(fn){return win.webContents.executeJavaScript(fn);}
  async function settleUpdates(){if(installer.checking)await installer.checking;if(installer.jobs.has('demo'))await installer.jobs.get('demo');}
  async function capture(name){if(!options.output)return;await fs.mkdir(options.output,{recursive:true});await new Promise(r=>setTimeout(r,300));await fs.writeFile(path.join(options.output,name+'.png'),(await win.webContents.capturePage()).toPNG());}
- await win.loadURL('hub://app/');await wait(()=>evaluate('!!document.querySelector(".game-card")'),'hub');
+ // A pristine profile has an empty Library. Wait for navigation readiness,
+ // never for an installed game, before opening the Store.
+ await win.loadURL('hub://app/');await wait(()=>evaluate('!!document.querySelector("[aria-label=store]")'),'hub navigation');
  await evaluate(`document.querySelector('[aria-label=store]').click()`);
  await wait(()=>evaluate('!!document.querySelector("[data-game-id=demo]")'),'store demo card');
  await evaluate(`document.querySelector('[data-game-id=demo]').click()`);
@@ -65,6 +67,8 @@ async function run(win,installer,library,registry,options={}){
  installer.fetch=async()=>{throw Error('Smoke offline');};await installer.checkUpdates();
  if(library.entries().find(e=>e.id==='demo').version!=='3')throw Error('Offline removed installed game');
  await capture('updated-library');
- console.log(JSON.stringify({nativeInstall:true,retry:true,progress:true,play:true,fileManifest:true,unchangedFilesReused:true,fileGamePlayable:true,deferredUpdate:true,corruptPreserved:true,offlinePlayable:true,versions:library.entries().map(e=>({id:e.id,version:e.version}))}));
+ const report={nativeInstall:true,retry:true,progress:true,play:true,fileManifest:true,unchangedFilesReused:true,fileGamePlayable:true,deferredUpdate:true,corruptPreserved:true,offlinePlayable:true,versions:library.entries().map(e=>({id:e.id,version:e.version}))};
+ if(options.output)await fs.writeFile(path.join(options.output,'install-report.json'),JSON.stringify(report,null,2));
+ console.log(JSON.stringify(report));
 }
 module.exports={run};

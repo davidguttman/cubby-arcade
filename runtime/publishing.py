@@ -3,7 +3,6 @@
 No upload credentials or remote writes: deploy/serve this directory separately.
 """
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -32,6 +31,10 @@ def replace_bytes(target, content):
 
 
 def publish(archive, output, base_url, developer=False):
+    # Publishing uses a POSIX directory lock. Shell-only desktop exports do not
+    # publish packages and must remain buildable without this platform module.
+    import fcntl
+
     output = Path(output).resolve()
     if not (output / '.handheld-web-export').is_file():
         raise ValueError('Publish requires an existing generated web export; run web.py build first')

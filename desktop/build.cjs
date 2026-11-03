@@ -3,7 +3,10 @@ const {packager}=require('@electron/packager');
 const fs=require('node:fs/promises');
 const os=require('node:os');
 const path=require('node:path');
+const {execFileSync}=require('node:child_process');
 (async()=>{
+  const platform=process.argv[2]||'linux';
+  if(!['linux','win32'].includes(platform)||process.argv.length>3)throw Error('Usage: node desktop/build.cjs [linux|win32]');
   const root=path.join(__dirname,'..');
   const metadata=require('../package.json');
   const stage=await fs.mkdtemp(path.join(os.tmpdir(),'cubby-arcade-desktop-'));
@@ -21,8 +24,11 @@ const path=require('node:path');
     }
     for(const name of Object.keys(metadata.dependencies||{}))await dependency(name);
     await fs.writeFile(path.join(stage,'package.json'),JSON.stringify({name:metadata.name,version:metadata.version,main:metadata.main}));
-    console.log(await packager({dir:stage,name:'CubbyArcade',platform:'linux',arch:'x64',
+    const outputs=await packager({dir:stage,name:'CubbyArcade',platform,arch:'x64',
       electronVersion:metadata.devDependencies.electron,out:path.join(root,'dist'),overwrite:true,
-      asar:true,prune:false,extraResource:[path.join(root,'.cache/web')]}));
+      asar:true,prune:false,extraResource:[path.join(root,'.cache/web')],
+      ...(platform==='win32'?{win32metadata:{CompanyName:'David Guttman',FileDescription:'Cubby Arcade',ProductName:'Cubby Arcade'}}:{})});
+    console.log(outputs);
+    execFileSync('uv',['run','python',path.join(__dirname,'archive.py'),outputs[0],platform==='win32'?'zip':'tar.gz'],{cwd:root,stdio:'inherit'});
   }finally{await fs.rm(stage,{recursive:true,force:true});}
 })().catch(error=>{console.error(error);process.exitCode=1;});

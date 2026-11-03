@@ -293,6 +293,64 @@ The web preview is for UX testing, not RG353V hardware/performance validation.
 
 ## Desktop / Steam host
 
+### Windows (adult setup)
+
+The landing-page download defaults to Windows (including without JavaScript),
+switching to Linux for desktop Linux user agents, not Android. Both CTAs target
+the latest release's stable platform filenames `CubbyArcade-win32-x64.zip` and
+`CubbyArcade-linux-x64.tar.gz`. The desktop release workflow publishes both
+automatically, together with their SHA-256 checksum files.
+
+### Automatic desktop releases (adult/developer flow)
+
+Bump the desktop version in `package.json` and `package-lock.json` according to
+SemVer, commit the release, then push its matching stable `vX.Y.Z` tag. The
+`Desktop builds and releases` GitHub Actions workflow validates that the tag
+matches `package.json`, builds on native Windows and Linux runners, and runs
+packaged install/update/play/offline and uninstall/save-retention smokes.
+Only after **both** platform jobs succeed does its publishing job create a
+draft GitHub Release, upload both archives and checksums, verify every remote
+asset's size and SHA-256 digest, then publish it as the latest release. The
+landing-page download links follow it without source edits or manual uploads.
+Branch pushes and manual workflow runs only build/test; they cannot publish.
+No npm, app-store or executable self-update publication is involved.
+
+An upload failure leaves an unpublished draft, never a half-complete latest
+release. Matching reruns can resume missing uploads; differing draft assets
+are rejected rather than overwritten (inspect and remove only that failed
+draft before retrying if new builds produce different bytes). Published
+release assets are immutable: a rerun must match every archive and checksum.
+Deploy the landing page only after its first Windows release is published.
+
+Windows 10/11 x64 uses the same launcher, Store, controller input and offline
+game library as Linux. Download the portable `CubbyArcade-win32-x64.zip` from
+the latest GitHub Release. Extract **the entire ZIP**, then
+open `CubbyArcade-win32-x64/CubbyArcade.exe`; moving only the EXE will not work.
+No Python, Node, administrator access or Developer Mode is needed to play or
+install games. This build is unsigned; no code-signing or Microsoft Store
+certification is claimed.
+
+Saves, downloaded games, settings and tokens live outside the extracted folder,
+normally under `%APPDATA%/CubbyArcade`. Existing recognized legacy profiles are
+preserved. Replacing the application folder does not reset that profile.
+Desktop game selectors use atomic regular files, with legacy Linux symlink
+selectors still readable. Game package bytes are unchanged.
+
+Developers can build the complete Windows folder and ZIP on Windows or Linux:
+
+```sh
+npm ci
+npm run desktop:build:windows
+# dist/CubbyArcade-win32-x64/CubbyArcade.exe
+# dist/CubbyArcade-win32-x64.zip and .zip.sha256
+```
+
+Building requires `uv` and Node; running the packaged app does not. The Windows
+desktop GitHub Actions job tests the installer and runs the packaged EXE through
+isolated install/update/play/offline and uninstall/save-retention smokes. Its
+screenshots and JSON reports are separate build artifacts. A Linux cross-build
+alone is not evidence of native Windows behavior.
+
 The Electron shell opens the same exported launcher and validated game assets;
 it does not run a Node HTTP server or create another launcher implementation.
 Electron and the packaging tool are pinned in `package-lock.json`.
@@ -303,6 +361,7 @@ npm run desktop:prepare
 npm run desktop:start
 npm run desktop:build
 # Result: dist/CubbyArcade-linux-x64/CubbyArcade
+# Archive: dist/CubbyArcade-linux-x64.tar.gz and .tar.gz.sha256
 ```
 
 The Linux x64 folder is a self-contained local distribution (runtime and games

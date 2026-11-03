@@ -2,11 +2,50 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
+from unittest.mock import patch
+from pathlib import PureWindowsPath
 import unittest
 import zipfile
 import web
 
 class WebHostTests(unittest.TestCase):
+    def test_shell_only_build_does_not_require_posix_publisher_lock(self):
+        script = '''
+import builtins, json, tempfile
+from pathlib import Path
+original_import = builtins.__import__
+def without_fcntl(name, *args, **kwargs):
+    if name == 'fcntl':
+        raise ModuleNotFoundError('fcntl unavailable')
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = without_fcntl
+import web
+with tempfile.TemporaryDirectory() as tmp:
+    output = web.build(Path(tmp) / 'site')
+    assert json.loads((output / 'library').read_text()) == []
+    assert (output / 'hub-manifest.json').is_file()
+'''
+        result = subprocess.run([sys.executable, '-c', script], cwd=web.HERE,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_shell_urls_use_posix_separators_even_for_windows_relative_paths(self):
+        original = type(web.HERE).relative_to
+        def windows_relative(path, *args, **kwargs):
+            return PureWindowsPath(*original(path, *args, **kwargs).parts)
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(type(web.HERE), 'relative_to', windows_relative):
+                output = web.build(Path(tmp) / 'site')
+            inventory = json.loads((output / 'hub-manifest.json').read_text())['files']
+            self.assertIn('/runtime/core/hub.js', inventory)
+            self.assertTrue(all('\\' not in name for name in inventory))
+            worker = (output / 'cubby-worker.js').read_text()
+            settings = json.loads(worker.split('attachWorker(self,', 1)[1].removesuffix(');\n'))
+            self.assertIn('/runtime/core/hub.js', settings['shellPaths'])
+            self.assertTrue(all('\\' not in name for name in settings['shellPaths']))
+
     def test_browser_play_alias_resolves_preview_launcher_not_site_landing(self):
         handler = object.__new__(web.PreviewHandler)
         handler.directory = '/tmp/cubby-preview'

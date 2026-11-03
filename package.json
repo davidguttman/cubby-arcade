@@ -8,6 +8,7 @@
     "desktop:start": "electron .",
     "desktop:smoke": "electron . --smoke",
     "desktop:build": "npm run desktop:prepare && node desktop/build.cjs",
+    "desktop:build:windows": "npm run desktop:prepare && node desktop/build.cjs win32",
     "test:desktop": "node --test tests/branding.cjs tests/desktop_host.cjs"
   },
   "devDependencies": {

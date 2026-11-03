@@ -34,6 +34,10 @@ test('fresh library ignores bundled demos and explicit disk installs survive res
     assert.equal(library.file('hub://app/%67ames/%74est-game/%69ndex.html'),path.join(release,'index.html'));
     assert.throws(()=>library.file('hub://app/games/test-game/manifest.json'));
     assert.throws(()=>library.file('hub://app/games/bundled/index.html'));
+    const selector=path.join(games,'test-game/current.json');
+    fs.writeFileSync(selector,'{"version":"missing"}');assert.deepEqual(library.entries(),[]);
+    fs.writeFileSync(selector,'broken');assert.deepEqual(library.entries(),[]);
+    fs.unlinkSync(selector);assert.equal(library.entries()[0].version,'1');
     fs.unlinkSync(path.join(games,'test-game/current'));assert.deepEqual(library.entries(),[]);
     assert.throws(()=>library.file('hub://app/games/test-game/index.html'));
     assert.throws(()=>library.file('hub://app/games/test-game/%2e%2e/secret'));
@@ -56,4 +60,9 @@ test('native hub controls reject game pages, foreign origins and subframes',()=>
  main.url='hub://app/index.html';assert.doesNotThrow(()=>requireHubFrame({sender,senderFrame:main}));
  for(const url of ['hub://app/games/demo/play.html','https://app/','hub://other/','hub://app/runtime/core/hub.js']){main.url=url;assert.throws(()=>requireHubFrame({sender,senderFrame:main}));}
  assert.throws(()=>requireHubFrame({sender,senderFrame:{url:'hub://app/'}}));
+});
+test('desktop paths reject Windows aliases and reserved devices on every host',()=>{
+ for(const name of ['C:escape','file:stream','CON','aux.txt','folder/NUL.png','art.','folder /art.png','folder./art.png','bad<name.png']){
+  assert.throws(()=>assetPath('hub://app/'+encodeURI(name),'/tmp/site'),undefined,name);
+ }
 });

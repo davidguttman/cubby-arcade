@@ -2,6 +2,25 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const idPattern=/^[a-z0-9][a-z0-9-]{0,79}$/;
+// One portable namespace for installed files and protocol paths. NTFS aliases
+// (devices, alternate streams, trailing dots/spaces) must never bypass inventory.
+function safePackagePath(name){
+  if(typeof name!=='string'||!name||/[\\\x00-\x1f\x7f<>:"|?*]/.test(name)||name.split('/').some(p=>!p||p==='.'||p==='..'||/[. ]$/.test(p)||/^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(p)))throw Error('Invalid package path');
+  return name;
+}
+function validatePackagePaths(names){
+  const paths=new Map();
+  for(const name of names){
+    safePackagePath(name);const parts=name.split('/');
+    for(let i=1;i<=parts.length;i++){
+      // Conservatively fold both ways: NTFS aliases include final sigma and
+      // dotless I, which a lowercase-only comparison would miss.
+      const spelling=parts.slice(0,i).join('/'),key=spelling.toUpperCase().toLowerCase(),file=i===parts.length,previous=paths.get(key);
+      if(previous&&(previous.spelling!==spelling||previous.file||file))throw Error('Conflicting package paths');
+      paths.set(key,{spelling,file});
+    }
+  }
+}
 // Use the same decoded identity for disk lookup, navigation and native authority.
 function assetName(raw){
   if(decodeURIComponent(raw).split(/[/?#]/).includes('..'))throw Error('Invalid asset path');
@@ -11,6 +30,7 @@ function assetName(raw){
   // Encoded separators, repeated separators and nested escapes are ambiguous to
   // URL resolution versus filesystem lookup; do not admit aliases for them.
   if(/%2f|%5c/i.test(url.pathname)||/%[a-f0-9]{2}/i.test(name)||name.includes('//')||name.includes('\0')||name.includes('\\')||name.split('/').includes('..'))throw Error('Invalid asset path');
+  if(name!=='/')safePackagePath(name.slice(1));
   return name;
 }
 function assetPath(raw,root){
@@ -48,14 +68,33 @@ class GameLibrary{
   managed(){return fs.existsSync(this.games);}
   release(id){
     if(!idPattern.test(id))throw Error('Invalid game id');
+    safePackagePath(id);
     const releases=fs.realpathSync(path.join(this.games,id,'releases'));
     if(!releases.startsWith(fs.realpathSync(this.games)+path.sep))throw Error('Release outside games');
-    const directory=fs.realpathSync(path.join(this.games,id,'current'));
+    let selected,selectedVersion;
+    const selector=path.join(this.games,id,'current.json');
+    try{
+      const stat=fs.lstatSync(selector);
+      if(!stat.isFile()||stat.size>1024)throw Error('Invalid release selector');
+      const pointer=JSON.parse(fs.readFileSync(selector,'utf8'));
+      if(!pointer||Array.isArray(pointer)||typeof pointer.version!=='string'||!(/^[a-z0-9][a-z0-9.-]{0,79}$/).test(pointer.version)||pointer.version.includes('..'))throw Error('Invalid release selector');
+      safePackagePath(pointer.version);selectedVersion=pointer.version;selected=path.join(releases,pointer.version);
+    }catch(error){
+      // Only an absent new selector may use the old Linux symlink. Corruption
+      // must fail closed, not silently launch an obsolete legacy release.
+      if(error.code!=='ENOENT')throw error;
+      selected=path.join(this.games,id,'current');
+    }
+    const directory=fs.realpathSync(selected);
     if(path.dirname(directory)!==releases)throw Error('Invalid release selector');
     const manifestPath=path.join(directory,'manifest.json');
     if(fs.statSync(manifestPath).size>256*1024)throw Error('Manifest too large');
     const m=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
     if(m.id!==id||m.schema_version!==1||m.runtime!=='web'||typeof m.version!=='string'||!(/^[a-z0-9][a-z0-9.-]{0,79}$/).test(m.version)||m.version.includes('..')||!m.files||Array.isArray(m.files)||!Object.keys(m.files).length||Object.keys(m.files).length>1000)throw Error('Invalid manifest');
+    safePackagePath(m.version);
+    if(selectedVersion!==undefined&&m.version!==selectedVersion)throw Error('Release selector version mismatch');
+    if(path.basename(directory)!==m.version)throw Error('Release selector version mismatch');
+    validatePackagePaths(Object.keys(m.files));
     for(const [name,hash] of Object.entries(m.files)){
       if(name.startsWith('/')||name.includes('\\')||name.includes('\0')||name.split('/').some(p=>!p||p==='.'||p==='..')||!(/^[a-f0-9]{64}$/).test(hash))throw Error('Invalid inventory');
     }
@@ -85,4 +124,4 @@ class GameLibrary{
     return file;
   }
 }
-module.exports={assetName,assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary};
+module.exports={assetName,assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary,safePackagePath,validatePackagePaths};

@@ -136,10 +136,26 @@ test('uninstall refuses playing, busy update, active job, pending release and un
  f.installer.pending.set('demo',{});await assert.rejects(f.installer.uninstall('demo'),/busy/i);f.installer.pending.delete('demo');
  for(const id of ['../demo','/demo','demo/../other','',null,{},'unknown'])await assert.rejects(f.installer.uninstall(id));
  const original=path.join(f.root,'original');fs.renameSync(path.join(f.lib.games,'demo'),original);fs.symlinkSync(original,path.join(f.lib.games,'demo'));
- await assert.rejects(f.installer.uninstall('demo'),/symlink/i);assert(fs.existsSync(path.join(original,'current')));
+ await assert.rejects(f.installer.uninstall('demo'),/symlink/i);assert(fs.existsSync(path.join(original,'current.json')));
  fs.unlinkSync(path.join(f.lib.games,'demo'));fs.renameSync(original,path.join(f.lib.games,'demo'));
  const games=f.lib.games;fs.renameSync(games,games+'-original');fs.symlinkSync(games+'-original',games);
  await assert.rejects(f.installer.uninstall('demo'),/symlink/i);assert.equal(f.lib.entries()[0].version,'1');
+});
+test('file manifests reject Windows aliases and case-folded file/directory collisions before writes',async t=>{
+ const f=fixture(t);offer(f);await f.installer.install('demo');
+ for(const extra of [{'CON.txt':'x'},{'file:stream':'x'},{'folder./a':'x'},{'art.svg.':'x'},{'ART.svg':'x'},{'Folder/a':'x','folder/b':'x'},{'dir':'x','dir/a':'y'},{'MANIFEST.JSON':'x'}]){
+  offer(f,'2',{'index.html':'game','art.svg':'art',...extra});
+  await assert.rejects(f.installer.install('demo'),undefined,JSON.stringify(extra));
+  assert.equal(f.lib.entries()[0].version,'1');
+  assert(!fs.existsSync(path.join(f.lib.games,'demo/releases/2')));
+ }
+});
+test('portable inventory comparison rejects Unicode uppercase aliases before downloads',t=>{
+ const f=fixture(t),base=offer(f),file=base.files['art.svg'];
+ for(const [a,b] of [['σ.txt','ς.txt'],['I.txt','ı.txt']]){
+  const manifest={...base,files:{...base.files,[a]:file,[b]:file}};
+  assert.throws(()=>validateRelease(manifest,'demo'),/Conflicting package paths/,`${a} aliases ${b}`);
+ }
 });
 
 test('uninstall rejects an actual in-flight auto-update and refuses escaped release directories',async t=>{

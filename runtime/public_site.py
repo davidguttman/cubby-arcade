@@ -97,7 +97,7 @@ def build(output):
     (output / 'docs').mkdir()
     for slug in ('game-authoring', 'game-release-manifest'):
         source = HERE / 'docs' / (slug + '.md')
-        text = source.read_text()
+        text = source.read_text(encoding='utf-8')
         title = escape(text.splitlines()[0].lstrip('# '))
         raw = '/docs/' + slug + '.md'
         page = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
@@ -113,7 +113,7 @@ def build(output):
                 '<main class="document"><p><a href="' + raw + '">Raw Markdown ↗</a> · '
                 '<a href="/tools/cubby_manifest.py">Manifest generator ↓</a></p>'
                 + _markdown(text) + '</main></body></html>')
-        (output / 'docs' / (slug + '.html')).write_text(page)
+        (output / 'docs' / (slug + '.html')).write_text(page, encoding='utf-8')
         shutil.copyfile(source, output / 'docs' / source.name)
     (output / 'tools').mkdir()
     shutil.copyfile(HERE / 'runtime/file_manifest.py', output / 'tools/cubby_manifest.py')

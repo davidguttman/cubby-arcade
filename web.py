@@ -49,7 +49,7 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
         # Browser worker has its own explicit offline shell; native hosts bypass it.
         # Hash the shell bytes so independently deployed builds never share caches.
         browser_paths = ['/play', '/play/', '/native/index.html', '/catalog',
-                         *['/' + str(p.relative_to(site)) for p in sorted((site / 'runtime/core').glob('*')) if p.is_file()]]
+                         *['/' + p.relative_to(site).as_posix() for p in sorted((site / 'runtime/core').glob('*')) if p.is_file()]]
         browser_hash = hashlib.sha256(b''.join(
             (site / name.lstrip('/')).read_bytes() for name in browser_paths
             if name not in ('/play', '/play/'))).hexdigest()
@@ -60,7 +60,7 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
 
         # Small coherent cloud-shell inventory: game payloads are deliberately excluded.
         shell = [site / 'index.html', site / 'catalog', *sorted((site / 'runtime/core').glob('*'))]
-        cloud_files = {'/' + str(p.relative_to(site)): {'size': p.stat().st_size,
+        cloud_files = {'/' + p.relative_to(site).as_posix(): {'size': p.stat().st_size,
             'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in shell if p.is_file()}
         (site / 'hub-manifest.json').write_text(json.dumps({'schema_version': 1,
             'bridge_version': 1, 'files': cloud_files}, sort_keys=True) + '\n')
