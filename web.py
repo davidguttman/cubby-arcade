@@ -7,13 +7,15 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
-from runtime import packages, game_shell
+from runtime import packages, game_shell, publishing
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE / '.cache/web'
+DEFAULT_ORIGIN = 'https://handheld-os.davidguttman.jump.sh'
 
 
-def build(output, archives):
+def build(output, archives, base_url=DEFAULT_ORIGIN):
+    archives = list(archives)
     output = Path(output).resolve()
     if output == HERE or HERE.is_relative_to(output):
         raise ValueError('Output cannot replace the source tree')
@@ -44,7 +46,10 @@ def build(output, archives):
                     shutil.copyfile(release / name, destination)
         (site / '.handheld-web-export').write_text('generated\n')
         (site / 'library').write_text(json.dumps(library, sort_keys=True) + '\n')
-        (site / 'catalog').write_text(json.dumps(library, sort_keys=True) + '\n')
+        for archive in archives:
+            publishing.publish(archive, site, base_url)
+        if not archives:
+            (site / 'catalog').write_text('[]\n')
         # Small coherent cloud-shell inventory: game payloads are deliberately excluded.
         shell = [site / 'index.html', site / 'catalog', *sorted((site / 'runtime/core').glob('*'))]
         cloud_files = {'/' + str(p.relative_to(site)): {'size': p.stat().st_size,
@@ -78,6 +83,7 @@ def main():
     parser.add_argument('command', choices=['build', 'serve'])
     parser.add_argument('packages', nargs='*', type=Path)
     parser.add_argument('--output', type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument('--base-url', default=DEFAULT_ORIGIN, help='Public HTTPS root hosting the generated store')
     parser.add_argument('--bind', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8080)
     args = parser.parse_args()
@@ -86,7 +92,7 @@ def main():
         if not archives:
             from vm import build_example
             archives = [build_example()]
-        print(build(args.output, archives))
+        print(build(args.output, archives, args.base_url))
     else:
         if not (args.output / 'library').is_file():
             parser.error('Build the web output first')

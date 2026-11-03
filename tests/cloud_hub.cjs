@@ -47,3 +47,14 @@ test('invalid catalog or bridge version cannot replace last verified snapshot',a
   bad.manifest.bridge_version=2;hub=new CloudHub(root,{fetch:transport(bad)});await hub.refresh();assert.equal(hub.source,'cache');assert.equal((await hub.read('/')).toString(),'good');
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+test('registry discovery accepts independent HTTPS media without requiring a local game entrypoint',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'cloud-registry-'));
+ const entry={id:'demo',title:'Demo',manifest_url:'https://games.example/store/demo/manifest.json',artwork:'https://games.example/store/demo/1/cover.png',attract:'https://games.example/store/demo/1/trailer.webm',screenshots:['https://games.example/store/demo/1/screen.png']};
+ function registryFixture(value){const f=fixture('registry');f.files['/catalog']=Buffer.from(JSON.stringify(value));f.manifest.files['/catalog']={size:f.files['/catalog'].length,sha256:digest(f.files['/catalog'])};return f;}
+ try{
+  let hub=new CloudHub(root,{fetch:transport(registryFixture([entry]))});await hub.refresh();assert.equal(hub.source,'cloud');
+  for(const entries of [[{...entry,manifest_url:'http://example.com/release'}],[{...entry,artwork:'file:///etc/passwd'}],[{...entry,screenshots:['https://u:p@example.com/secret']}],[entry,entry]]){
+   hub=new CloudHub(root,{fetch:transport(registryFixture(entries))});await hub.refresh();assert.equal(hub.source,'cache');assert.deepEqual(JSON.parse(await hub.read('/catalog')),[entry]);
+  }
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});

@@ -14,6 +14,7 @@ import zipfile
 from . import packages
 
 MAX_CATALOG = 1024 * 1024
+MAX_RELEASE = 256 * 1024
 ID = re.compile(r'[a-z0-9][a-z0-9-]{0,79}')
 VERSION = re.compile(r'[a-z0-9][a-z0-9.-]{0,79}')
 
@@ -99,15 +100,70 @@ def validate(document, developer=False):
     return games
 
 
+def validate_registry(document, developer=False):
+    """Browsing validates discovery metadata only; it never follows manifest URLs."""
+    if not isinstance(document, list) or len(document) > 1000:
+        raise ValueError('Invalid registry')
+    seen = set()
+    for entry in document:
+        if not isinstance(entry, dict) or not isinstance(entry.get('id'), str) or not ID.fullmatch(entry['id']) or entry['id'] in seen:
+            raise ValueError('Invalid/duplicate registry identity')
+        seen.add(entry['id'])
+        if not isinstance(entry.get('title'), str) or not 1 <= len(entry['title']) <= 120:
+            raise ValueError('Invalid adult registry title')
+        for key in ('manifest_url', 'artwork'):
+            check_url(entry.get(key), developer)
+        if 'attract' in entry:
+            check_url(entry['attract'], developer)
+        screenshots = entry.get('screenshots', [])
+        if not isinstance(screenshots, list) or len(screenshots) > 12:
+            raise ValueError('Invalid screenshots')
+        for url in screenshots:
+            check_url(url, developer)
+    return document
+
+
+def validate_release(document, game_id, developer=False):
+    if not isinstance(document, dict) or document.get('schema_version') != 1 or document.get('runtime') != 'web':
+        raise ValueError('Unsupported release manifest/runtime')
+    if document.get('id') != game_id or not isinstance(game_id, str) or not ID.fullmatch(game_id):
+        raise ValueError('Registry/release identity mismatch')
+    version = document.get('version')
+    if not isinstance(version, str) or not VERSION.fullmatch(version) or '..' in version:
+        raise ValueError('Invalid release version')
+    packages.safe_path(document.get('entrypoint'))
+    package = document.get('package')
+    if not isinstance(package, dict):
+        raise ValueError('Invalid release package')
+    # Reuse the legacy package transport checks, not its discovery shape.
+    validate({'schema_version': 1, 'games': [dict(package, id=game_id, version=version, title=game_id)]}, developer)
+    return document
+
+
+def resolve_entry(entry, developer=False):
+    """Resolve the stable URL immediately before downloading a release."""
+    if 'manifest_url' not in entry:
+        validate({'schema_version': 1, 'games': [entry]}, developer)
+        return entry
+    validate_registry([entry], developer)
+    with tempfile.TemporaryDirectory(prefix='hub-release-') as temporary:
+        target = Path(temporary) / 'release.json'
+        download(entry['manifest_url'], target, MAX_RELEASE, developer)
+        release = validate_release(json.loads(target.read_text()), entry['id'], developer)
+    return dict(release['package'], id=release['id'], version=release['version'],
+                title=entry['title'], runtime=release['runtime'], entrypoint=release['entrypoint'])
+
+
 def load(url, developer=False):
     with tempfile.TemporaryDirectory(prefix='hub-catalog-') as temporary:
         target = Path(temporary) / 'catalog.json'
         download(url, target, MAX_CATALOG, developer)
-        return validate(json.loads(target.read_text()), developer)
+        document = json.loads(target.read_text())
+        return validate_registry(document, developer) if isinstance(document, list) else validate(document, developer)
 
 
 def install_entry(entry, root=packages.GAMES, developer=False, update=False):
-    validate({'schema_version': 1, 'games': [entry]}, developer)
+    entry = resolve_entry(entry, developer)
     root = Path(root)
     if update and not any(item['id'] == entry['id'] for item in packages.library(root)):
         raise ValueError('Update requires an installed game; use install first')
@@ -121,6 +177,8 @@ def install_entry(entry, root=packages.GAMES, developer=False, update=False):
             manifest = packages.validate_manifest(json.loads(zipped.read('manifest.json')))
         if (manifest['id'], manifest['version']) != (entry['id'], entry['version']):
             raise ValueError('Catalog/package identity mismatch')
+        if 'runtime' in entry and (manifest['runtime'], manifest['entrypoint']) != (entry['runtime'], entry['entrypoint']):
+            raise ValueError('Release/package runtime or entrypoint mismatch')
         return packages.install(archive, root)
 
 

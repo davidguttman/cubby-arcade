@@ -40,7 +40,7 @@ class GameDependencyTests(unittest.TestCase):
         with patch.object(vm, 'run', side_effect=AssertionError('unexpected network')):
             with self.assertRaisesRegex(SystemExit, 'fetch-games'):
                 vm.build_example()
-        self.assertFalse((self.state / 'line-cutter-0.1.8.game.zip').exists())
+        self.assertFalse((self.state / 'line-cutter-0.2.0.game.zip').exists())
 
     def test_bundle_checks_cached_asset_integrity(self):
         self.cached_asset(b'tampered')
@@ -78,7 +78,7 @@ class GameDependencyTests(unittest.TestCase):
         with zipfile.ZipFile(package) as archive:
             self.assertEqual(archive.read('trailer.mp4'), trailer)
             metadata = json.loads(archive.read('manifest.json'))
-            self.assertEqual(metadata['version'], '0.1.16')
+            self.assertEqual(metadata['version'], '0.2.0')
             self.assertEqual(metadata['files']['trailer.mp4'], asset['sha256'])
             self.assertEqual(metadata['attract'], 'trailer.mp4')
             self.assertIn(b'trailer-handheld.webm', archive.read('index.html'))

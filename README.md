@@ -67,7 +67,7 @@ From this repo on the prepared development host:
 ./vm.py fetch-games
 ./vm.py sync
 ./vm.py build-example
-./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.1.15.game.zip
+./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.2.0.game.zip
 ./vm.py view
 ```
 
@@ -351,7 +351,7 @@ Create an offline example catalog and manage a disposable desktop profile:
 
 ```sh
 ./vm.py build-example
-uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.1.15.game.zip --output .cache/catalog/catalog.json
+uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.2.0.game.zip --output .cache/catalog/catalog.json
 uv run python -m runtime.catalog --developer-local list "file://$PWD/.cache/catalog/catalog.json"
 uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games install "file://$PWD/.cache/catalog/catalog.json" line-cutter
 HUB_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
@@ -392,6 +392,72 @@ trust, permissions and publisher onboarding remain separate work, not claims of
 this example. Web downloads for offline browser installation are not implemented;
 native installation and static web export are intentionally different adapters.
 
+### Store registry and stable release manifests
+
+`web.py build` exports both the playable web preview and a hosted registry. The
+public root defaults to `https://handheld-os.davidguttman.jump.sh`; override it
+with `--base-url https://your-host.example/`. All advertised media, manifests,
+and ZIP archives are written into the selected export, not just referenced.
+
+Registry `/catalog` is a JSON array. A game entry contains `id`, adult `title`,
+`manifest_url`, `artwork`, optional `attract` (trailer), and `screenshots` (array).
+Discovery URLs are absolute HTTPS URLs independent of the installed `/games/`
+assets. Browsing never follows the manifest or downloads a game archive.
+
+The stable `/store/<id>/manifest.json` describes the currently offered release:
+
+```json
+{
+  "schema_version": 1,
+  "id": "line-cutter",
+  "version": "0.2.0",
+  "runtime": "web",
+  "entrypoint": "play.html",
+  "package": {
+    "url": "https://handheld-os.davidguttman.jump.sh/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
+    "size": 12345,
+    "sha256": "<64 lowercase hexadecimal characters>"
+  }
+}
+```
+
+`size` above is illustrative; generated manifests contain the exact ZIP byte
+count and checksum. The ZIP's own `manifest.json` inventories every file and
+must match the release's identity, version, runtime, and entrypoint. Release
+manifests are bounded to 256 KiB and use the same HTTPS/explicit-local transport
+rules as the legacy catalog. This is a trusted-developer web runtime, not an
+arbitrary executable installer or cryptographic publisher-authentication scheme.
+
+To add or update a game on the existing generated host:
+
+```sh
+uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://handheld-os.davidguttman.jump.sh/
+```
+
+This command validates before publishing, creates immutable versioned archive
+and media files, then atomically replaces that game's stable manifest. Adding
+a game adds one registry entry and refreshes the shell's catalog hash. Updating
+an existing game preserves the registry bytes, original discovery media URLs,
+and every previous version. A conflicting same-version payload is rejected;
+use a new version for changed bytes. Cooperating publishers are serialized.
+Publication writes **only the selected local static directory**: serve it with
+the existing Jump project or deploy it separately; it does not upload to a CDN.
+`web.py build` regenerates the preview from its explicit package list; use the
+publish command, not a rebuild, to retain previously published versions/games.
+
+The existing management CLI accepts either this registry or the legacy schema-1
+inline catalog without breaking old callers:
+
+```sh
+uv run python -m runtime.catalog list https://handheld-os.davidguttman.jump.sh/catalog
+uv run python -m runtime.catalog --root path/to/games install https://handheld-os.davidguttman.jump.sh/catalog line-cutter
+```
+
+Installation/update resolves the stable manifest at the time of the operation.
+Game launch accounting, native automatic update scheduling, and child-facing
+install controls are separate from this publication protocol; publication and
+installation themselves never spend tokens.
+
 ### Library, discovery, and options
 
 The shared hub starts on a **cover grid**, not a detail screen. Pointer hover,
@@ -403,13 +469,12 @@ at either end. Shoulders do not switch views in games or while a dialog/capture 
 The desktop Settings power picture quits the hub after pictorial confirmation;
 unsupported web/VM hosts do not show it. Accessible names are available to assistive technology.
 
-The `/catalog` discovery feed currently contains the **packages available to that
-host**: exported packages in the static web build, installed packages in the VM
-and managed desktop host. This is a real separate browsing view, but not a remote
-commercial catalog. It does not pretend to purchase, download, or install a game.
-The adult CLI remains the installation mechanism. A future remote catalog can
-supply additional entries through the platform adapter without changing the hub;
-uninstalled entries have no play action.
+The static/cloud `/catalog` is a **store registry**, separate from `/library`.
+Entries advertise a stable manifest URL and remotely hosted cover, trailer, and
+optional screenshots, so discovery does not depend on installing the game.
+The VM's local catalog still reflects installed packages. The desktop can browse
+the hosted registry; native one-button installation is a separate adapter.
+Uninstalled entries have no play action yet; the adult CLI can install them.
 
 Options use three touch-control modes: automatic detection, always shown, and
 hidden. These control the game/title overlays; the hub's own large navigation and
