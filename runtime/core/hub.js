@@ -13,7 +13,7 @@ const brand='<svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><pat
 function mount(host){
  const doc=host.ownerDocument,win=doc.defaultView;let storage;try{storage=win.localStorage;}catch{}
  const state=createState(storage),prefs=win.HandheldPreferences.preferences,platform=win.HandheldPlatform.createPlatform(win.HandheldPlatformOptions);
- let account=null,launchBusy=false,featured=null;
+ let account=null,launchBusy=false,featured=null,initialViewPending=true;
  let installStates={},library=[],catalog=[],loading={library:true,store:true},failed={library:false,store:false},adult=false,draft=null,cancelCapture=null,disposed=false;
  host.innerHTML='<header class="topbar"><div class="brand" aria-hidden="true">'+brand+'</div><nav class="view-nav" aria-label="Views"><span class="nav-pill" aria-hidden="true"></span></nav><div class="hud"></div></header>'+
   '<section class="view-body"><div class="hero"><div class="hero-backdrop" aria-hidden="true"></div><aside class="detail" hidden></aside><div class="hero-rest" aria-hidden="true"><div class="stage"><img class="rest-media" alt=""></div><div class="rest-hint">'+icon('pick')+'</div></div></div><div class="shelf-rail"><div class="shelf"></div></div></section>'+
@@ -62,7 +62,7 @@ function mount(host){
  uninstallDialog.addEventListener('cancel',e=>{e.preventDefault();closeUninstall();});
 
  const views=['library','store','options'],tabs={};for(const name of views)tabs[name]=button(nav,name,name,()=>show(name),'view-tab');
- function show(view){if(adult)return;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
+ function show(view,initial=false){if(adult)return;if(!initial)initialViewPending=false;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
  function primaryAction(){return detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')||detail.querySelector('.favorite');}
  function pausePreview(){detail.querySelector('video')?.pause();}
  function entries(){return state.view==='store'?catalog:library;}
@@ -147,7 +147,8 @@ function mount(host){
  function dispose(){if(disposed)return;disposed=true;pausePreview();stopCapture();unsubscribe();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',()=>{if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});});
- for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(state.view===view)renderGrid();if(view==='library')refreshOwnership();}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(state.view===view)renderGrid();});show('library');
+ // Only initial discovery may choose Store; explicit navigation always wins.
+ for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length)show('store');else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;refreshOwnership();}}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();});show('library',true);
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose};
 }
