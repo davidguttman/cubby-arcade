@@ -1,5 +1,5 @@
 [Unit]
-Description=Local offline handheld games
+Description=Cubby Arcade local offline games
 After=network.target
 
 [Service]

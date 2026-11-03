@@ -2,7 +2,7 @@
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
-const DEFAULT_ORIGIN='https://handheld-os.davidguttman.jump.sh';
+const DEFAULT_ORIGIN='https://cubby-arcade.onrender.com';
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 function shellPath(name){return name==='/index.html'||name==='/catalog'||/^\/runtime\/core\/[a-z0-9-]+\.(js|css)$/.test(name);}
 function validate(raw){
@@ -16,16 +16,31 @@ function validate(raw){
  if(total>8*1024*1024)throw Error('Hub too large');
  return raw;
 }
+function registryURL(value){
+ if(typeof value!=='string')throw Error('Invalid registry URL');
+ const url=new URL(value);if(url.protocol!=='https:'||!url.hostname||url.username||url.password||url.hash)throw Error('HTTPS registry URL required');
+}
 function validateCatalog(data){
  const entries=JSON.parse(data);if(!Array.isArray(entries)||entries.length>1000)throw Error('Invalid catalog');
+ const seen=new Set();
  for(const entry of entries){
-  if(!entry||!/^[a-z0-9][a-z0-9-]{0,79}$/.test(entry.id))throw Error('Invalid catalog identity');
-  for(const name of ['artwork','entrypoint',...(entry.attract?['attract']:[])]){
-   const value=entry[name];if(typeof value!=='string'||!value.startsWith('/games/'+entry.id+'/')||value.includes('..')||value.includes('\\')||/[?#\x00]/.test(value))throw Error('Invalid catalog asset');
+  if(!entry||typeof entry.id!=='string'||!/^[a-z0-9][a-z0-9-]{0,79}$/.test(entry.id)||seen.has(entry.id))throw Error('Invalid catalog identity');
+  seen.add(entry.id);
+  if(Object.hasOwn(entry,'manifest_url')){
+   if(typeof entry.title!=='string'||!entry.title.length||entry.title.length>120)throw Error('Invalid registry title');
+   for(const name of ['manifest_url','artwork',...(entry.attract!==undefined?['attract']:[])])registryURL(entry[name]);
+   const screenshots=entry.screenshots??[];if(!Array.isArray(screenshots)||screenshots.length>12)throw Error('Invalid screenshots');
+   screenshots.forEach(registryURL);
+  }else{
+   // Compatibility for older bundled hub catalogs; these are not install offers.
+   for(const name of ['artwork','entrypoint',...(entry.attract?['attract']:[])]){
+    const value=entry[name];if(typeof value!=='string'||!value.startsWith('/games/'+entry.id+'/')||value.includes('..')||value.includes('\\')||/[?#\x00]/.test(value))throw Error('Invalid catalog asset');
+   }
   }
  }
  return entries;
 }
+
 class CloudHub{
  constructor(root,options={}){
   this.root=root;this.origin=options.origin||DEFAULT_ORIGIN;this.fetch=options.fetch||globalThis.fetch;this.source='bundle';this.directory=null;this.manifest=null;
@@ -78,4 +93,4 @@ class CloudHub{
  }
  async read(name){name=name==='/'?'/index.html':name;if(!this.directory||!shellPath(name)||!Object.hasOwn(this.manifest.files,name))return null;return fs.readFile(path.join(this.directory,name.slice(1)));}
 }
-module.exports={CloudHub,validate,DEFAULT_ORIGIN};
+module.exports={CloudHub,validate,validateCatalog,DEFAULT_ORIGIN};

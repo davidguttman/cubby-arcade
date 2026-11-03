@@ -2,3 +2,9 @@ body.hub{display:block;touch-action:manipulation;background:radial-gradient(elli
 @media(max-width:600px){.hub #hub{padding:10px;gap:10px}.view-nav{gap:10px}.shelf{grid-template-columns:minmax(0,1fr);gap:12px}.view-body.has-detail .detail{position:absolute;inset:0;z-index:2;max-height:100%;height:max-content}.detail{padding:12px}.touch-settings{gap:8px;padding:14px}.setting-symbol{margin-right:0}.setting-symbol svg{width:32px;height:32px}.key-rows{grid-template-columns:1fr}.hub .game-card{max-width:none}}
 @media(max-height:520px){.hub #hub{padding:8px;gap:8px}.hub .view-tab{height:48px;min-height:48px}.shelf{--card-min:250px;gap:12px}.detail{padding:8px;gap:8px}.detail .preview-media{max-height:240px}.touch-settings{padding:12px}.options-panel{gap:14px}.hub .detail-actions button{min-height:44px}}
 @media(prefers-reduced-motion:reduce){.loading svg{animation:none}}
+
+.quit-confirm{border:2px solid #719061;border-radius:24px;background:#182b22;color:#f1f4e8;padding:24px}.quit-confirm::backdrop{background:#060c09d9}.quit-picture{display:flex;justify-content:center;padding:8px 0 24px}.quit-picture svg{width:64px;height:64px}.quit-actions{display:flex;gap:24px}.hub .quit-actions button{min-width:76px;min-height:64px}.hub .confirm-quit{background:#a7d07a;color:#14251b}
+
+.install-progress{width:96px;height:18px;accent-color:#a7d07a}.download-game:disabled{opacity:.65}
+
+.token-budget{display:flex;flex-wrap:wrap;justify-content:center;gap:5px;max-height:80px;overflow:auto;flex-shrink:0;color:#f4d16e}.token-budget span{display:flex}.hub .token-budget svg{width:25px;height:25px;fill:#5d4a24;stroke:#f4d16e}.empty-budget{opacity:.45}.hub .empty-budget svg{fill:none;stroke-dasharray:3 3}.hub .play-game:disabled{opacity:.45;cursor:default}.hub .play-game svg+svg{width:24px;height:24px;fill:#5d4a24;stroke:#f4d16e;stroke-width:1.8;margin-left:12px}.launch-error{display:flex;align-items:center;color:#f4d16e}

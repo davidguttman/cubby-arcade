@@ -2,20 +2,31 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const idPattern=/^[a-z0-9][a-z0-9-]{0,79}$/;
-function assetPath(raw,root){
+// Use the same decoded identity for disk lookup, navigation and native authority.
+function assetName(raw){
   if(decodeURIComponent(raw).split(/[/?#]/).includes('..'))throw Error('Invalid asset path');
   const url=new URL(raw);
   if(url.protocol!=='hub:'||url.hostname!=='app'||url.username||url.password||url.port)throw Error('Invalid hub origin');
   const name=decodeURIComponent(url.pathname);
-  if(name.includes('\0')||name.includes('\\')||name.split('/').includes('..'))throw Error('Invalid asset path');
+  // Encoded separators, repeated separators and nested escapes are ambiguous to
+  // URL resolution versus filesystem lookup; do not admit aliases for them.
+  if(/%2f|%5c/i.test(url.pathname)||/%[a-f0-9]{2}/i.test(name)||name.includes('//')||name.includes('\0')||name.includes('\\')||name.split('/').includes('..'))throw Error('Invalid asset path');
+  return name;
+}
+function assetPath(raw,root){
+  const name=assetName(raw);
   const result=path.resolve(root,'.'+(name==='/'?'/index.html':name));
   if(!result.startsWith(path.resolve(root)+path.sep))throw Error('Asset outside export');
   return result;
 }
 function gameScope(raw){
-  const url=new URL(raw);assetPath(raw,'/scope');
-  const match=/^\/games\/([a-z0-9][a-z0-9-]{0,79})\//.exec(url.pathname);
+  const match=/^\/games\/([a-z0-9][a-z0-9-]{0,79})\//.exec(assetName(raw));
   if(!match)throw Error('Game frame required');return match[1];
+}
+// Native system actions belong to the trusted top-level launcher, never games.
+function requireHubFrame(event){
+  if(event.senderFrame!==event.sender.mainFrame)throw Error('Main hub frame required');
+  if(!['/','/index.html'].includes(assetName(event.senderFrame.url)))throw Error('Hub page required');
 }
 class SaveStore{
   constructor(root){this.root=root;fs.mkdirSync(root,{recursive:true,mode:0o700});}
@@ -63,9 +74,9 @@ class GameLibrary{
     return result;
   }
   file(raw){
-    const bundled=assetPath(raw,this.site),url=new URL(raw);
-    if(!this.managed()||!decodeURIComponent(url.pathname).startsWith('/games/'))return bundled;
-    const name=decodeURIComponent(url.pathname),match=/^\/games\/([a-z0-9][a-z0-9-]{0,79})\/(.+)$/.exec(name);
+    const bundled=assetPath(raw,this.site),name=assetName(raw);
+    if(!this.managed()||!name.startsWith('/games/'))return bundled;
+    const match=/^\/games\/([a-z0-9][a-z0-9-]{0,79})\/(.+)$/.exec(name);
     if(!match)throw Error('Invalid game path');
     const {directory,manifest}=this.release(match[1]);
     if(!Object.hasOwn(manifest.files,match[2]))throw Error('Asset is not in inventory');
@@ -74,4 +85,4 @@ class GameLibrary{
     return file;
   }
 }
-module.exports={assetPath,gameScope,SaveStore,GameLibrary};
+module.exports={assetName,assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary};

@@ -3,11 +3,11 @@ const assert=require('node:assert/strict');
 const {createInput}=require('../runtime/core/input.js');
 const {createPlatform}=require('../runtime/core/platform.js');
 const {createGameHost}=require('../runtime/core/sdk.js');
-function fixture(){
+function fixture(options={}){
   const listeners={},docListeners={},events=[];let pad=null,frame;
   const document={hidden:false,hasFocus:()=>true,addEventListener:(name,fn)=>(docListeners[name]??=[]).push(fn),removeEventListener:(name,fn)=>docListeners[name]=docListeners[name].filter(f=>f!==fn)};
   const target={addEventListener:(name,fn)=>(listeners[name]??=[]).push(fn),removeEventListener:(name,fn)=>listeners[name]=listeners[name].filter(f=>f!==fn)};
-  const input=createInput({target,document,navigator:{getGamepads:()=>pad?[pad]:[]},requestFrame:fn=>(frame=fn,1),cancelFrame:()=>{},onAction:e=>events.push(e)});
+  const input=createInput({...options,target,document,navigator:{getGamepads:()=>pad?[pad]:[]},requestFrame:fn=>(frame=fn,1),cancelFrame:()=>{},onAction:e=>events.push(e)});
   return {input,events,visibility:hidden=>{document.hidden=hidden;(docListeners.visibilitychange||[]).forEach(fn=>fn());},fire:(name,event={})=>(listeners[name]||[]).forEach(fn=>fn({preventDefault(){},...event})),
     frame:(buttons=[],axis=0,time=100)=>{pad=buttons===null?null:{index:0,id:'pad',buttons:Array.from({length:16},(_,i)=>({pressed:buttons.includes(i)})),axes:[axis,0]};frame(time)}};
 }
@@ -75,4 +75,19 @@ test('system menu pauses SDK game and focus cannot resume underneath it',()=>{
  host.start({stop:()=>calls.push('stop'),start:()=>calls.push('start'),wake:()=>calls.push('wake')});
  handlers['handheld:system-menu']({detail:{open:true}});handlers.focus();assert.deepEqual(calls,['wake','stop']);
  handlers['handheld:system-menu']({detail:{open:false}});assert.deepEqual(calls,['wake','stop','start','wake']);host.dispose();
+});
+
+test('hub shoulders wrap views through discrete edges and latch after menu chord',()=>{
+ const f=fixture({navigationShoulders:true});f.frame([]);f.frame([5]);assert.equal(f.events.at(-1).action,'nextView');
+ f.frame([5]);assert.equal(f.events.length,1);f.frame([]);f.frame([4]);assert.equal(f.events.at(-1).action,'previousView');
+ f.frame([4,5]);assert.equal(f.events.at(-1).action,'exit');const count=f.events.length;
+ f.frame([5]);f.frame([4]);assert.equal(f.events.length,count);f.frame([]);f.frame([5]);assert.equal(f.events.at(-1).action,'nextView');
+ f.frame(null);f.frame([4]);assert.equal(f.events.at(-1).action,'nextView');f.frame([]);f.frame([4]);assert.equal(f.events.at(-1).action,'previousView');
+ const cancel=f.input.captureKeyboard(()=>{});const captured=f.events.length;f.frame([]);f.frame([5]);assert.equal(f.events.length,captured);cancel();
+ f.input.dispose();
+ const game=fixture();game.frame([]);game.frame([5]);assert.equal(game.events.length,0);game.input.dispose();
+});
+test('quit is only advertised by platforms with native support',async()=>{
+ const web=createPlatform({document:{}});assert.equal(web.capabilities.quit,false);assert.equal(web.quit,undefined);
+ let count=0;const desktop=createPlatform({document:{},bridge:{quit:async()=>++count}});assert.equal(desktop.capabilities.quit,true);await desktop.quit();assert.equal(count,1);
 });

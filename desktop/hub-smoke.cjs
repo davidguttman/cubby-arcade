@@ -21,6 +21,45 @@ async function checkHub(win,output){
       if(host.querySelector('.preview-media')!==media||document.activeElement!==favorite)throw Error('Ownership refresh interrupted preview or focus');
     }finally{hub?.dispose();host.remove();HandheldPlatform.createPlatform=original;}
   })()`);
+  // A live update may change the entrypoint while its preview stays open.
+  await win.webContents.executeJavaScript(`(async()=>{
+    const host=document.createElement('main');document.body.appendChild(host);
+    let entries=[{id:'live-update',version:'1',artwork:'/missing-test-art',entrypoint:'/games/live-update/old.html'}],notify,hub;
+    const location={href:''},platform={capabilities:{install:true},library:async()=>entries,catalog:async()=>entries,onInstallState:callback=>(notify=callback,()=>{})};
+    const fakeWindow={HandheldPlatform:{createPlatform:()=>platform},HandheldPreferences,HandheldInput:{createInput:()=>({dispose(){}})},localStorage:window.localStorage,location,addEventListener(){},fetch:async()=>({ok:true})};
+    const owner=new Proxy(document,{get(target,key){if(key==='defaultView')return fakeWindow;const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    const scopedHost=new Proxy(host,{set(target,key,value){return Reflect.set(target,key,value,target);},get(target,key){if(key==='ownerDocument')return owner;const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    try{
+      hub=HandheldHub.mount(scopedHost);await new Promise(r=>setTimeout(r,0));hub.show('store');host.querySelector('.game-card').click();
+      const media=host.querySelector('.preview-media'),play=host.querySelector('.play-game');play.focus();
+      entries=[{...entries[0],version:'2',entrypoint:'/games/live-update/new.html'}];notify({'live-update':{phase:'installed',version:'2'}});await new Promise(r=>setTimeout(r,0));
+      if(host.querySelector('.preview-media')!==media||host.querySelector('.play-game')!==play||document.activeElement!==play)throw Error('Live update disrupted preview/focus');
+      play.click();if(location.href!=='/games/live-update/new.html')throw Error('Live update Play used stale entrypoint: '+location.href);
+    }finally{hub?.dispose();host.remove();}
+  })()`);
+  // Exercise pictorial Quit without closing the verification window.
+  await win.webContents.executeJavaScript(`(async()=>{
+    const originalPlatform=HandheldPlatform.createPlatform,originalInput=HandheldInput.createInput;
+    const host=document.createElement('main');document.body.appendChild(host);
+    let hub,action,quitCount=0;
+    try{
+      HandheldInput.createInput=options=>{if(!options.navigationShoulders)throw Error('Hub shoulder opt-in missing');action=options.onAction;return {dispose(){},captureKeyboard(){return ()=>{};}};};
+      HandheldPlatform.createPlatform=()=>({capabilities:{quit:true},quit:async()=>{quitCount++;},library:async()=>[],catalog:async()=>[]});
+      hub=HandheldHub.mount(host);
+      action({action:'previousView'});if(hub.state.view!=='options')throw Error('Left shoulder did not wrap');
+      action({action:'nextView'});if(hub.state.view!=='library')throw Error('Right shoulder did not wrap');
+      action({action:'nextView'});if(hub.state.view!=='store')throw Error('Right shoulder did not select Store');
+      action({action:'nextView'});
+      host.querySelector('.quit-app').click();if(!host.querySelector('.quit-confirm').open)throw Error('Quit confirmation missing');
+      action({action:'nextView'});if(hub.state.view!=='options')throw Error('Shoulder escaped modal');
+      action({action:'back'});if(host.querySelector('.quit-confirm').open||quitCount)throw Error('Cancel quit failed');
+      host.querySelector('.quit-app').click();action({action:'right'});action({action:'confirm'});await Promise.resolve();
+      if(quitCount!==1)throw Error('Pictorial controller Quit did not call native bridge');
+      hub.dispose();host.replaceChildren();
+      HandheldPlatform.createPlatform=()=>({capabilities:{quit:false},library:async()=>[],catalog:async()=>[]});
+      hub=HandheldHub.mount(host);hub.show('options');if(host.querySelector('.quit-app'))throw Error('Unsupported Quit exposed');
+    }finally{hub?.dispose();host.remove();HandheldPlatform.createPlatform=originalPlatform;HandheldInput.createInput=originalInput;}
+  })()`);
   const report=await win.webContents.executeJavaScript(`(async()=>{
     const assert=(ok,message)=>{if(!ok)throw Error(message);};
     const prefs=HandheldPreferences.preferences,previous=prefs.get(),previousFavorites=localStorage.getItem('handheld:favorites:v1');
@@ -43,13 +82,15 @@ async function checkHub(win,output){
       document.querySelector('[aria-label="library"]').click();
       document.querySelector('.game-card').focus();window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyV',bubbles:true}));window.dispatchEvent(new KeyboardEvent('keyup',{code:'KeyV',bubbles:true}));assert(document.activeElement.classList.contains('play-game'),'Remapped key did not control library');
       document.querySelector('.detail-close').click();
-      return {grid:true,hoverPreview:true,favorite:true,store:true,touchOptions:true,keyboardCapture:true,draftCancel:true};
+      return {grid:true,hoverPreview:true,favorite:true,store:true,touchOptions:true,keyboardCapture:true,draftCancel:true,shoulderNavigation:true,quitConfirmation:true};
     }finally{prefs.set(previous);if(previousFavorites===null)localStorage.removeItem('handheld:favorites:v1');else localStorage.setItem('handheld:favorites:v1',previousFavorites);}
   })()`);
   if(output){const fs=require('node:fs/promises'),path=require('node:path');await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'library.png'),(await win.webContents.capturePage()).toPNG());
     const capture=async(name,script)=>{await win.webContents.executeJavaScript(script);await new Promise(resolve=>setTimeout(resolve,500));await fs.writeFile(path.join(output,name+'.png'),(await win.webContents.capturePage()).toPNG());};
     await capture('detail',"document.querySelector('.game-card').click()");
     await capture('options',"document.querySelector('[aria-label=options]').click()");
+    await capture('quit-confirm',"document.querySelector('.quit-app').click()");
+    await win.webContents.executeJavaScript("document.querySelector('[aria-label=\"Cancel quit\"]').click()");
     await capture('adult',"document.querySelector('[aria-label=\"Adult keyboard setup\"]').click()");
     await win.webContents.executeJavaScript("document.querySelector('dialog').dispatchEvent(new Event('cancel',{cancelable:true}));document.querySelector('[aria-label=library]').click()");
     win.webContents.debugger.attach('1.3');await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await capture('mobile-library','void 0');

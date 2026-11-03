@@ -1,4 +1,4 @@
-# Handheld project rules
+# Cubby Arcade project rules
 
 ## Audience: pre-literate children
 
@@ -17,7 +17,9 @@
 
 This repo owns the Linux/OS integration, launcher, development VM, and future
 catalog/download/install infrastructure. Games are separate dependencies.
-`handheld-os` is a working name, not a settled product name.
+The product name is **Cubby Arcade**; use `cubby-arcade` for project slugs.
+Existing package/storage/guest compatibility identifiers are documented in
+`MIGRATION.md`; do not break them just to remove an old internal prefix.
 
 Do not claim that VM results prove RG353V performance or hardware support.
 Do not flash the QEMU development disk onto a handheld.

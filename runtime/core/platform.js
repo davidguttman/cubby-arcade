@@ -47,7 +47,7 @@
     return {
       kind: options.kind || 'web',
       capabilities: Object.freeze({saves:!!storage || nativeSaves, fullscreen:!!(doc && doc.documentElement && doc.documentElement.requestFullscreen),
-        install:typeof native.install === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
+        tokens:typeof native.account==='function'&&typeof native.launch==='function', quit:typeof native.quit === 'function', install:typeof native.install === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
       saves,
       async library() {
         if (native.library) return native.library();
@@ -69,7 +69,14 @@
         if (!doc || !doc.documentElement || !doc.documentElement.requestFullscreen) return false;
         await doc.documentElement.requestFullscreen(); return true;
       },
+      account:native.account&&native.account.bind(native),
+      launch:native.launch&&native.launch.bind(native),
+      refillTokens:native.refillTokens&&native.refillTokens.bind(native),
+      onAccountState:native.onAccountState&&native.onAccountState.bind(native),
+      quit: typeof native.quit === 'function' ? native.quit.bind(native) : undefined,
       install: native.install && native.install.bind(native),
+      installStatus: native.installStatus && native.installStatus.bind(native),
+      onInstallState: native.onInstallState && native.onInstallState.bind(native),
       setVolume: native.setVolume && native.setVolume.bind(native),
       sleep: native.sleep && native.sleep.bind(native)
     };

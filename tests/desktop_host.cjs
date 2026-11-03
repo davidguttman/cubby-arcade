@@ -3,12 +3,16 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const {assetPath,gameScope,SaveStore,GameLibrary}=require('../desktop/host.cjs');
+const {assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=require('../desktop/host.cjs');
 test('desktop protocol confines assets and sender game scope',()=>{
   assert.equal(assetPath('hub://app/games/demo/index.html','/tmp/site'),'/tmp/site/games/demo/index.html');
   assert.equal(assetPath('hub://app/runtime/core/preferences.js','/tmp/site'),'/tmp/site/runtime/core/preferences.js');
   for(const url of ['https://evil/index.html','hub://evil/index.html','hub://app/%2e%2e/%2fetc/passwd','hub://app/foo%00'])assert.throws(()=>assetPath(url,'/tmp/site'));
   assert.equal(gameScope('hub://app/games/demo/play.html'),'demo');
+  assert.equal(gameScope('hub://app/%67ames/%64emo/%70lay.html'),'demo');
+  assert.equal(assetPath('hub://app/%67ames/%64emo/%70lay.html','/tmp/site'),'/tmp/site/games/demo/play.html');
+  assert.equal(assetPath('hub://app/games/demo/100%25.png','/tmp/site'),'/tmp/site/games/demo/100%.png');
+  for(const name of ['/games%2fdemo/play.html','//games/demo/play.html','/%2567ames/demo/play.html','/games/demo/%2e%2e/secret'])assert.throws(()=>assetPath('hub://app'+name,'/tmp/site'));
   assert.throws(()=>gameScope('hub://app/'));assert.throws(()=>gameScope('https://app/games/demo/'));
 });
 test('managed disk library overrides bundled demo and removal never resurrects it',()=>{
@@ -27,6 +31,7 @@ test('managed disk library overrides bundled demo and removal never resurrects i
     fs.symlinkSync('releases/1',path.join(games,'test-game/current'));
     assert.equal(library.entries()[0].id,'test-game');
     assert.equal(library.file('hub://app/games/test-game/index.html'),path.join(release,'index.html'));
+    assert.equal(library.file('hub://app/%67ames/%74est-game/%69ndex.html'),path.join(release,'index.html'));
     assert.throws(()=>library.file('hub://app/games/test-game/manifest.json'));
     assert.throws(()=>library.file('hub://app/games/bundled/index.html'));
     fs.unlinkSync(path.join(games,'test-game/current'));assert.deepEqual(library.entries(),[]);
@@ -43,4 +48,12 @@ test('disk saves persist per game and reject traversal or oversized values',()=>
     assert.throws(()=>store.set('one','huge','x'.repeat(1024*1024+1)));
     assert.deepEqual(store.get('one','run'),{level:3});store.remove('one','run');assert.equal(store.get('one','run'),null);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('native hub controls reject game pages, foreign origins and subframes',()=>{
+ const main={url:'hub://app/'};const sender={mainFrame:main};
+ assert.doesNotThrow(()=>requireHubFrame({sender,senderFrame:main}));
+ main.url='hub://app/index.html';assert.doesNotThrow(()=>requireHubFrame({sender,senderFrame:main}));
+ for(const url of ['hub://app/games/demo/play.html','https://app/','hub://other/','hub://app/runtime/core/hub.js']){main.url=url;assert.throws(()=>requireHubFrame({sender,senderFrame:main}));}
+ assert.throws(()=>requireHubFrame({sender,senderFrame:{url:'hub://app/'}}));
 });

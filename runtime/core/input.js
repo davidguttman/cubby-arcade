@@ -29,6 +29,7 @@
     }
     updateKeyboard(preferences.get());
     cleanup.push(preferences.subscribe(updateKeyboard));
+    let shouldersBlocked = false;
     let last = new Set(), repeated = {}, ready = false, identity = null, frameId, disposed = false;
     function emit(button, source) {
       if (!disposed && !capture && active() && options.onAction) options.onAction({action:semantic[button] || button, button, source});
@@ -76,7 +77,12 @@
         if (axes[0] > deadzone) current.add('right');
         if (axes[1] < -deadzone) current.add('up');
         if (axes[1] > deadzone) current.add('down');
-        if (down[4] && down[5]) { current.clear(); current.add('exit'); }
+        if (!down[4] && !down[5]) shouldersBlocked = false;
+        if (options.navigationShoulders && !shouldersBlocked) {
+          if (down[4]) current.add('previousView');
+          if (down[5]) current.add('nextView');
+        }
+        if (down[4] && down[5]) { shouldersBlocked = true; current.clear(); current.add('exit'); }
         if (!ready) ready = neutral;
         else current.forEach(button => {
           if (!last.has(button) || (directions.has(button) && time - (repeated[button] || 0) >= repeatMs)) {
