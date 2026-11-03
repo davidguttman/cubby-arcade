@@ -1,0 +1,53 @@
+name: Windows desktop
+on:
+  push:
+    branches: [main, windows-desktop]
+    paths:
+      - 'desktop/**'
+      - 'runtime/**'
+      - 'tests/**'
+      - 'package*.json'
+      - 'web.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'hosting/**'
+      - '.github/workflows/windows-desktop.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.7'
+      - run: npm ci
+      - name: Installer regression tests
+        run: node --test tests/desktop_installer.cjs
+      - name: Build portable Windows ZIP
+        run: npm run desktop:build:windows
+      - name: Exercise packaged Windows app
+        timeout-minutes: 5
+        run: ./desktop/windows-smoke.ps1
+      - name: Upload portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: CubbyArcade-windows-x64
+          path: |
+            dist/CubbyArcade-win32-x64.zip
+            dist/CubbyArcade-win32-x64.zip.sha256
+          if-no-files-found: error
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke-evidence
+          path: dist/windows-smoke
+          if-no-files-found: warn

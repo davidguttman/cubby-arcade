@@ -293,6 +293,37 @@ The web preview is for UX testing, not RG353V hardware/performance validation.
 
 ## Desktop / Steam host
 
+### Windows (adult setup)
+
+Windows 10/11 x64 uses the same launcher, Store, controller input and offline
+game library as Linux. Download the portable `CubbyArcade-win32-x64.zip` from
+the verified Windows desktop build artifact. Extract **the entire ZIP**, then
+open `CubbyArcade-win32-x64/CubbyArcade.exe`; moving only the EXE will not work.
+No Python, Node, administrator access or Developer Mode is needed to play or
+install games. This build is unsigned; no code-signing or Microsoft Store
+certification is claimed.
+
+Saves, downloaded games, settings and tokens live outside the extracted folder,
+normally under `%APPDATA%/CubbyArcade`. Existing recognized legacy profiles are
+preserved. Replacing the application folder does not reset that profile.
+Desktop game selectors use atomic regular files, with legacy Linux symlink
+selectors still readable. Game package bytes are unchanged.
+
+Developers can build the complete Windows folder and ZIP on Windows or Linux:
+
+```sh
+npm ci
+npm run desktop:build:windows
+# dist/CubbyArcade-win32-x64/CubbyArcade.exe
+# dist/CubbyArcade-win32-x64.zip and .zip.sha256
+```
+
+Building requires `uv` and Node; running the packaged app does not. The Windows
+desktop GitHub Actions job tests the installer and runs the packaged EXE through
+isolated install/update/play/offline and uninstall/save-retention smokes. Its
+screenshots and JSON reports are separate build artifacts. A Linux cross-build
+alone is not evidence of native Windows behavior.
+
 The Electron shell opens the same exported launcher and validated game assets;
 it does not run a Node HTTP server or create another launcher implementation.
 Electron and the packaging tool are pinned in `package-lock.json`.

@@ -7,10 +7,11 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const yauzl=require('yauzl');
 const {validateCatalog}=require('./cloud.cjs');
+const {safePackagePath,validatePackagePaths}=require('./host.cjs');
 const MAX_BYTES=128*1024*1024,MAX_MANIFEST=256*1024;
 const idPattern=/^[a-z0-9][a-z0-9-]{0,79}$/,versionPattern=/^[a-z0-9][a-z0-9.-]{0,79}$/;
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
-function safePath(name){if(typeof name!=='string'||!name||name.includes('\\')||name.includes('\0')||name.startsWith('/')||name.split('/').some(p=>!p||p==='.'||p==='..'))throw Error('Invalid package path');return name;}
+const safePath=safePackagePath;
 function httpsURL(value){if(typeof value!=='string')throw Error('Invalid download URL');const url=new URL(value);if(url.protocol!=='https:'||!url.hostname||url.username||url.password||url.hash)throw Error('HTTPS download required');return url;}
 function downloadURL(value,manifestURL){
  if(typeof value!=='string'||!value||/[\\\x00-\x20\x7f#]/.test(value)||/%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f|5c)/i.test(value)||value.startsWith('//'))throw Error('Invalid download URL');
@@ -22,6 +23,7 @@ function downloadURL(value,manifestURL){
 }
 function validateRelease(m,id,manifestURL){
  if(!m||Array.isArray(m)||![1,2].includes(m.schema_version)||m.id!==id||!idPattern.test(id)||m.runtime!=='web'||typeof m.version!=='string'||!versionPattern.test(m.version)||m.version.includes('..'))throw Error('Invalid release identity/runtime');
+ safePath(id);safePath(m.version);
  safePath(m.entrypoint);
  if(m.schema_version===1){
   if(Object.hasOwn(m,'files'))throw Error('Ambiguous release manifest');
@@ -29,6 +31,7 @@ function validateRelease(m,id,manifestURL){
  }else{
   if(Object.hasOwn(m,'package')||!m.files||typeof m.files!=='object'||Array.isArray(m.files))throw Error('Invalid file release');
   const names=Object.keys(m.files);if(!names.length||names.length>1000)throw Error('Invalid file inventory');
+  validatePackagePaths(['manifest.json',...names]);
   let total=0;
   for(const name of names){
    safePath(name);if(/[%?#\x00-\x1f\x7f]/.test(name)||name.endsWith(' '))throw Error('Invalid file path');
@@ -56,6 +59,7 @@ function sameInventory(a,b){
 function validateInventory(m,release,digests){
  if(!m||m.schema_version!==1||m.runtime!=='web'||m.id!==release.id||m.version!==release.version||m.entrypoint!==release.entrypoint||!m.files||Array.isArray(m.files))throw Error('Package identity mismatch');
  const names=Object.keys(m.files);if(!names.length||names.length>1000||names.length!==Object.keys(digests).length-1)throw Error('Package inventory mismatch');
+ validatePackagePaths(['manifest.json',...names]);
  for(const name of names){safePath(name);if(name==='manifest.json'||typeof m.files[name]!=='string'||!/^[a-f0-9]{64}$/.test(m.files[name])||digests[name]!==m.files[name])throw Error('Package checksum/inventory mismatch');}
  for(const name of ['entrypoint','artwork',...(m.attract!==undefined?['attract']:[])])if(!Object.hasOwn(m.files,safePath(m[name])))throw Error('Missing game asset');
  return m;
@@ -78,6 +82,7 @@ async function extract(buffer,directory,release){
   zip.on('error',fail);zip.on('end',()=>{if(!settled){settled=true;resolve();}});
   zip.on('entry',entry=>{(async()=>{
    const name=safePath(entry.fileName),mode=(entry.externalFileAttributes>>>16)&0o170000;
+   validatePackagePaths([...Object.keys(digests),name]);
    if(++count>1001||Object.hasOwn(digests,name)||mode===0o120000||(mode!==0&&mode!==0o100000)||!Number.isSafeInteger(entry.uncompressedSize)||entry.uncompressedSize<0||(total+=entry.uncompressedSize)>MAX_BYTES)throw Error('Invalid/oversized ZIP inventory');
    const limit=name==='manifest.json'?Math.min(MAX_MANIFEST,entry.uncompressedSize):entry.uncompressedSize;
    const stream=await new Promise((r,j)=>zip.openReadStream(entry,(e,s)=>e?j(e):r(s)));
@@ -191,7 +196,7 @@ class GameInstaller{
   if(!this.canActivate())return;
   for(const [id,{game,release}] of this.pending){
    const pointer=path.join(game,'.current-'+crypto.randomBytes(6).toString('hex'));
-   try{fs.symlinkSync('releases/'+release.version,pointer);fs.renameSync(pointer,path.join(game,'current'));this.pending.delete(id);this.state(id,'installed',{version:release.version});}
+   try{fs.writeFileSync(pointer,JSON.stringify({version:release.version})+'\n',{flag:'wx',mode:0o600});fs.renameSync(pointer,path.join(game,'current.json'));this.pending.delete(id);this.state(id,'installed',{version:release.version});}
    finally{fs.rmSync(pointer,{force:true});}
   }
  }

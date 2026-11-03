@@ -7,6 +7,19 @@ const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'hub-install-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const site=path.join(root,'web');fs.mkdirSync(site);fs.writeFileSync(path.join(site,'library'),'[]');const lib=new GameLibrary(site,path.join(root,'games'));const documents=new Map();let hub=true;const events=[];const installer=new GameInstaller(lib,{fetch:async url=>{const body=documents.get(String(url));if(body===undefined)throw Error('offline');return new Response(body);},onChange:s=>events.push(s),canActivate:()=>hub});return {root,lib,installer,documents,events,hub:v=>hub=v};}
 function archive(f,version='1',options={}){const file=path.join(f.root,'fixture.zip');execFileSync('uv',['run','python','-c',`import json,zipfile,hashlib,sys\npayload={'index.html':b'<canvas/>','art.svg':b'<svg/>'}\nm=dict(schema_version=1,id='demo',version=sys.argv[2],runtime='web',entrypoint='index.html',artwork='art.svg',files={k:hashlib.sha256(v).hexdigest() for k,v in payload.items()})\nwith zipfile.ZipFile(sys.argv[1],'w',compression=zipfile.ZIP_DEFLATED) as z:\n z.writestr('manifest.json',json.dumps(m))\n for k,v in payload.items(): z.writestr(k,v)\n if sys.argv[3]!='': z.writestr(sys.argv[3],b'bad')`,file,version,options.extra||'']);const bytes=fs.readFileSync(file);return {bytes,release:{schema_version:1,id:'demo',version,runtime:'web',entrypoint:'index.html',package:{url:'https://store.test/demo.zip',size:bytes.length,sha256:hash(bytes)}}};}
 function offer(f,a){f.documents.set('https://store.test/demo.json',JSON.stringify(a.release));f.documents.set(a.release.package.url,a.bytes);f.installer.setCatalog([{id:'demo',title:'Demo',manifest_url:'https://store.test/demo.json',artwork:'https://store.test/art.svg'}]);}
+test('installs and updates use a regular atomic selector without symlink privileges',async t=>{
+ t.mock.method(fs,'symlinkSync',()=>{throw Object.assign(Error('Symlink privilege unavailable'),{code:'EPERM'});});
+ const f=fixture(t);offer(f,archive(f));await f.installer.install('demo');
+ const selector=path.join(f.lib.games,'demo/current.json');
+ assert(fs.lstatSync(selector).isFile());assert.deepEqual(JSON.parse(fs.readFileSync(selector)),{version:'1'});
+ assert(!fs.existsSync(path.join(f.lib.games,'demo/current')));
+ offer(f,archive(f,'2'));await f.installer.checkUpdates();
+ assert.deepEqual(JSON.parse(fs.readFileSync(selector)),{version:'2'});
+ assert.equal(new GameLibrary(f.lib.site,f.lib.games).entries()[0].version,'2');
+ for(const value of [{version:'../1'},{version:'C:1'},{version:'1.'},[],{version:'CON'}]){
+  fs.writeFileSync(selector,JSON.stringify(value));assert.deepEqual(f.lib.entries(),[]);
+ }
+});
 test('native verified installation discovers game and immutable updates retain prior bytes and saves',async t=>{const f=fixture(t);offer(f,archive(f));await f.installer.install('demo');assert.equal(f.lib.entries()[0].version,'1');fs.writeFileSync(path.join(f.root,'save.json'),'keep');offer(f,archive(f,'2'));await f.installer.checkUpdates();assert.equal(f.lib.entries()[0].version,'2');assert(fs.existsSync(path.join(f.lib.games,'demo/releases/1/index.html')));assert.equal(fs.readFileSync(path.join(f.root,'save.json'),'utf8'),'keep');assert(f.events.some(e=>e.demo?.phase==='downloading'));});
 test('ZIP download references also resolve against their publisher manifest',async t=>{
  const f=fixture(t),a=archive(f),stable='https://publisher.test/store/demo/manifest.json';

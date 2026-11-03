@@ -65,6 +65,8 @@ async function run(win,installer,library,registry,options={}){
  installer.fetch=async()=>{throw Error('Smoke offline');};await installer.checkUpdates();
  if(library.entries().find(e=>e.id==='demo').version!=='3')throw Error('Offline removed installed game');
  await capture('updated-library');
- console.log(JSON.stringify({nativeInstall:true,retry:true,progress:true,play:true,fileManifest:true,unchangedFilesReused:true,fileGamePlayable:true,deferredUpdate:true,corruptPreserved:true,offlinePlayable:true,versions:library.entries().map(e=>({id:e.id,version:e.version}))}));
+ const report={nativeInstall:true,retry:true,progress:true,play:true,fileManifest:true,unchangedFilesReused:true,fileGamePlayable:true,deferredUpdate:true,corruptPreserved:true,offlinePlayable:true,versions:library.entries().map(e=>({id:e.id,version:e.version}))};
+ if(options.output)await fs.writeFile(path.join(options.output,'install-report.json'),JSON.stringify(report,null,2));
+ console.log(JSON.stringify(report));
 }
 module.exports={run};
