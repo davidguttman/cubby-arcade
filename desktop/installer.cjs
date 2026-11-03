@@ -170,25 +170,5 @@ class GameInstaller{
   if(this.checking)return this.checking;
   this.checking=(async()=>{await this.activatePending();const ids=new Set(this.library.entries().map(e=>e.id));for(const entry of this.catalog)if(ids.has(entry.id)&&entry.manifest_url){try{await this.install(entry.id);}catch{/* Installed release remains playable; next hub entry retries. */}}})().finally(()=>this.checking=null);return this.checking;
  }
- async seedBundle(){
-  // Import into a sibling staging root, then expose the complete library once.
-  // This preserves all bundled games if a copy fails or the app exits mid-import.
-  if(this.library.managed())return;
-  const entries=this.library.entries();if(!entries.length)return;
-  const catalog=JSON.parse(await fsp.readFile(path.join(this.library.site,'catalog'),'utf8'));
-  if(entries.some(entry=>!catalog.some(e=>e.id===entry.id&&e.manifest_url)))return; // Legacy bundle, no install archives.
-  const parent=path.dirname(this.library.games);await fsp.mkdir(parent,{recursive:true});
-  const staged=await fsp.mkdtemp(path.join(parent,'.bundle-'));
-  try{
-   for(const entry of entries){
-    const base=path.join(this.library.site,'store',entry.id),release=validateRelease(JSON.parse(await fsp.readFile(path.join(base,'manifest.json'),'utf8')),entry.id);
-    const name=path.posix.basename(new URL(release.package.url).pathname);const bytes=await fsp.readFile(path.join(base,release.version,name));
-    if(bytes.length!==release.package.size||hash(bytes)!==release.package.sha256)throw Error('Invalid bundled archive');
-    const game=path.join(staged,entry.id),directory=path.join(game,'releases',release.version);await fsp.mkdir(directory,{recursive:true});
-    await extract(bytes,directory,release);await fsp.symlink('releases/'+release.version,path.join(game,'current'));
-   }
-   await fsp.rename(staged,this.library.games);
-  }finally{await fsp.rm(staged,{recursive:true,force:true});}
- }
 }
 module.exports={GameInstaller,validateRelease,extract,download,MAX_BYTES};

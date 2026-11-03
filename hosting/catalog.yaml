@@ -1,0 +1,11 @@
+# Store discovery pointers; game installation remains explicit.
+- id: line-cutter
+  title: Line Cutter
+  manifest_url: https://linecutter.david.app/store/line-cutter/manifest.json
+  artwork: https://linecutter.david.app/store/line-cutter/0.4.0/files/cover.png
+  attract: https://linecutter.david.app/store/line-cutter/0.4.0/files/trailer-handheld.webm
+- id: trail-mix
+  title: Trail Mix
+  manifest_url: https://cubby-arcade.onrender.com/store/trail-mix/manifest.json
+  artwork: https://cubby-arcade.onrender.com/store/trail-mix/0.1.0/cover.png
+  attract: https://cubby-arcade.onrender.com/store/trail-mix/0.1.0/trailer.webm

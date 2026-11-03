@@ -16,5 +16,26 @@
     "size": 429504,
     "sha256": "d3c279d79de4d9e50d1a47d289e99dd490fdf744061ad80e9003159214510874",
     "source": "render-site:bf4a42747ad1285f15743cf34ec7449d77bee2ce:public/store/little-camp/0.1.0/little-camp-0.1.0.game.zip"
+  },
+  {
+    "path": "releases/trail-mix/0.1.0/trail-mix-0.1.0.game.zip",
+    "size": 3207593,
+    "sha256": "36b4a7dbf6ec1341b7f305d08b4b0c24575fac309aeabe5515c2c3bc84ea3c6e",
+    "source": "trail-mix prepared dist/game payload",
+    "source_commit": "63a70ad6dacce29667312ba7d388af2672f3473b",
+    "payload_sha256": {
+      "audio/camp.mp3": "689889e93ab3777629a67ea23b59d464d83e1ead4d12b494f7aee5af3f1a6f06",
+      "audio/pond.mp3": "44f61530f9d1daa07c8facdd5ca9a76c25c18a6d66ec0232e69cc767d468c472",
+      "core/controls.js": "4db9002f149b842585d181759b50dfde4e058f0b8205f42e1026da74ccc23552",
+      "core/input.js": "5efb763d4996ed74e3e626d27e51bf930a06b92eb2dd58ed179047726094f740",
+      "core/platform.js": "73666c20ae28f88e06369588381a43377800a131b69b6f04932c224cfbad4f4b",
+      "core/preferences.js": "77be61b471cf3bf5499e8ccb2dfe157872612312b4dd47f0af8d6d64f5030780",
+      "core/screen.css": "bce2b8cc6555293b73adf98a79ad43bfb633b8336120a7dd7603a3e5607dd1e9",
+      "core/sdk.js": "4e4d1137c1774741289cc3176ba4a17322d02d0f5285807e857d6ee2dbfd8b41",
+      "cover.png": "1de20d9116320dd214c32eb3d72d5940372516077ede121ab4cada9b07e3bf42",
+      "play.html": "2ebde80ceab377f6fb1c0387b4325841aa7cd369e81900efba484b6ad1e54e8d",
+      "trail-mix.js": "8b7ce95e4d6fa0be88741eb3c571c7d7f8c135f48284a420d39ca077c56ba3a4",
+      "trailer.webm": "f4331442936bb366d4bacfd075825ac4c612cdfae7d953e68af39956008d3392"
+    }
   }
 ]

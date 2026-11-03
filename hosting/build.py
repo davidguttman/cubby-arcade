@@ -32,7 +32,8 @@ def build(output=None):
     vm.fetch_games()
     current = vm.build_example(ROOT / '.cache/packages')
     urls = web.default_manifest_urls()
-    result = web.build(output, [*retained_archives(), current], manifest_urls=urls)
+    result = web.build(output, [*retained_archives(), current], manifest_urls=urls,
+                       registry=web.default_registry())
     proxies = {f'/store/{game}/manifest.json': url for game, url in urls.items()}
     (result / '.manifest-proxies.json').write_text(json.dumps(proxies, sort_keys=True) + '\n')
     return result

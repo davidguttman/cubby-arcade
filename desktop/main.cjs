@@ -29,7 +29,6 @@ app.whenReady().then(async()=>{
   }});
   const registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
   installer.setCatalog(registry);
-  await installer.seedBundle();
   protocol.handle('hub',async request=>{
     try{
       const pathname=assetName(request.url);
@@ -125,10 +124,6 @@ app.whenReady().then(async()=>{
   win.on('blur',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.pause()); window.handheldAudio?.suspend();').catch(()=>{}));
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
-  if(tokenSmoke){
-    try{await require('./token-smoke.cjs').run(win,launcher,account,library,{output:env('SMOKE_DIR')});app.exit(0);}
-    catch(error){console.error(error);app.exit(1);}return;
-  }
   if(installSmoke){
     try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:env('SMOKE_DIR')});app.exit(0);}
     catch(error){console.error(error);app.exit(1);}return;
@@ -138,6 +133,22 @@ app.whenReady().then(async()=>{
     try{
       await new Promise(resolve=>setTimeout(resolve,1500));
       const shell={source:cloud.source,...await win.webContents.executeJavaScript(`(()=>{const previous=localStorage.getItem('cloud-smoke-visits');localStorage.setItem('cloud-smoke-visits',String(Number(previous||0)+1));return {marker:document.documentElement.dataset.cloudSmoke||null,previousVisits:previous};})()`)};
+      // A smoke profile starts empty too: install explicitly through the same
+      // verified Store path a user invokes, never by importing bundle bytes.
+      const initialLibrary=installer.library.entries();
+      if(!initialLibrary.length){
+        const empty=await win.webContents.executeJavaScript('!document.querySelector(".game-card") && !!document.querySelector(".shelf-status.empty")');
+        if(!empty)throw Error('Fresh Library is not empty');
+        if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'empty-library.png'),(await win.webContents.capturePage()).toPNG());}
+        if(!registry.length)throw Error('Smoke needs an explicit Store offer');
+        await installer.install(registry[0].id);
+        await win.loadURL('hub://app/');
+        await new Promise(resolve=>setTimeout(resolve,500));
+      }
+      if(tokenSmoke){
+        await require('./token-smoke.cjs').run(win,launcher,account,installer.library,{output});
+        app.exit(0);return;
+      }
       const hub=await require('./hub-smoke.cjs').checkHub(win,output);
       const library=await win.webContents.executeJavaScript('fetch("/library").then(r=>r.json())');
       if(!library.length)throw Error('Empty smoke library');
