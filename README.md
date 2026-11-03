@@ -681,7 +681,10 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.8.2**. Touch controls always follow device detection; the manual
+desktop **0.8.3**. Nonempty libraries select a game and show its preview and Play
+control by default. Library refreshes preserve a valid selection or select a
+remaining game; closing a preview retains its selected-card highlight. No game
+payloads changed. Touch controls always follow device detection; the manual
 selector is removed and legacy on/off preferences normalize to automatic.
 Empty libraries start on Store, Store opens its first game's
 preview and controls automatically, and Trail Mix is first in the catalog.

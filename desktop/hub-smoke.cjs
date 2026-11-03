@@ -40,7 +40,8 @@ async function checkStartup(win){
     await fixture(async({host,hub,selected,assert,library,catalog})=>{
       const first={...game,id:'catalog-first'},second={...game,id:'catalog-second'};
       library.resolve([game]);catalog.resolve([first,second]);await tick();selected('library');
-      assert(host.querySelector('.detail').hidden,'Library must keep its resting grid');
+      assert(hub.state.detail?.id===game.id&&!host.querySelector('.detail').hidden&&host.querySelector('.play-game'),'Library must select its first game and show Play');
+      assert(host.querySelector('.game-card.is-selected')?.dataset.gameId===game.id,'First Library card must be visibly selected');
       host.querySelector('[aria-label="store"]').click();selected('store');
       assert(hub.state.detail?.id===first.id&&!host.querySelector('.detail').hidden,'Store must select the first catalog game');
       assert(host.querySelector('.game-card.is-selected')?.dataset.gameId===first.id,'First Store card must be visibly selected');
@@ -139,7 +140,8 @@ async function checkHub(win,output){
     const prefs=HandheldPreferences.preferences,previous=prefs.get(),previousFavorites=localStorage.getItem('handheld:favorites:v1');
     try{
       const card=document.querySelector('.game-card');assert(card,'Grid card missing');
-      assert(document.querySelector('.detail').hidden,'Default must be grid, not detail');
+      assert(!document.querySelector('.detail').hidden&&document.querySelector('.play-game'),'Default Library selection must show preview and Play');
+      assert(card.classList.contains('is-selected'),'Default Library card must be visibly selected');
       card.dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));
       assert(!document.querySelector('.detail').hidden,'Hover preview missing');
       const video=document.querySelector('.detail video');assert(video,'Actual trailer missing');
