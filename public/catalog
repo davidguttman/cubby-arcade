@@ -1,0 +1,18 @@
+[
+  {
+    "artwork": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.0/cover.png",
+    "attract": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.0/trailer-handheld.webm",
+    "id": "line-cutter",
+    "manifest_url": "https://cubby-arcade.onrender.com/store/line-cutter/manifest.json",
+    "screenshots": [],
+    "title": "line-cutter"
+  },
+  {
+    "artwork": "https://cubby-arcade.onrender.com/store/little-camp/0.1.0/cover.png",
+    "attract": "https://cubby-arcade.onrender.com/store/little-camp/0.1.0/attract.webm",
+    "id": "little-camp",
+    "manifest_url": "https://cubby-arcade.onrender.com/store/little-camp/manifest.json",
+    "screenshots": [],
+    "title": "little-camp"
+  }
+]

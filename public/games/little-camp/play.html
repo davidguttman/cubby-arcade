@@ -1,0 +1,29 @@
+<!doctype html><script src="/runtime/core/preferences.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title></title>
+<!-- handheld-os game-owned adapter. Expects the package layout: core/*.js are the pinned
+     handheld-os runtime copies placed next to this file when the package is built. -->
+<link rel="stylesheet" href="core/screen.css">
+<canvas id="screen" width="240" height="160"></canvas>
+<script src="core/preferences.js"></script><script src="core/input.js"></script>
+<script src="core/platform.js"></script>
+<script src="core/sdk.js"></script>
+<script src="core/controls.js"></script>
+<script src="little-camp.js"></script>
+<script>
+'use strict';
+const platform = HandheldPlatform.createPlatform(window.HandheldPlatformOptions);
+let game = null;
+const host = HandheldSDK.createGameHost({ platform, gameId: 'little-camp', onExit: () => { host.dispose(); location.href = '/'; } });
+// Game-scoped JSON saves from the host; the engine writes one 'camp' record.
+const saves = { get: k => host.saves.get(k), set: (k, v) => host.saves.set(k, v), remove: k => host.saves.remove(k) };
+// The shared input already repeats held directions (one press per step), so holds stays off.
+game = LittleCamp.create({ canvas: document.getElementById('screen'), save: saves, holds: false });
+host.input.attachPointer(document.getElementById('screen'), () => 'a');
+HandheldControls.createControls(host.input, 'game');
+host.start(game);
+addEventListener('pagehide', () => { game.pause(); host.dispose(); });
+</script>
+</html>

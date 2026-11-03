@@ -1,0 +1,24 @@
+{
+  "source_commit": "1d26b904b70ad6917c0614625ae8cc626151b1d2",
+  "packages": [
+    {
+      "id": "line-cutter",
+      "version": "0.2.0",
+      "archive_sha256": "29d4bd4c09b845019a32a1f745005d3fb15ba1b5086987ece8fec8e077153768",
+      "archive_bytes": 9646354,
+      "inventoried_files": 17
+    },
+    {
+      "id": "little-camp",
+      "version": "0.1.0",
+      "archive_sha256": "d3c279d79de4d9e50d1a47d289e99dd490fdf744061ad80e9003159214510874",
+      "archive_bytes": 429504,
+      "inventoried_files": 13
+    }
+  ],
+  "checked_inventory_and_media_files": 45,
+  "cloud_files": 11,
+  "static_library_entries": 2,
+  "public_files": 52,
+  "public_bytes": 24852766
+}

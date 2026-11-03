@@ -1,0 +1,12 @@
+{
+  "entrypoint": "play.html",
+  "id": "little-camp",
+  "package": {
+    "sha256": "d3c279d79de4d9e50d1a47d289e99dd490fdf744061ad80e9003159214510874",
+    "size": 429504,
+    "url": "https://cubby-arcade.onrender.com/store/little-camp/0.1.0/little-camp-0.1.0.game.zip"
+  },
+  "runtime": "web",
+  "schema_version": 1,
+  "version": "0.1.0"
+}
