@@ -400,7 +400,7 @@ see [Game-owned releases](docs/game-release-manifest.md) for the contract and
 single-release workflow. Schema-1 ZIP releases below remain compatible.
 
 `web.py build` exports both the playable web preview and a hosted registry. The
-public root defaults to `https://cubby-arcade.onrender.com`; override it
+public root defaults to `https://cubby.david.app`; override it
 with `--base-url https://your-host.example/`. All advertised media, manifests,
 and ZIP archives are written into the selected export, not just referenced.
 
@@ -419,7 +419,7 @@ The stable `/store/<id>/manifest.json` describes the currently offered release:
   "runtime": "web",
   "entrypoint": "play.html",
   "package": {
-    "url": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
+    "url": "https://cubby.david.app/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
     "size": 12345,
     "sha256": "<64 lowercase hexadecimal characters>"
   }
@@ -436,7 +436,7 @@ arbitrary executable installer or cryptographic publisher-authentication scheme.
 To add or update a game on the existing generated host:
 
 ```sh
-uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://cubby-arcade.onrender.com/
+uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://cubby.david.app/
 ```
 
 This command validates before publishing, creates immutable versioned archive
@@ -454,8 +454,8 @@ The existing management CLI accepts either this registry or the legacy schema-1
 inline catalog without breaking old callers:
 
 ```sh
-uv run python -m runtime.catalog list https://cubby-arcade.onrender.com/catalog
-uv run python -m runtime.catalog --root path/to/games install https://cubby-arcade.onrender.com/catalog line-cutter
+uv run python -m runtime.catalog list https://cubby.david.app/catalog
+uv run python -m runtime.catalog --root path/to/games install https://cubby.david.app/catalog line-cutter
 ```
 
 Installation/update resolves the stable manifest at the time of the operation.
@@ -622,7 +622,7 @@ For family testing:
    host (the local Jump preview serves `.cache/web`):
 
    ```sh
-   uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby-arcade.onrender.com/
+   uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby.david.app/
    ```
 
    Existing installed games check their stable manifest on hub entry, download
