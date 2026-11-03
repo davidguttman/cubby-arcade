@@ -16,6 +16,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.remaining = None
         super().__init__(*args, **kwargs)
 
+    def translate_path(self, path):
+        # Exact aliases only: never rewrite missing assets into HTML.
+        parsed = urlsplit(path)
+        aliases = {'/': '/site/index.html', '/index.html': '/site/index.html',
+                   '/play': '/index.html', '/play/': '/index.html',
+                   '/native/index.html': '/index.html'}
+        return super().translate_path(aliases.get(parsed.path, parsed.path))
+
     def guess_type(self, path):
         if Path(path).name in {'catalog', 'library', 'hub-manifest.json'}:
             return 'application/json; charset=utf-8'
@@ -27,6 +35,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         path = unquote(urlsplit(self.path).path)
+        if urlsplit(self.path).path in {'/', '/index.html'}:
+            self.send_header('Vary', 'Referer')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Range')
@@ -60,6 +70,24 @@ class Handler(SimpleHTTPRequestHandler):
 
     def send_head(self):
         self.remaining = None
+        # Legacy games shipped with a root-relative Back action. Keep those
+        # immutable payloads working, without changing direct/bookmarked landing
+        # visits or accepting a foreign site's navigation hint.
+        if urlsplit(self.path).path in {'/', '/index.html'}:
+            try:
+                referer = urlsplit(self.headers.get('Referer', ''))
+                legacy_return = (referer.scheme in {'http', 'https'}
+                                 and referer.netloc.lower() == self.headers.get('Host', '').lower()
+                                 and referer.username is None
+                                 and referer.path.startswith('/games/'))
+            except ValueError:
+                legacy_return = False
+            if legacy_return:
+                self.send_response(302)
+                self.send_header('Location', '/play')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return None
         request_path = unquote(urlsplit(self.path).path)
         if any(part.startswith('.') for part in request_path.split('/') if part):
             self.send_error(404)

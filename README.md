@@ -1,11 +1,11 @@
-# Cubby Arcade — Render browser preview
+# Cubby Arcade — public site and launcher host
 
 Generated deployment-only branch: `render-site`. This branch is not application
 source and should not be merged back into the development branch.
 
 ## Snapshot
 
-- Application snapshot: `ed3e97e6c54790a9a7756fdd5a7194d9fe66e813` (`arcade-store`, committed state only).
+- Application snapshot: `e6b0241042388d7840e0dcf0bb667503a1f5ca1c` (`main`, committed state only).
 - Included validated packages: Line Cutter 0.2.1; Little Camp 0.1.0.
 - Origin: https://cubby-arcade.onrender.com/
 - Includes the committed token-aware launcher for compatible native hosts. Browser
@@ -37,7 +37,33 @@ staging directory. From that export, run:
 uv run python web.py build /path/to/line-cutter-0.2.1.game.zip /path/to/little-camp-0.1.0.game.zip --output /path/to/staging/public --base-url https://cubby-arcade.onrender.com/
 ```
 
-Set the generated `index.html` browser title to `Cubby Arcade`, then update its
-size/SHA-256 in `hub-manifest.json`. Validate all inventories before deploying.
+The exporter generates the landing page, HTML/raw specifications, and standalone
+manifest generator. Keep the logical `/index.html` inventory as the wordless native
+shell; serve it at `/native/index.html` and `/play`. Serve `/site/index.html` at
+the public root. Validate every inventory before deploying.
 Keep previous versioned store files when publishing game updates; a clean export
 only retains packages explicitly selected for that export.
+
+
+## Public-site routing
+
+The application export deliberately retains its physical `public/index.html`
+wordless launcher so native cloud inventories remain unchanged. The deployment
+adapter maps `/` and `/index.html` to `public/site/index.html`, the adult/developer
+landing page; `/play` and `/play/` serve the original wordless browser preview.
+`/native/index.html` serves the launcher bytes named `/index.html` in the cloud
+inventory. All other assets, APIs, package URLs, and immutable releases retain
+their existing paths. This is exact path routing, not an SPA fallback.
+
+Native builds from 0.3.0 prefer `/native/index.html`, retaining compatibility with
+older hosts that only provide `/index.html`. Earlier desktop versions cannot
+fetch the new landing as a valid hub snapshot: inventory integrity verification
+fails and they retain their previously verified cache or bundled launcher.
+They must install the new executable for file-manifest support.
+
+For regeneration, retain this deployment-only `serve.py` and `test_serve.py`,
+export the committed source with explicit existing game archives, preserve all
+prior immutable version files byte-for-byte, and preserve stable catalog metadata
+URLs. The generated `site/` comes from the application source. Never replace the
+physical launcher `index.html` with the landing or rewrite its inventory hash to
+match the landing. Run `uv run python -m unittest -v test_serve` after generation.

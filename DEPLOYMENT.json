@@ -1,6 +1,6 @@
 {
-  "source_commit": "ed3e97e6c54790a9a7756fdd5a7194d9fe66e813",
-  "application_branch": "arcade-store",
+  "source_commit": "e6b0241042388d7840e0dcf0bb667503a1f5ca1c",
+  "application_branch": "main",
   "deployment_branch": "render-site",
   "origin": "https://cubby-arcade.onrender.com/",
   "packages": {
@@ -11,5 +11,7 @@
   "hosting": "Render free Python web_service",
   "start_command": "python serve.py",
   "build_command": "true",
-  "health_check": "/hub-manifest.json"
+  "health_check": "/hub-manifest.json",
+  "website": "public landing + developer specifications",
+  "desktop_version": "0.3.0"
 }

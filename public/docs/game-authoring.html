@@ -1,0 +1,46 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Make a game for Cubby Arcade — Cubby Arcade</title><link rel="stylesheet" href="/site/style.css"></head><body><header><a class="brand" href="/">◈ Cubby Arcade</a><nav aria-label="Documentation"><a href="/docs/game-authoring.html">Game-author guide</a><a href="/docs/game-release-manifest.html">Manifest spec</a></nav></header><main class="document"><p><a href="/docs/game-authoring.md">Raw Markdown ↗</a> · <a href="/tools/cubby_manifest.py">Manifest generator ↓</a></p><h1>Make a game for Cubby Arcade</h1>
+<p>Cubby Arcade is a controller-first arcade for pre-literate children. This guide is for adults and coding agents; the games themselves must not require reading.</p>
+<h2>Start with the player</h2>
+<p>Use pictures, animation, sound and demonstrated actions, not written tutorials, menus or error messages. A button glyph can supplement an action but must not be the only explanation. Support keyboard and controller, with touch controls when appropriate. Line Cutter is a technical test payload, not a UX template.</p>
+<h2>Build an offline web game</h2>
+<p>Ship static HTML, JavaScript, styles, artwork and audio with relative asset references. The entrypoint and all required assets must work without a network. Do not depend on your website&#x27;s server routes, root-relative game assets, logins, CDNs or browser storage tied to the publishing domain. Cubby installs each game under <code>/games/&lt;id&gt;/</code>; it does not navigate to the remote game&#x27;s website.</p>
+<p>Use a stable lowercase game ID such as <code>my-game</code>. Keep saves compatible between versions or migrate them. Keep old release files available.</p>
+<h2>Controls, lifecycle and saves</h2>
+<p>The optional shared JavaScript modules live in <code>runtime/core/</code> in the <a href="https://github.com/davidguttman/cubby-arcade/tree/main/runtime/core">Cubby repository</a>. They are not an npm package. Existing <code>Handheld*</code> names are compatibility APIs, not outdated instructions. Inspect those modules before integrating:</p>
+<ul>
+<li><code>preferences.js</code> and <code>input.js</code>: <code>HandheldInput.createInput({onAction})</code> provides semantic input. Direction buttons retain their names; <code>a</code> maps to <code>confirm</code>, <code>b</code> to <code>back</code>, and <code>start</code> to <code>pause</code>. The event also contains <code>button</code> and <code>source</code>. Keyboard mappings follow user preferences.</li>
+<li><code>platform.js</code>: <code>HandheldPlatform.createPlatform()</code> exposes capability-based services. <code>platform.saves(gameId)</code> returns <code>get(name)</code>, <code>set(name, value)</code> and <code>remove(name)</code> for JSON saves. The native bridge is host supplied; do not invent a server-side save or wallet API.</li>
+<li><code>sdk.js</code>: <code>HandheldSDK.createGameHost({gameId, platform})</code> optionally connects shared input, pause/resume and saves. Its game instance has <code>press(button)</code>, <code>stop()</code>, <code>wake()</code> and optionally <code>start()</code>. Follow the actual source and its tests for lifecycle details.</li>
+<li><code>controls.js</code>: optional pictorial controls via <code>HandheldControls.createControls(input, &#x27;game&#x27;)</code>.</li>
+</ul>
+<p>Cubby injects a host-owned game menu even if you do not use the SDK. Escape, Select + Start, or both shoulders open it. Do not intercept or repurpose that system menu. Listen for <code>handheld:system-menu</code> (<code>event.detail.open</code>) to pause your own simulation and audio while it is open; pause on lost focus/visibility. The injected menu alone cannot automatically pause an arbitrary game loop.</p>
+<h2>Publish once, without a ZIP</h2>
+<ol>
+<li>Build offline files into <code>dist/game/</code>.</li>
+<li>Download the standalone <a href="/tools/cubby_manifest.py">manifest generator</a>.</li>
+<li>Generate sizes, SHA-256 hashes and versioned URLs from those exact files.</li>
+<li>Upload the unchanged files to your own HTTPS domain under a versioned path.</li>
+<li>Verify the upload, then publish the stable manifest last, in that same GitHub release workflow. No second release or hand-entered checksums.</li>
+</ol>
+<pre><code>uv run python tools/cubby_manifest.py dist/game \
+  --id my-game --version &quot;$RELEASE_VERSION&quot; \
+  --entrypoint index.html --artwork cover.png \
+  --base-url &quot;https://my-game.example/releases/$RELEASE_VERSION/&quot; \
+  --output dist/release-manifest.json</code></pre>
+<p>The generator is Python 3.11+ and standard-library only; copying it into your repo does not require installing Cubby. Keep its output outside <code>dist/game/</code>. See the <a href="/docs/game-release-manifest.html">complete release manifest specification</a> for fields, validation, size limits, media and compatibility.</p>
+<h2>Add the game to the store once</h2>
+<p>Cubby&#x27;s trusted developer registry is the <code>/catalog</code> JSON array. Ask its maintainer to add a listing with this shape; there is no public submission API:</p>
+<pre><code>{
+  &quot;id&quot;: &quot;my-game&quot;,
+  &quot;title&quot;: &quot;My Game&quot;,
+  &quot;manifest_url&quot;: &quot;https://my-game.example/arcade/manifest.json&quot;,
+  &quot;artwork&quot;: &quot;https://my-game.example/discovery/cover.png&quot;,
+  &quot;attract&quot;: &quot;https://my-game.example/discovery/trailer.webm&quot;,
+  &quot;screenshots&quot;: []
+}</code></pre>
+<p><code>attract</code> (trailer) is optional; discovery media URLs are HTTPS. The registry holds the stable manifest URL and discovery media. Your game owns its release manifest and payload files. Subsequent releases update that stable manifest, not Cubby&#x27;s registry or executable. Browsing does not fetch the install manifest.</p>
+<h2>Understand the launcher boundary</h2>
+<p>Downloads and updates are free. The desktop test account starts with 10 local tokens; one token is charged per successful launch, not per game purchase or minute played. There is no timer. Do not implement charging inside the game. The browser demo is free and does not simulate native wallet enforcement. There are no real-money payments, creator payouts or cloud accounts yet.</p>
+<p>Cubby verifies every file, stages a complete release and activates updates only outside gameplay. Existing ZIP schema 1 releases remain supported. New schema 2 file releases require Cubby Arcade desktop 0.3.0 or newer. A child&#x27;s existing 0.2.0 executable must be replaced once to gain the new installer.</p>
+<h2>Before handing off</h2>
+<p>Test a fresh offline install, keyboard/controller input, pause/resume, return to library, save/restart and an update from a prior version. Verify all payload URLs use direct HTTPS (no redirects), and that uploaded byte sizes/hashes match. Physical controller and target-device performance need real hardware testing.</p></main></body></html>

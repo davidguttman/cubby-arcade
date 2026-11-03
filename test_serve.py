@@ -38,10 +38,47 @@ class HTTPContract(unittest.TestCase):
             json.loads(body)
         _, _, body = self.request('GET', '/hub-manifest.json')
         for path, expected in json.loads(body)['files'].items():
-            status, _, data = self.request('GET', path)
+            status, _, data = self.request('GET', '/native/index.html' if path == '/index.html' else path)
             self.assertEqual(status, 200)
             self.assertEqual(len(data), expected['size'])
             self.assertEqual(hashlib.sha256(data).hexdigest(), expected['sha256'])
+
+    def test_landing_and_launcher_routes(self):
+        landing = (serve.PUBLIC / 'site/index.html').read_bytes()
+        launcher = (serve.PUBLIC / 'index.html').read_bytes()
+        self.assertNotEqual(landing, launcher)
+        for path in ('/', '/index.html', '/index.html?test=1'):
+            status, headers, body = self.request('GET', path)
+            self.assertEqual(status, 200)
+            self.assertIn('text/html', headers['Content-Type'])
+            self.assertEqual(body, landing)
+            self.assertIn('must-revalidate', headers['Cache-Control'])
+        for path in ('/play', '/play/', '/native/index.html'):
+            status, headers, body = self.request('GET', path)
+            self.assertEqual(status, 200)
+            self.assertEqual(body, launcher)
+        status, headers, body = self.request('HEAD', '/native/index.html')
+        self.assertEqual((status, body), (200, b''))
+        self.assertEqual(int(headers['Content-Length']), len(launcher))
+        status, headers, body = self.request('GET', '/native/index.html', headers={'Range': 'bytes=0-19'})
+        self.assertEqual((status, body), (206, launcher[:20]))
+
+    def test_legacy_game_return_redirect_is_same_host_only(self):
+        host = '%s:%s' % self.host.server_address
+        for method in ('GET', 'HEAD'):
+            for path in ('/', '/index.html'):
+                status, headers, body = self.request(method, path, headers={'Referer': f'http://{host}/games/line-cutter/index.html'})
+                self.assertEqual(status, 302)
+                self.assertEqual(headers['Location'], '/play')
+                self.assertEqual(body, b'')
+                self.assertEqual(headers['Vary'], 'Referer')
+        for referer in ('https://foreign.example/games/demo/', f'http://{host}/gamesish/demo/',
+                        f'http://user@{host}/games/demo/', f'//{host}/games/demo/',
+                        'http://[invalid', '', f'http://{host}/play'):
+            status, headers, body = self.request('GET', '/', headers={'Referer': referer})
+            self.assertEqual(status, 200, referer)
+            self.assertEqual(body, (serve.PUBLIC / 'site/index.html').read_bytes())
+            self.assertEqual(headers['Vary'], 'Referer')
 
     def test_installed_game_and_immutable_store_asset(self):
         for path in ('/games/line-cutter/play.html','/games/little-camp/play.html'):
