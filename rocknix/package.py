@@ -40,7 +40,7 @@ def package(rootfs: Path, output: Path) -> Path:
     (output / 'cubby-rg353v.tar.gz.sha256').write_text(f'{digest}  {bundle.name}\n')
     shutil.copy2(ROOT / 'rocknix/install.py', output / 'install.py')
     shutil.copytree(ROOT / 'rocknix/device', output / 'device', dirs_exist_ok=True)
-    shutil.copy2(ROOT / 'docs/rg353v-install.md', output / 'START-HERE.md')
+    shutil.copy2(ROOT / 'docs/rg353v-maintenance.md', output / 'START-HERE.md')
     return bundle
 
 

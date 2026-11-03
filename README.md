@@ -1,13 +1,15 @@
 # Cubby Arcade
 
 An independent home for Linux/OS integration, a picture-first launcher, and the
-ARM64 development VM. Not a flashable RG353V OS; do not flash its QEMU disk.
+ARM64 development VM. The dedicated RG353V image is separate from the QEMU disk;
+never flash the QEMU disk to a handheld.
 
 For a physical **Anbernic RG353V**, use the separate
-[ROCKNIX + WPE installation kit and adult setup guide](docs/rg353v-install.md).
-It installs on supported ROCKNIX, configures Cubby startup, and preserves a
-stock-launcher recovery path. Hardware acceptance is still required; VM results
-do not certify the handheld.
+[all-in-one SD-card image and adult setup guide](docs/rg353v-install.md): flash
+one image, insert the card, and power on. ROCKNIX, WPE, Cubby startup, and offline
+Trail Mix are preinstalled, with a stock-launcher recovery path. The image is
+not publicly published or hardware-certified yet; VM results do not certify
+the handheld.
 
 Repository: https://github.com/davidguttman/cubby-arcade . Local checkout:
 `/mnt/data/play/native/cubby-arcade`. See `MIGRATION.md` for preserved profile,
