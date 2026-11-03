@@ -244,7 +244,7 @@ jump.sh start cubby-arcade --json
 ```
 
 The local development preview is https://cubby-arcade.davidguttman.jump.sh .
-The public browser preview and package registry use https://cubby-arcade.onrender.com .
+The public browser preview and package registry use https://cubby.david.app .
 Check `jump.sh ls --json` for current status rather than assuming it is running.
 The repo's compose file runs only a Python static preview; Jump owns its lifecycle
 and HTTPS routing. Re-run the build after editing shared code/package sources.
@@ -400,7 +400,7 @@ see [Game-owned releases](docs/game-release-manifest.md) for the contract and
 single-release workflow. Schema-1 ZIP releases below remain compatible.
 
 `web.py build` exports both the playable web preview and a hosted registry. The
-public root defaults to `https://cubby-arcade.onrender.com`; override it
+public root defaults to `https://cubby.david.app`; override it
 with `--base-url https://your-host.example/`. All advertised media, manifests,
 and ZIP archives are written into the selected export, not just referenced.
 
@@ -419,7 +419,7 @@ The stable `/store/<id>/manifest.json` describes the currently offered release:
   "runtime": "web",
   "entrypoint": "play.html",
   "package": {
-    "url": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
+    "url": "https://cubby.david.app/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
     "size": 12345,
     "sha256": "<64 lowercase hexadecimal characters>"
   }
@@ -436,7 +436,7 @@ arbitrary executable installer or cryptographic publisher-authentication scheme.
 To add or update a game on the existing generated host:
 
 ```sh
-uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://cubby-arcade.onrender.com/
+uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://cubby.david.app/
 ```
 
 This command validates before publishing, creates immutable versioned archive
@@ -454,8 +454,8 @@ The existing management CLI accepts either this registry or the legacy schema-1
 inline catalog without breaking old callers:
 
 ```sh
-uv run python -m runtime.catalog list https://cubby-arcade.onrender.com/catalog
-uv run python -m runtime.catalog --root path/to/games install https://cubby-arcade.onrender.com/catalog line-cutter
+uv run python -m runtime.catalog list https://cubby.david.app/catalog
+uv run python -m runtime.catalog --root path/to/games install https://cubby.david.app/catalog line-cutter
 ```
 
 Installation/update resolves the stable manifest at the time of the operation.
@@ -522,7 +522,7 @@ The shared-origin catalog continues to require trusted developer game packages.
 ### Cloud-backed desktop launcher
 
 The desktop executable is a thin, sandboxed shell. On launch it requests
-`https://cubby-arcade.onrender.com/hub-manifest.json`, downloads the small
+`https://cubby.david.app/hub-manifest.json`, downloads the small
 launcher UI/core/catalog snapshot, verifies its size/hash inventory, and caches
 it coherently before opening the hub. Rebuilding/publishing the web export is
 all that is needed to deliver launcher/store UI changes on the next app launch.
@@ -542,7 +542,7 @@ The HTTPS cloud host is trusted to supply launcher JavaScript, but never gets
 Node access or arbitrary filesystem/native bridge access. `bridge_version: 1`
 is the compatibility gate; future native-runtime changes still require a new
 executable. The default browser preview/catalog host is Render at
-https://cubby-arcade.onrender.com; the local Jump preview is a separate adult
+https://cubby.david.app; the local Jump preview is a separate adult
 development override, not the desktop default.
 `CUBBY_ARCADE_CLOUD_ORIGIN` can select another HTTPS root for adult deployment/testing.
 For the built-executable offline smoke only, `CUBBY_ARCADE_SMOKE_OFFLINE=1` simulates a
@@ -622,7 +622,7 @@ For family testing:
    host (the local Jump preview serves `.cache/web`):
 
    ```sh
-   uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby-arcade.onrender.com/
+   uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby.david.app/
    ```
 
    Existing installed games check their stable manifest on hub entry, download
@@ -636,7 +636,8 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.5.0**, adding Store-only game discovery and save-preserving uninstall
+desktop **0.5.1**, correcting static hosting and the canonical cloud origin after
+0.5.0 added Store-only game discovery and save-preserving uninstall
 with a pictorial confirmation. Fresh libraries contain no bundled games; Line
 Cutter and Trail Mix are installed explicitly from their game-owned publishers.
 Domain-free relative download URLs for file and ZIP releases remain supported,
@@ -674,9 +675,10 @@ separate; `/play` is the free browser demo on the public deployment.
 
 `web.py build` exports website assets under `site/`, documentation under `docs/`,
 and `tools/cubby_manifest.py`. Its physical `index.html` remains the native hub,
-with an identical `native/index.html` transport alias. The source-hosted Render
-adapter maps `/` and `/index.html` to `site/index.html`, `/play` and `/play/` to
-the wordless hub, and `/native/index.html` to the hub. Do not replace the native
+with an identical `native/index.html` transport alias. `hosting/build.py` makes
+the production root `index.html` the landing page; the native transport file stays
+unchanged. Render Static Site rewrites `/play` and `/play/` to that physical native
+file, while `/` and `/index.html` serve the landing page directly. Do not replace the native
 shell inventory with landing-page bytes. The current desktop fetches that native
 route first, verifies its inventory hash, and falls back to `/index.html` only for
 legacy hosts. Older desktop clients that request the now-public `/index.html`
@@ -693,7 +695,8 @@ Render can deploy source `main` with the checked-in `render.yaml`:
 ```sh
 uv run python hosting/build.py
 # Render build: python3 -m pip install -r requirements.txt && python3 hosting/build.py
-# Render start: python3 hosting/serve.py
+# Render Static Site publish directory: .cache/web
+# No start command or runtime server
 ```
 
 The build uses pinned PyYAML for the hand-authored Store catalog and fetches/verifies the historical pinned upstream archive, exports
@@ -702,19 +705,22 @@ the Store. It keeps all immutable previously published releases (including the
 unlisted Little Camp) for existing clients. `hosting/releases/` contains the exact historical distribution
 archives, not editable game source. Their size/hash/provenance inventory is
 `hosting/releases.json`; old package and media URLs remain byte-identical.
-The server serves only `.cache/web`, supports CORS/media ranges, and revalidates
-live catalog/shell metadata. Free Render instances may cold-start.
+Render serves `.cache/web` from its Static Site CDN, with the routes, CORS, JSON
+content types and cache headers declared in `render.yaml`. Python runs only at
+build time. There is no request-time process, cold-starting web service or API
+server. `hosting/serve.py` remains a local development/test adapter, not the
+production host.
 
 New exports advertise Line Cutter's independent stable manifest:
 `https://linecutter.david.app/store/line-cutter/manifest.json`. The previous Cubby
-stable URL `/store/line-cutter/manifest.json` forwards live publisher metadata as
-HTTP 200 JSON (GET and HEAD), so clients with a cached old catalog get future
-releases without a Cubby rebuild. Forwarding is bounded to 256 KiB and a 20-second
-socket timeout, validates schema/identity, rejects upstream redirects, and returns
-502 on failure; it never substitutes a stale local release snapshot. This retains
-compatibility with installers that reject metadata redirects. Former versioned
-ZIP/media URLs stay byte-identical. Little Camp is no longer listed in the Store.
-The generated forwarding map is server-private, not part of the downloaded shell.
+stable URL `/store/line-cutter/manifest.json` is a compatibility snapshot generated
+at Cubby build time. The build downloads bounded metadata, validates identity and
+integrity fields, resolves relative paths against the final publisher URL, and
+fails if that metadata cannot be safely exported. This legacy endpoint refreshes
+only when Cubby is deployed; it is not a live proxy. Current catalogs point at the
+game-owned stable URLs directly, so normal game updates still need no Cubby build.
+Former versioned ZIP/media URLs stay byte-identical. Little Camp is unlisted.
+No private forwarding map is generated or required.
 
 Line Cutter 0.3.0 is retained as a historical hosted ZIP, not
 a requirement for new releases. New game-owned releases use the ZIP-free schema-2
@@ -743,7 +749,7 @@ Never rebuild or edit game bytes inside the launcher repository.
 
 Build dependencies are pinned in `pyproject.toml` / `uv.lock`. Regenerate Render’s
 `requirements.txt` with `uv export --locked --no-dev --no-hashes --no-emit-project --output-file requirements.txt`.
-Static serving itself uses only the Python standard library.
+Production serving is Render Static Site CDN delivery; no Python is running there.
 
 ### Uninstalling installed games
 

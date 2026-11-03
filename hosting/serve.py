@@ -36,6 +36,10 @@ class Handler(SimpleHTTPRequestHandler):
         aliases = {'/': '/site/index.html', '/index.html': '/site/index.html',
                    '/play': '/index.html', '/play/': '/index.html',
                    '/native/index.html': '/index.html'}
+        # Static production exports keep the native hub at its physical path;
+        # historical/local exports may still store it at the root index.
+        if parsed.path in {'/play', '/play/', '/native/index.html'} and (Path(self.directory) / 'native/index.html').is_file():
+            return super().translate_path('/native/index.html')
         return super().translate_path(aliases.get(parsed.path, parsed.path))
 
     def guess_type(self, path):
