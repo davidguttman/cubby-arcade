@@ -1,0 +1,20 @@
+[
+  {
+    "path": "releases/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
+    "size": 9646354,
+    "sha256": "29d4bd4c09b845019a32a1f745005d3fb15ba1b5086987ece8fec8e077153768",
+    "source": "render-site:bf4a42747ad1285f15743cf34ec7449d77bee2ce:public/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip"
+  },
+  {
+    "path": "releases/line-cutter/0.2.1/line-cutter-0.2.1.game.zip",
+    "size": 9647227,
+    "sha256": "39f9a48ae1716dfb3c9717fd48d87ea693ee41f12552f426668748c58b5b12d2",
+    "source": "render-site:bf4a42747ad1285f15743cf34ec7449d77bee2ce:public/store/line-cutter/0.2.1/line-cutter-0.2.1.game.zip"
+  },
+  {
+    "path": "releases/little-camp/0.1.0/little-camp-0.1.0.game.zip",
+    "size": 429504,
+    "sha256": "d3c279d79de4d9e50d1a47d289e99dd490fdf744061ad80e9003159214510874",
+    "source": "render-site:bf4a42747ad1285f15743cf34ec7449d77bee2ce:public/store/little-camp/0.1.0/little-camp-0.1.0.game.zip"
+  }
+]

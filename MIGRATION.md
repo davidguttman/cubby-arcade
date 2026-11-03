@@ -35,15 +35,25 @@ The desktop build is `dist/CubbyArcade-linux-x64/CubbyArcade`.
 
 ## Deployment boundaries
 
-`render-site` is a **generated deployment-only branch**, not application source
-and not a branch to merge into `arcade-store`. It records its source snapshot
-and validated game package versions. The current Render adapter is a free Python stdlib web service serving static
-exports (with cold starts), separate from the existing `web.py` adapter.
-Render serves the browser preview,
-registry, stable release manifests and immutable versioned game archives.
-The native installer remains a desktop/VM adapter, not a browser capability.
+`render-site` is the **historical generated deployment-only branch**, not
+application source and not a branch to merge into `main`. Preserve it unchanged.
+The independent-game migration introduces a source deployment from `main` using
+`hosting/build.py`, `hosting/serve.py` and `render.yaml`; the release supervisor
+switches the existing Render service only after source verification/integration.
+No extra Render service or native executable replacement is required.
 
-The existing token implementation belongs to the paused development task and
-remains uncommitted WIP until its own final review/rebuild. The rename does not
-certify that feature or constitute a finished desktop release. A web preview
-must identify its committed source snapshot and exclude unfinished WIP.
+The free Python stdlib host serves the generated `.cache/web` browser preview,
+registry, stable manifests and immutable archives (with possible cold starts).
+Legacy Line Cutter 0.2.0/0.2.1 and Little Camp 0.1.0 distribution archives are
+retained exactly under `hosting/releases/` with checksum/source inventory. Every
+source build reproduces their old package/media URLs, keeping existing installs
+and old catalog previews usable. The token implementation was released separately
+in desktop 0.2.0; this migration changes no budget/session behavior.
+
+Line Cutter source now belongs to `davidguttman/line-cutter`; its published complete
+0.3.0 package replaces the old portfolio asset dependency. Fresh catalogs point
+to its publisher-owned stable manifest. The old Cubby stable metadata endpoint
+redirects there permanently as a routing policy (HTTP 302 with revalidation), not
+a copied release snapshot. Native clients keep their origin, ID, saves and update
+activation rules, and future game releases do not require a launcher rebuild.
+The native installer remains a desktop/VM adapter, not a browser capability.

@@ -1,32 +1,14 @@
 {
   "schema_version": 1,
   "game": "line-cutter",
-  "repository": "davidguttman/misc.davidguttman.com",
-  "commit": "acdbad3a8aa3ee2ae23d440f9ee6c299cbf169f8",
-  "assets": [
-    {
-      "path": "public/line-cutter/line-cutter.js",
-      "sha256": "dd18578915742f887ee17979dddb85c0f6a5a191eb0e48f8a9c722e622e4ffea"
-    },
-    {
-      "path": "public/line-cutter/title-loop.mp3",
-      "sha256": "2174b529953cea6b57c2d520df4a74f116bc7850206b497290892dd0edbee1c7"
-    },
-    {
-      "path": "public/line-cutter/match-loop.mp3",
-      "sha256": "0cc6340fe96318bcfde9ecca9c3bcc31be1b74d8ace407d313eef494ef64704a"
-    },
-    {
-      "path": "media/trailer.mp4",
-      "url": "https://media.publit.io/file/3d208163-4ea9-42d9-bcea-f33ecd6e5fca.mp4",
-      "sha256": "243e8a05228ae0592395c5190a8e9f9757571a010067dd3ca87e3d99a7eba425",
-      "description": "46.6-second actual gameplay trailer used on david.app; docs/media-sources.md",
-      "rendition": {
-        "path": "media/trailer-handheld.webm",
-        "sha256": "7f9a2bccc560cb194565fbab217731549a6b10fc889f283ceee3b883b13fe246",
-        "ffmpeg_version": "n9.0.2",
-        "recipe": "silent-vp8-480x300-30fps-v1"
-      }
-    }
-  ]
+  "repository": "davidguttman/line-cutter",
+  "commit": "461d2ca7174d8a34356d74369703e422a7b6cebd",
+  "manifest_url": "https://linecutter.david.app/store/line-cutter/manifest.json",
+  "package": {
+    "path": "releases/0.3.0/line-cutter-0.3.0.game.zip",
+    "version": "0.3.0",
+    "url": "https://linecutter.david.app/store/line-cutter/0.3.0/line-cutter-0.3.0.game.zip",
+    "size": 7420350,
+    "sha256": "414404d092581923c04dbdef1bedd640245e152e037a662e770815d8e7e5d1cb"
+  }
 }

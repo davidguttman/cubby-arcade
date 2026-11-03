@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: cubby-arcade
+    runtime: python
+    plan: free
+    buildCommand: python3 hosting/build.py
+    startCommand: python3 hosting/serve.py
+    healthCheckPath: /hub-manifest.json
+    autoDeployTrigger: off
+    domains:
+      - cubby.david.app
