@@ -38,7 +38,10 @@ function mountedHub(games){
  }
  const doc={createElement:tag=>new Element(tag),activeElement:null};
  const platform={capabilities:{},library:async()=>games,catalog:async()=>[],onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({})};
- doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:()=>({dispose(){}})},addEventListener(){},fetch:()=>Promise.resolve(),location:{}};
+ const windowListeners=new Map();
+ doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:()=>({dispose(){}})},
+ addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
+ removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{}};
  const host=new Element(),hub=Hub.mount(host);
  return {host,hub,refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
 }
@@ -67,4 +70,11 @@ test('closing a Library preview retains the selected card without reopening it',
 test('empty Library remains an empty pictorial state',async()=>{
  const {host,hub}=mountedHub([]);await settle();hub.show('library');
  assert.equal(hub.state.detail,null);assert.equal(host.querySelector('.detail').hidden,true);assert.equal(host.querySelectorAll('.game-card').length,0);
+});
+test('mounted hub disposal removes its window lifecycle listeners and is idempotent',async()=>{
+ const {host,hub}=mountedHub(games);await settle();
+ const win=host.ownerDocument.defaultView;
+ assert.equal(win.listenerCount(),3);
+ assert.doesNotThrow(()=>hub.dispose());assert.equal(win.listenerCount(),0);
+ hub.dispose();assert.equal(win.listenerCount(),0);
 });
