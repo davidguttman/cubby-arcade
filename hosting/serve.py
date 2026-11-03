@@ -91,11 +91,14 @@ class Handler(SimpleHTTPRequestHandler):
                 if response.status != 200:
                     raise ValueError('Unexpected upstream status')
                 length = response.headers.get('Content-Length')
-                if length is not None and int(length) > catalog.MAX_RELEASE:
-                    raise ValueError('Upstream manifest too large')
+                expected_length = int(length) if length is not None else None
+                if expected_length is not None and not 0 <= expected_length <= catalog.MAX_RELEASE:
+                    raise ValueError('Invalid upstream manifest size')
                 body = response.read(catalog.MAX_RELEASE + 1)
                 if len(body) > catalog.MAX_RELEASE:
                     raise ValueError('Upstream manifest too large')
+                if expected_length is not None and len(body) != expected_length:
+                    raise ValueError('Upstream manifest size mismatch')
                 catalog.validate_release(json.loads(body), game_id, self.server.developer_local)
         except (OSError, HTTPException, ValueError, TypeError, RecursionError):
             self.send_error(502, 'Unable to read release metadata')

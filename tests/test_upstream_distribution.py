@@ -125,7 +125,7 @@ class UpstreamDistribution(unittest.TestCase):
                 host.server_close()
 
     def test_live_metadata_proxy_supports_current_file_installer_and_updates_without_rebuild(self):
-        state = {'body': b'', 'status': 200, 'delay': 0, 'truncate': False, 'requests': []}
+        state = {'body': b'', 'status': 200, 'delay': 0, 'truncate': False, 'length_override': None, 'requests': []}
         payloads = {}
         class Publisher(BaseHTTPRequestHandler):
             def log_message(self, *args):
@@ -139,7 +139,8 @@ class UpstreamDistribution(unittest.TestCase):
                     data = payloads.get(self.path, b'')
                     status = 200 if self.path in payloads else 404
                 self.send_response(status)
-                self.send_header('Content-Length', str(len(data) + int(state['truncate'])))
+                length = state['length_override'] if state['length_override'] is not None else len(data) + int(state['truncate'])
+                self.send_header('Content-Length', str(length))
                 if status == 302:
                     self.send_header('Location', '/unexpected.json')
                 self.end_headers()
@@ -188,8 +189,16 @@ class UpstreamDistribution(unittest.TestCase):
                     self.assertEqual(updated['version'], '1.1.0')
                     self.assertTrue((games / 'line-cutter/releases/1.0.0').is_dir())
                     active = (games / 'line-cutter/current').resolve()
-                    for body, status, delay, truncate in [(b'bad JSON', 200, 0, False), (b'x' * (catalog.MAX_RELEASE + 1), 200, 0, False), (b'', 302, 0, False), (state['body'], 200, .15, False), (b'{}', 200, 0, True)]:
-                        state.update(body=body, status=status, delay=delay, truncate=truncate)
+                    valid_manifest = state['body']
+                    failures = [(valid_manifest, 200, 0, True, None),
+                                (valid_manifest, 200, 0, False, '-1'),
+                                (valid_manifest, 200, 0, False, 'invalid'),
+                                (b'bad JSON', 200, 0, False, None),
+                                (b'x' * (catalog.MAX_RELEASE + 1), 200, 0, False, None),
+                                (b'', 302, 0, False, None),
+                                (valid_manifest, 200, .15, False, None)]
+                    for body, status, delay, truncate, length_override in failures:
+                        state.update(body=body, status=status, delay=delay, truncate=truncate, length_override=length_override)
                         host.metadata_timeout = .05
                         connection = http.client.HTTPConnection(*host.server_address, timeout=5)
                         connection.request('GET', '/store/line-cutter/manifest.json')
