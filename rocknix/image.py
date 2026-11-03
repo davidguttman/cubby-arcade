@@ -154,6 +154,36 @@ def run(*args: str) -> str:
     return result.stdout
 
 
+def extract_storage(filesystem: Path, storage: Path) -> None:
+    # debugfs parses its own command language, not shell syntax.
+    # libss represents a literal quote with doubled quotes; backslashes are
+    # literal, so shell-style backslash escaping silently changes the path.
+    destination = str(storage).replace('"', '""')
+    result = subprocess.run(['debugfs', '-R', f'rdump / "{destination}"', str(filesystem)],
+                            check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # rdump can exit zero after failing to copy files. Successful debugfs emits
+    # only its version banner on stderr; any other diagnostic is a failure.
+    diagnostics = [line for line in result.stderr.splitlines()
+                   if line.strip() and not re.fullmatch(r'debugfs [0-9][^\r\n]*', line)]
+    if diagnostics:
+        raise ValueError('Stock storage extraction failed: ' + '\n'.join(diagnostics))
+    validate_storage_seed(storage)
+
+
+def publish_image(compressed: Path, output: Path, digest: str) -> None:
+    """Publish complete files without replacing paths created by another build."""
+    sidecar = output.with_name(output.name + '.sha256')
+    if any(path.is_symlink() or path.exists() for path in (output, sidecar)):
+        raise ValueError('Refusing to replace an existing output')
+    with tempfile.TemporaryDirectory(prefix='cubby-checksum-', dir=output.parent) as directory:
+        staged_checksum = Path(directory) / 'image.sha256'
+        staged_checksum.write_text(f'{digest}  {output.name}\n')
+        # Hard links publish each whole file atomically and refuse all existing
+        # destinations, including dangling symlinks introduced after preflight.
+        os.link(compressed, output)
+        os.link(staged_checksum, sidecar)
+
+
 def seed_game(state: Path, provenance: Path) -> None:
     from runtime import catalog
     url = 'https://trailmix.david.app/arcade/manifest.json'
@@ -170,21 +200,48 @@ def seed_game(state: Path, provenance: Path) -> None:
     }, indent=2) + '\n')
 
 
-def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6) -> Path:
+def source_provenance(source_root: Path, supplied: dict | None = None) -> dict:
+    """A packaged payload records build provenance; the installer needs no Git."""
+    if supplied is not None:
+        if not isinstance(supplied, dict):
+            raise ValueError('Invalid source provenance')
+        commit, dirty = supplied.get('source_commit'), supplied.get('source_dirty')
+        if (commit is not None and (not isinstance(commit, str)
+                                   or not re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', commit))
+                or dirty is not None and not isinstance(dirty, bool)):
+            raise ValueError('Invalid source provenance')
+        return {'source_commit': commit, 'source_dirty': dirty}
+    if not (source_root / '.git').exists():
+        return {'source_commit': None, 'source_dirty': None}
+    try:
+        return {
+            'source_commit': run('git', '-C', str(source_root), 'rev-parse', 'HEAD').strip(),
+            'source_dirty': bool(run('git', '-C', str(source_root), 'status', '--porcelain').strip()),
+        }
+    except (OSError, subprocess.CalledProcessError):
+        return {'source_commit': None, 'source_dirty': None}
+
+
+def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
+          *, source_root: Path | None = None, source_info: dict | None = None,
+          progress=None) -> Path:
+    source_root = ROOT if source_root is None else Path(source_root)
+    report = progress or (lambda message: print(message, flush=True))
     if os.geteuid() != 0:
         raise ValueError('Run in a root-mapped user namespace: unshare --map-auto --map-root-user uv run rocknix/image.py ...')
     if not 4 <= storage_gib <= 64:
         raise ValueError('STORAGE size must be between 4 and 64 GiB')
     verify(upstream, ROCKNIX_SHA256)
     verify(rootfs, ROOTFS_SHA256)
-    if output.exists() or output.with_name(output.name + '.sha256').exists():
+    if any(path.is_symlink() or path.exists()
+           for path in (output, output.with_name(output.name + '.sha256'))):
         raise ValueError('Refusing to replace an existing output')
     output.parent.mkdir(parents=True, exist_ok=True)
     from pyfatfs.PyFatFS import PyFatFS
     with tempfile.TemporaryDirectory(prefix='cubby-sd-', dir=output.parent) as directory:
         temporary = Path(directory)
         raw = temporary / 'stock.img'
-        print('Decompressing pinned ROCKNIX image...', flush=True)
+        report('Decompressing pinned ROCKNIX image...')
         with gzip.open(upstream, 'rb') as source, raw.open('wb') as destination:
             shutil.copyfileobj(source, destination, 8 * 1024 * 1024)
         with raw.open('rb') as source:
@@ -203,8 +260,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6) -> P
             raise ValueError('Unexpected stock storage label')
         storage = temporary / 'storage'
         storage.mkdir()
-        run('debugfs', '-R', f'rdump / {storage}', str(original_storage))
-        validate_storage_seed(storage)
+        extract_storage(original_storage, storage)
         with PyFatFS(str(fat)) as flash:
             if flash.exists('/post-sysroot.sh'):
                 raise ValueError('Refusing to replace upstream post-sysroot hook')
@@ -214,17 +270,17 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6) -> P
         cubby = storage / 'cubby'
         release = cubby / 'releases' / release_id
         release.mkdir(parents=True)
-        print('Adding WPE, Cubby, and offline Trail Mix...', flush=True)
+        report('Adding WPE, Cubby, and offline Trail Mix...')
         (release / 'rootfs').mkdir()
         # This archive is maintainer-built and checksum-pinned, not user input.
         # Numeric ownership and symlinks must remain intact for Bubblewrap.
         run('tar', '--numeric-owner', '-xJf', str(rootfs), '-C', str(release / 'rootfs'))
         for name in ('runtime', 'rocknix'):
-            shutil.copytree(ROOT / name, release / 'app' / name,
+            shutil.copytree(source_root / name, release / 'app' / name,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         (release / 'app/hosting').mkdir()
-        shutil.copy2(ROOT / 'hosting/catalog.yaml', release / 'app/hosting/catalog.yaml')
-        shutil.copytree(ROOT / 'rocknix/device', release / 'device')
+        shutil.copy2(source_root / 'hosting/catalog.yaml', release / 'app/hosting/catalog.yaml')
+        shutil.copytree(source_root / 'rocknix/device', release / 'device')
         (cubby / 'current').symlink_to('releases/' + release_id)
         (cubby / 'state').mkdir()
         provenance = cubby / 'image-provenance'
@@ -233,8 +289,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6) -> P
         (provenance / 'build.json').write_text(json.dumps({
             'rocknix_release': '20261101', 'rocknix_sha256': ROCKNIX_SHA256,
             'wpe_rootfs_sha256': ROOTFS_SHA256,
-            'source_commit': run('git', '-C', str(ROOT), 'rev-parse', 'HEAD').strip(),
-            'source_dirty': bool(run('git', '-C', str(ROOT), 'status', '--porcelain').strip()),
+            **source_provenance(source_root, source_info),
             'hardware_validated': False,
         }, indent=2) + '\n')
         validate_storage_seed(storage)
@@ -255,18 +310,15 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6) -> P
             destination.seek(second[0] * 512)
             with storage_image.open('rb') as source:
                 shutil.copyfileobj(source, destination, 8 * 1024 * 1024)
-        print('Compressing the flashable image...', flush=True)
+        report('Compressing the flashable image...')
         compressed = temporary / 'cubby.img.gz'
         with final_raw.open('rb') as source, compressed.open('wb') as destination:
             with gzip.GzipFile(filename='', mode='wb', fileobj=destination, compresslevel=1, mtime=0) as archive:
                 shutil.copyfileobj(source, archive, 8 * 1024 * 1024)
         with compressed.open('rb') as stream:
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-        # link is atomic and refuses an existing destination, including a
-        # concurrently completed build. Both paths are on the same filesystem.
-        os.link(compressed, output)
-        output.with_name(output.name + '.sha256').write_text(f'{digest}  {output.name}\n')
-        print(f'Built {output} ({output.stat().st_size} bytes); hardware validation outstanding.', flush=True)
+        publish_image(compressed, output, digest)
+        report(f'Built {output} ({output.stat().st_size} bytes); hardware validation outstanding.')
         return output
 
 
@@ -277,4 +329,4 @@ if __name__ == '__main__':
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--storage-gib', type=int, default=6)
     args = parser.parse_args()
-    build(args.rocknix.resolve(), args.rootfs.resolve(), args.output.resolve(), args.storage_gib)
+    build(args.rocknix.resolve(), args.rootfs.resolve(), args.output.absolute(), args.storage_gib)

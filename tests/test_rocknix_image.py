@@ -3,10 +3,13 @@ import importlib.util
 from pathlib import Path
 import struct
 import io
+import os
 import zlib
 import tempfile
 import subprocess
+import shutil
 import unittest
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location('rocknix_image', Path(__file__).resolve().parents[1] / 'rocknix/image.py')
 image = importlib.util.module_from_spec(SPEC)
@@ -14,6 +17,78 @@ SPEC.loader.exec_module(image)
 
 
 class ImageTests(unittest.TestCase):
+    def test_build_rejects_dangling_output_and_checksum_symlinks_upfront(self):
+        for checksum in (False, True):
+            with self.subTest(checksum=checksum), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                output = root / 'composed.img.gz'
+                occupied = output.with_name(output.name + '.sha256') if checksum else output
+                target = root / 'must-not-create'
+                occupied.symlink_to(target)
+                with mock.patch.object(image.os, 'geteuid', return_value=0), mock.patch.object(image, 'verify'), self.assertRaisesRegex(ValueError, 'existing output'):
+                    image.build(root / 'upstream', root / 'rootfs', output)
+                self.assertTrue(occupied.is_symlink())
+                self.assertFalse(target.exists())
+
+    def test_checksum_publication_does_not_clobber_a_racing_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compressed = root / 'staged.img.gz'
+            compressed.write_bytes(b'image')
+            output = root / 'composed.img.gz'
+            sidecar = output.with_name(output.name + '.sha256')
+            target = root / 'important'
+            target.write_text('untouched')
+            link = image.os.link
+            def racing_link(source, destination):
+                if Path(destination) == sidecar:
+                    sidecar.symlink_to(target)
+                return link(source, destination)
+            with mock.patch.object(image.os, 'link', side_effect=racing_link), self.assertRaises(FileExistsError):
+                image.publish_image(compressed, output, 'a' * 64)
+            self.assertEqual(target.read_text(), 'untouched')
+            self.assertTrue(sidecar.is_symlink())
+
+    def test_checksum_publication_is_complete_and_refuses_existing_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compressed = root / 'staged.img.gz'
+            compressed.write_bytes(b'image')
+            output = root / 'composed.img.gz'
+            image.publish_image(compressed, output, 'a' * 64)
+            self.assertEqual(output.read_bytes(), b'image')
+            sidecar = output.with_name(output.name + '.sha256')
+            self.assertEqual(sidecar.read_text(), 'a' * 64 + '  composed.img.gz\n')
+            with self.assertRaises((ValueError, FileExistsError)):
+                image.publish_image(compressed, output, 'b' * 64)
+            self.assertEqual(sidecar.read_text(), 'a' * 64 + '  composed.img.gz\n')
+
+    @unittest.skipUnless(shutil.which('debugfs') and shutil.which('mkfs.ext4'), 'requires e2fsprogs')
+    def test_real_debugfs_extracts_storage_into_a_space_and_quote_path(self):
+        with tempfile.TemporaryDirectory(prefix='cubby space ') as directory:
+            root = Path(directory)
+            seed = root / 'seed'
+            seed.mkdir()
+            (seed / '.please_resize_me').touch()
+            (seed / 'stock-file').write_text('stock data')
+            filesystem = root / 'storage.ext4'
+            with filesystem.open('wb') as stream:
+                stream.truncate(8 * 1024 ** 2)
+            subprocess.run(['mkfs.ext4', '-q', '-F', '-E', f'root_owner={os.getuid()}:{os.getgid()}',
+                            '-d', str(seed), str(filesystem)], check=True, capture_output=True)
+            # Keep this regular-file fixture runnable without a root namespace:
+            # mkfs creates lost+found owned by root regardless of root_owner.
+            subprocess.run(['debugfs', '-w', '-R', 'rmdir /lost+found', str(filesystem)],
+                           check=True, capture_output=True)
+            storage = root / 'output "quoted" \\ storage'
+            storage.mkdir()
+            image.extract_storage(filesystem, storage)
+            self.assertEqual((storage / 'stock-file').read_text(), 'stock data')
+            image.validate_storage_seed(storage)
+            # debugfs reports a failed rdump on stderr but still exits zero.
+            with self.assertRaisesRegex(ValueError, 'extraction'):
+                image.extract_storage(filesystem, root / 'missing' / 'destination')
+
     def gpt(self):
         mbr = bytearray(b'B' * 512)
         mbr[446:510] = bytes(64)
