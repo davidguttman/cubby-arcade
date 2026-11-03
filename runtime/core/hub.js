@@ -78,6 +78,9 @@ function mount(host){
  setBadge(element(card,'span','card-badge'),game.id);
  card.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')preview(game);});card.addEventListener('focus',()=>preview(game));
  }
+ // Entering Store opens its first offer; later ownership updates preserve an
+ // explicit preview. Library keeps the resting-cover discovery flow.
+ if(state.view==='store'&&!state.detail){preview(entries()[0]);return;}
  const keep=entries().find(g=>g.id===(state.detail?.id||featured?.id));feature(keep||entries()[0]);}
  function preview(game){if(state.detail?.id===game.id&&!detail.hidden)return;pausePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
  const stage=element(detail,'div','stage');

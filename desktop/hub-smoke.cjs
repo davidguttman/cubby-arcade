@@ -20,12 +20,14 @@ async function checkStartup(win){
     await fixture(async({host,selected,assert,library,catalog})=>{
       catalog.resolve([game]);await tick();library.resolve([]);await tick();selected('store');
       assert(host.querySelector('.game-card'),'Empty startup did not show ready catalog');
+      assert(!host.querySelector('.detail').hidden&&host.querySelector('.download-game'),'Store startup must open the first game preview and download action');
       host.querySelector('[aria-label="library"]').click();selected('library');
       assert(host.querySelector('.shelf-status.empty'),'Manually chosen empty Library missing');
     });
     await fixture(async({host,selected,assert,library,catalog})=>{
       library.resolve([]);await tick();selected('store');assert(host.querySelector('.shelf-status.loading'),'Store must retain catalog loading state');
       catalog.resolve([game]);await tick();assert(host.querySelector('.game-card'),'Late catalog did not populate Store');
+      assert(!host.querySelector('.detail').hidden,'Late catalog must open its first game');
       host.querySelector('.game-card').click();host.querySelector('.download-game').click();await tick();selected('store');
       host.querySelector('[aria-label="library"]').click();host.querySelector('.game-card').click();
       host.querySelector('.uninstall-game').click();host.querySelector('.confirm-uninstall').click();await tick();selected('library');
@@ -35,6 +37,19 @@ async function checkStartup(win){
       library.resolve([]);catalog.resolve([]);await tick();selected('store');assert(host.querySelector('.shelf-status.empty'),'Empty catalog should stay on Store');
     });
     await fixture(async({selected,library,catalog})=>{catalog.resolve([game]);library.resolve([game]);await tick();selected('library');});
+    await fixture(async({host,hub,selected,assert,library,catalog})=>{
+      const first={...game,id:'catalog-first'},second={...game,id:'catalog-second'};
+      library.resolve([game]);catalog.resolve([first,second]);await tick();selected('library');
+      assert(host.querySelector('.detail').hidden,'Library must keep its resting grid');
+      host.querySelector('[aria-label="store"]').click();selected('store');
+      assert(hub.state.detail?.id===first.id&&!host.querySelector('.detail').hidden,'Store must select the first catalog game');
+      assert(host.querySelector('.game-card.is-selected')?.dataset.gameId===first.id,'First Store card must be visibly selected');
+      host.querySelector('[data-game-id="'+second.id+'"]').click();
+      const media=host.querySelector('.preview-media'),favorite=host.querySelector('.favorite');favorite.focus();
+      await tick();assert(hub.state.detail?.id===second.id&&host.querySelector('.preview-media')===media&&document.activeElement===favorite,'Explicit second-game preview/focus was replaced');
+      host.querySelector('[aria-label="options"]').click();host.querySelector('[aria-label="store"]').click();
+      assert(hub.state.detail?.id===first.id,'Entering Store must default to its first game, not the prior featured cover');
+    });
     await fixture(async({host,selected,assert,library,catalog})=>{
       catalog.resolve([game]);library.reject(Error('Discovery failed'));await tick();selected('library');assert(host.querySelector('.shelf-status.error'),'Failed discovery was treated as empty');
     });
@@ -53,7 +68,7 @@ async function checkStartup(win){
       setEntries([game]);notify({[game.id]:{phase:'installed',version:'1'}});await tick();selected('library');
       setEntries([]);notify({[game.id]:{phase:'installed',version:'2'}});await tick();selected('library');
     });
-    return {emptyStartup:true,nonemptyStartup:true,failedDiscovery:true,pendingNavigation:true,previewPreserved:true,laterRefresh:true};
+    return {emptyStartup:true,nonemptyStartup:true,failedDiscovery:true,pendingNavigation:true,previewPreserved:true,laterRefresh:true,storeFirstGame:true};
   })()`);
 }
 /* Exercised inside the real renderer by --smoke, not a mocked UI. */
