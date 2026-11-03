@@ -236,7 +236,8 @@ installed games through explicit versioned package updates, never OS sync.
 The shared touch deck places a compact cross-shaped D-pad on the left and a
 lettered Xbox face-button diamond on the right (Y top, X left, B right, A bottom).
 Adjacent circular buttons sit roughly 5px apart without shrinking touch targets.
-L/R shoulder buttons sit above the outer corners. Select (−) and Start (+) sit
+L/R shoulder buttons sit in a separate row above the clusters. Select (−) and
+Start (+) sit
 below; Exit remains separate in the upper-left.
 Pointer presses emit the matching logical button; standard browser gamepads
 retain A/B on indices 0/1 and provide X/Y on indices 2/3 and L/R on indices 4/5.

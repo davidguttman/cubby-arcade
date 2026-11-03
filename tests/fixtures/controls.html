@@ -33,7 +33,7 @@ window.verifyLayout=()=>{
   }
   for(const button of ['a','b','x','y'])if(document.querySelector('.control-'+button).textContent!==button.toUpperCase())failures.push('missing face letter '+button);
   const shoulderL=rect('.control-l'),shoulderR=rect('.control-r');
-  if(!(shoulderL.top<u.top&&shoulderL.left<u.left&&shoulderR.top<y.top&&shoulderR.left>y.left))failures.push('shoulders not above outer corners');
+  if(!(shoulderL.bottom<=u.top-12&&shoulderL.left<u.left&&shoulderR.bottom<=y.top-12&&shoulderR.left>y.left))failures.push('shoulders not separated above clusters');
   for(const button of ['l','r'])if(document.querySelector('.control-'+button).textContent!==button.toUpperCase())failures.push('missing shoulder letter '+button);
   if(document.querySelector('.control-start').textContent!=='+')failures.push('Start is not plus');
   if(document.querySelector('.control-select').textContent!=='\u2212')failures.push('Select is not minus');
