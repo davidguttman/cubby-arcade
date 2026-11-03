@@ -9,6 +9,10 @@ test('desktop protocol confines assets and sender game scope',()=>{
   assert.equal(assetPath('hub://app/runtime/core/preferences.js','/tmp/site'),'/tmp/site/runtime/core/preferences.js');
   for(const url of ['https://evil/index.html','hub://evil/index.html','hub://app/%2e%2e/%2fetc/passwd','hub://app/foo%00'])assert.throws(()=>assetPath(url,'/tmp/site'));
   assert.equal(gameScope('hub://app/games/demo/play.html'),'demo');
+  assert.equal(gameScope('hub://app/%67ames/%64emo/%70lay.html'),'demo');
+  assert.equal(assetPath('hub://app/%67ames/%64emo/%70lay.html','/tmp/site'),'/tmp/site/games/demo/play.html');
+  assert.equal(assetPath('hub://app/games/demo/100%25.png','/tmp/site'),'/tmp/site/games/demo/100%.png');
+  for(const name of ['/games%2fdemo/play.html','//games/demo/play.html','/%2567ames/demo/play.html','/games/demo/%2e%2e/secret'])assert.throws(()=>assetPath('hub://app'+name,'/tmp/site'));
   assert.throws(()=>gameScope('hub://app/'));assert.throws(()=>gameScope('https://app/games/demo/'));
 });
 test('managed disk library overrides bundled demo and removal never resurrects it',()=>{
@@ -27,6 +31,7 @@ test('managed disk library overrides bundled demo and removal never resurrects i
     fs.symlinkSync('releases/1',path.join(games,'test-game/current'));
     assert.equal(library.entries()[0].id,'test-game');
     assert.equal(library.file('hub://app/games/test-game/index.html'),path.join(release,'index.html'));
+    assert.equal(library.file('hub://app/%67ames/%74est-game/%69ndex.html'),path.join(release,'index.html'));
     assert.throws(()=>library.file('hub://app/games/test-game/manifest.json'));
     assert.throws(()=>library.file('hub://app/games/bundled/index.html'));
     fs.unlinkSync(path.join(games,'test-game/current'));assert.deepEqual(library.entries(),[]);

@@ -3,14 +3,18 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const {CloudHub}=require('./cloud.cjs');
 const {GameInstaller}=require('./installer.cjs');
-const {assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=require('./host.cjs');
+const {TokenAccount,GameLauncher}=require('./tokens.cjs');
+const {assetName,assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=require('./host.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
+const tokenSmoke=process.argv.includes('--token-smoke');
 const installSmoke=process.argv.includes('--install-smoke');
-const smoke=process.argv.includes('--smoke')||installSmoke;
+const smoke=process.argv.includes('--smoke')||installSmoke||tokenSmoke;
 const env=name=>process.env['CUBBY_ARCADE_'+name]??process.env['HUB_'+name];
 const {userDataPath}=require('./profile.cjs');
 app.setName('Cubby Arcade');
 app.setPath('userData',userDataPath({appData:app.getPath('appData'),temp:app.getPath('temp'),packaged:app.isPackaged,smoke,override:env('USER_DATA')}));
+// One writer per local profile keeps its test budget and game selectors coherent.
+if(!app.requestSingleInstanceLock())app.exit(0);
 app.whenReady().then(async()=>{
   const site=smoke&&env('SMOKE_SITE')?path.resolve(env('SMOKE_SITE')):app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
   const store=new SaveStore(path.join(app.getPath('userData'),'saves'));
@@ -18,7 +22,8 @@ app.whenReady().then(async()=>{
   const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),...(smoke&&env('SMOKE_OFFLINE')==='1'?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
   await cloud.refresh();
   console.log('Hub shell: '+cloud.source);
-  let hubActive=true,win;
+  let hubActive=true,win,launcher,servedDocuments=new Set();
+  const account=new TokenAccount(path.join(app.getPath('userData'),'account.json'));
   const installer=new GameInstaller(library,{canActivate:()=>hubActive,onChange:states=>{
     if(win&&!win.isDestroyed()&&hubActive)win.webContents.send('hub:install-state',states);
   }});
@@ -27,13 +32,13 @@ app.whenReady().then(async()=>{
   await installer.seedBundle();
   protocol.handle('hub',async request=>{
     try{
-      const url=new URL(request.url);
-      if(url.pathname==='/report'&&request.method==='POST')return new Response(null,{status:204});
+      const pathname=assetName(request.url);
+      if(pathname==='/report'&&request.method==='POST')return new Response(null,{status:204});
       if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405});
       assetPath(request.url,site);
       const file=library.file(request.url);
-      let data=await cloud.read(url.pathname);
-      if(url.pathname==='/catalog'){
+      let data=await cloud.read(pathname);
+      if(pathname==='/catalog'){
         const local=library.entries();
         data=Buffer.from(JSON.stringify(registry.map(entry=>{
           const installed=local.find(game=>game.id===entry.id);
@@ -41,13 +46,13 @@ app.whenReady().then(async()=>{
             ...(entry.attract?{attract:installed?.attract||new URL(entry.attract,cloud.origin).href}:{})};
         })));
       }
-      if(!data)data=['/library','/catalog'].includes(url.pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
-      if(url.pathname.startsWith('/games/')&&path.extname(file).toLowerCase()==='.html'){
+      if(!data)data=['/library','/catalog'].includes(pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
+      if(pathname.startsWith('/games/')&&path.extname(file).toLowerCase()==='.html'){
         let html=data.toString('utf8');const tag='<script src="/runtime/core/preferences.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script>';
         if(!html.includes(tag)){const match=/<!doctype[^>]*>/i.exec(html),at=match?match.index+match[0].length:0;data=Buffer.from(html.slice(0,at)+tag+html.slice(at));}
       }
       const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.webm':'video/webm','.mp4':'video/mp4','.mp3':'audio/mpeg','.png':'image/png'};
-      const headers={'Content-Type':mime[path.extname(file)]||(['/library','/catalog'].includes(url.pathname)?'application/json':'application/octet-stream'),'Accept-Ranges':'bytes','Cache-Control':'no-store'};
+      const headers={'Content-Type':mime[path.extname(file)]||(['/library','/catalog'].includes(pathname)?'application/json':'application/octet-stream'),'Accept-Ranges':'bytes','Cache-Control':'no-store'};
       let body=data,status=200;
       const range=request.headers.get('range');
       if(range){
@@ -57,6 +62,7 @@ app.whenReady().then(async()=>{
         body=data.subarray(start,end+1);status=206;headers['Content-Range']=`bytes ${start}-${end}/${data.length}`;
       }
       headers['Content-Length']=String(body.length);
+      if(request.method==='GET'&&pathname.startsWith('/games/')&&path.extname(file).toLowerCase()==='.html')servedDocuments.add(pathname);
       return new Response(request.method==='HEAD'?null:body,{status,headers});
     }catch{return new Response(null,{status:404});}
   });
@@ -71,7 +77,15 @@ app.whenReady().then(async()=>{
   });
   win=new BrowserWindow({show:!smoke,width:960,height:640,fullscreen:!smoke,autoHideMenuBar:true,backgroundColor:'#101614',
     webPreferences:{offscreen:smoke,preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  launcher=new GameLauncher(account,library,{navigate:async url=>{
+    servedDocuments.clear();hubActive=false;await win.loadURL(url);
+    if(!servedDocuments.has(assetName(url)))throw Error('Game document unavailable');
+  },onChange:state=>{if(hubActive&&!win.isDestroyed())win.webContents.send('hub:account-state',state);}});
+  async function launchGame(id){try{return await launcher.launch(id);}catch(error){if(!hubActive&&!win.isDestroyed())await win.loadURL('hub://app/');throw error;}}
   function authorizeHub(event){requireHubFrame(event);if(event.sender!==win.webContents)throw Error('Unknown hub window');}
+  ipcMain.handle('hub:account',event=>{authorizeHub(event);return launcher.status();});
+  ipcMain.handle('hub:refill',event=>{authorizeHub(event);const state=account.refill();win.webContents.send('hub:account-state',state);return state;});
+  ipcMain.handle('hub:launch',(event,id)=>{authorizeHub(event);return launchGame(id);});
   ipcMain.handle('hub:library',event=>{authorizeHub(event);return library.entries();});
   ipcMain.handle('hub:install',async(event,id)=>{authorizeHub(event);await installer.install(id);return library.entries();});
   ipcMain.handle('hub:install-status',event=>{authorizeHub(event);return installer.status();});
@@ -84,17 +98,37 @@ app.whenReady().then(async()=>{
     if(isMainFrame)hubActive=false;
   });
   win.webContents.on('did-navigate',(_event,url)=>{
-    const parsed=new URL(url);hubActive=parsed.protocol==='hub:'&&parsed.hostname==='app'&&['/','/index.html'].includes(parsed.pathname);
+    try{hubActive=['/','/index.html'].includes(assetName(url));}catch{hubActive=false;}
+    if(hubActive)launcher.home();
     if(hubActive)installer.checkUpdates().catch(error=>console.error('Game update check:',error.message));
   });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
-  win.webContents.on('will-navigate',(event,url)=>{try{assetPath(url,site);}catch{event.preventDefault();}});
-  win.webContents.on('will-redirect',(event,url)=>{try{assetPath(url,site);}catch{event.preventDefault();}});
+  function guardNavigation(event,url){try{assetPath(url,site);
+    const pathname=assetName(url);
+    if(pathname.startsWith('/games/')){
+      if(!launcher.inSession(url)){
+        event.preventDefault();
+        const source=assetName(win.webContents.getURL());
+        if(['/', '/index.html'].includes(source)){const entry=library.entries().find(game=>assetName('hub://app'+game.entrypoint)===pathname);if(entry)setImmediate(()=>launchGame(entry.id).catch(()=>{}));}
+      }else{
+        // Keep browser-relative assets and the shared system shell on the same
+        // canonical URL as disk identity, without starting/charging a session.
+        const canonical=new URL(url);canonical.pathname=pathname.split('/').map(encodeURIComponent).join('/');
+        if(canonical.href!==url){event.preventDefault();setImmediate(()=>win.loadURL(canonical.href).catch(()=>{}));}
+      }
+    }
+  }catch{event.preventDefault();}}
+  win.webContents.on('will-navigate',guardNavigation);
+  win.webContents.on('will-redirect',guardNavigation);
   win.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
   win.on('blur',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.pause()); window.handheldAudio?.suspend();').catch(()=>{}));
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
+  if(tokenSmoke){
+    try{await require('./token-smoke.cjs').run(win,launcher,account,library,{output:env('SMOKE_DIR')});app.exit(0);}
+    catch(error){console.error(error);app.exit(1);}return;
+  }
   if(installSmoke){
     try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:env('SMOKE_DIR')});app.exit(0);}
     catch(error){console.error(error);app.exit(1);}return;

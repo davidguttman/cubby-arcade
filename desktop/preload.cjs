@@ -5,6 +5,10 @@ function save(operation,game,key,value){
 }
 contextBridge.exposeInMainWorld('HandheldPlatformOptions',{
   kind:'desktop',bridge:{
+    account:()=>ipcRenderer.invoke('hub:account'),
+    refillTokens:()=>ipcRenderer.invoke('hub:refill'),
+    launch:id=>ipcRenderer.invoke('hub:launch',id),
+    onAccountState:callback=>{const listener=(_event,state)=>callback(state);ipcRenderer.on('hub:account-state',listener);return ()=>ipcRenderer.removeListener('hub:account-state',listener);},
     library:()=>ipcRenderer.invoke('hub:library'),
     install:id=>ipcRenderer.invoke('hub:install',id),
     installStatus:()=>ipcRenderer.invoke('hub:install-status'),

@@ -584,3 +584,66 @@ The self-terminating `--install-smoke` option additionally accepts an isolated
 with HTTPS fetch fixtures, without running a server. `CUBBY_ARCADE_SMOKE_DIR` captures
 retry/progress/installed/mobile evidence. Keep fixture profiles separate from
 family/test profiles; this smoke installs its demo and stages updates.
+
+### Family arcade trial: one token per launch
+
+The desktop's local test profile starts with **10 tokens once**. Starting an
+installed game spends one token after its main document loads successfully.
+There is no play timer: pause, resume, focus changes, and reloading the current
+game do not spend more. Returning to the hub ends that play; launching again
+spends another token. Downloads and updates are free. A missing game, failed
+load, or exhausted budget cannot spend a token. Rapid duplicate activation shares
+one launch. The native window also handles older cached UIs that navigate directly
+to a game; renderer-side localStorage cannot refill the native account.
+
+The hub displays countable coin pictures and a one-coin Play control. At zero,
+Play is disabled. Options → keyboard/person picture opens the separate **Adult
+setup** flow; **Add 10 test tokens** replenishes this profile. This deliberate
+adult entry is a test management flow, not parental authentication or a PIN lock.
+The browser/VM preview without native token capability remains a free demo and
+does not pretend to enforce this budget.
+
+The native account lives in `account.json` under Electron's user-data directory,
+separate from game saves and installed releases. Atomic writes and a single
+application writer per profile preserve the balance across restarts. Corrupt or
+unreadable account data fails closed without silently issuing another ten tokens;
+preserve it for adult diagnosis. Charging happens only after a successful load,
+so an interrupted launch before completion does not lose a token. This trial has
+no server account, cross-device sync, real-money checkout, creator payouts, or
+anti-tampering guarantees against someone with access to the profile files.
+
+For family testing:
+
+1. Build/install the new desktop executable once (`npm run desktop:build`), and
+   add `dist/CubbyArcade-linux-x64/CubbyArcade` as a non-Steam game. Existing native
+   executables need replacement for the new installer and token bridge.
+2. Children browse the Store, download games for free, and spend a token to play.
+3. Publish a new game/release to the directory served by the configured HTTPS
+   host (the local Jump preview serves `.cache/web`):
+
+   ```sh
+   uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby-arcade.onrender.com/
+   ```
+
+   Existing installed games check their stable manifest on hub entry, download
+   updates in the background, and activate only outside gameplay. Publishing
+   updates is independent of rebuilding the desktop. This command writes the
+   selected local served directory; it is not a remote uploader. An explicit
+   `web.py build` replaces its generated export, so include all desired packages
+   when rebuilding or use the incremental publishing command above.
+
+Versioning uses SemVer: new backward-compatible product/distribution capabilities
+are minor releases; fixes to an existing capability are patches; breaking runtime
+or install contracts require a major release. Game package versions are immutable:
+any changed bundled core or asset requires a distinct game version. This build is
+desktop **0.2.0**, with the revised Line Cutter test package **0.2.1**. No external
+store release or hardware certification is implied by local packaging.
+
+Run native budget tests with `node --test tests/launch_tokens.cjs`. The isolated
+`--token-smoke` executable mode verifies the actual pictorial UI, duplicate launch,
+10 → 9 → 8 spending, free resume/reload, failed launch, legacy navigation, zero
+balance, adult refill, and disk persistence. Use a fresh `CUBBY_ARCADE_USER_DATA` profile,
+`CUBBY_ARCADE_SMOKE_SITE` pointing to a newly generated export, `CUBBY_ARCADE_SMOKE_OFFLINE=1`, and
+optional `CUBBY_ARCADE_SMOKE_DIR` for screenshots. A second run with the same profile and
+`CUBBY_ARCADE_TOKEN_RESTART_EXPECT=9` verifies persistence across actual process restarts.
+Never use smoke modes with a family profile.
