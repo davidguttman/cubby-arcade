@@ -5,7 +5,6 @@ import tempfile
 import unittest
 import zipfile
 import web
-from runtime import game_shell
 
 class WebHostTests(unittest.TestCase):
     def test_browser_play_alias_resolves_preview_launcher_not_site_landing(self):
@@ -26,8 +25,8 @@ class WebHostTests(unittest.TestCase):
             output = root / 'output'
             web.build(output, [package])
             self.assertEqual((output / 'index.html').read_bytes(), (web.HERE / 'runtime/index.html').read_bytes())
-            self.assertEqual((output / 'games/demo/index.html').read_bytes(), game_shell.inject(payload['index.html']))
-            self.assertEqual(json.loads((output / 'library').read_text())[0]['entrypoint'], '/games/demo/index.html')
+            self.assertFalse((output / 'games').exists())
+            self.assertEqual(json.loads((output / 'library').read_text()), [])
             registry = json.loads((output / 'catalog').read_text())
             self.assertEqual(registry[0]['id'], 'demo')
             self.assertTrue(registry[0]['manifest_url'].endswith('/store/demo/manifest.json'))
@@ -54,9 +53,12 @@ class WebHostTests(unittest.TestCase):
             self.assertEqual((output / 'runtime/core/screen.css').read_bytes(), (web.HERE / 'runtime/core/screen.css').read_bytes())
             self.assertEqual((output / 'runtime/core/preferences.js').read_bytes(), (web.HERE / 'runtime/core/preferences.js').read_bytes())
             # An invalid replacement must leave the previous export intact.
+            previous_catalog = (output / 'catalog').read_bytes()
             with zipfile.ZipFile(package, 'a') as archive: archive.writestr('bad.txt', 'extra')
             with self.assertRaises(ValueError): web.build(output, [package])
-            self.assertEqual((output / 'games/demo/index.html').read_bytes(), game_shell.inject(payload['index.html']))
+            self.assertEqual((output / 'catalog').read_bytes(), previous_catalog)
+            self.assertTrue((output / 'store/demo/manifest.json').is_file())
+            self.assertFalse((output / 'games').exists())
             unrelated = root / 'unrelated'
             unrelated.mkdir()
             with self.assertRaises(ValueError): web.build(unrelated, [])

@@ -8,28 +8,30 @@ const {assetName,assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=requ
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 const tokenSmoke=process.argv.includes('--token-smoke');
 const installSmoke=process.argv.includes('--install-smoke');
-const smoke=process.argv.includes('--smoke')||installSmoke||tokenSmoke;
+const uninstallSmoke=process.argv.includes('--uninstall-smoke');
+const smoke=process.argv.includes('--smoke')||installSmoke||tokenSmoke||uninstallSmoke;
+let explicitSmokeExit=false;
+function exitSmoke(code){explicitSmokeExit=true;app.exit(code);}
 const env=name=>process.env['CUBBY_ARCADE_'+name]??process.env['HUB_'+name];
 const {userDataPath}=require('./profile.cjs');
 app.setName('Cubby Arcade');
 app.setPath('userData',userDataPath({appData:app.getPath('appData'),temp:app.getPath('temp'),packaged:app.isPackaged,smoke,override:env('USER_DATA')}));
 // One writer per local profile keeps its test budget and game selectors coherent.
-if(!app.requestSingleInstanceLock())app.exit(0);
+if(!app.requestSingleInstanceLock())exitSmoke(0);
 app.whenReady().then(async()=>{
   const site=smoke&&env('SMOKE_SITE')?path.resolve(env('SMOKE_SITE')):app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
   const store=new SaveStore(path.join(app.getPath('userData'),'saves'));
   const library=new GameLibrary(site,env('GAMES_DIR')?path.resolve(env('GAMES_DIR')):path.join(app.getPath('userData'),'games'));
-  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),...(smoke&&env('SMOKE_OFFLINE')==='1'?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
+  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),...(uninstallSmoke||(smoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
   await cloud.refresh();
   console.log('Hub shell: '+cloud.source);
   let hubActive=true,win,launcher,servedDocuments=new Set();
   const account=new TokenAccount(path.join(app.getPath('userData'),'account.json'));
-  const installer=new GameInstaller(library,{canActivate:()=>hubActive,onChange:states=>{
+  const installer=new GameInstaller(library,{canActivate:()=>hubActive&&!launcher?.pending,onChange:states=>{
     if(win&&!win.isDestroyed()&&hubActive)win.webContents.send('hub:install-state',states);
   }});
   const registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
   installer.setCatalog(registry);
-  await installer.seedBundle();
   protocol.handle('hub',async request=>{
     try{
       const pathname=assetName(request.url);
@@ -88,6 +90,7 @@ app.whenReady().then(async()=>{
   ipcMain.handle('hub:launch',(event,id)=>{authorizeHub(event);return launchGame(id);});
   ipcMain.handle('hub:library',event=>{authorizeHub(event);return library.entries();});
   ipcMain.handle('hub:install',async(event,id)=>{authorizeHub(event);await installer.install(id);return library.entries();});
+  ipcMain.handle('hub:uninstall',async(event,id)=>{authorizeHub(event);await installer.uninstall(id);return library.entries();});
   ipcMain.handle('hub:install-status',event=>{authorizeHub(event);return installer.status();});
   ipcMain.handle('hub:quit',event=>{
     requireHubFrame(event);
@@ -125,19 +128,35 @@ app.whenReady().then(async()=>{
   win.on('blur',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.pause()); window.handheldAudio?.suspend();').catch(()=>{}));
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
-  if(tokenSmoke){
-    try{await require('./token-smoke.cjs').run(win,launcher,account,library,{output:env('SMOKE_DIR')});app.exit(0);}
-    catch(error){console.error(error);app.exit(1);}return;
+  if(uninstallSmoke){
+    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,store,account,{output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
+    catch(error){console.error(error);exitSmoke(1);}return;
   }
   if(installSmoke){
-    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:env('SMOKE_DIR')});app.exit(0);}
-    catch(error){console.error(error);app.exit(1);}return;
+    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:env('SMOKE_DIR')});exitSmoke(0);}
+    catch(error){console.error(error);exitSmoke(1);}return;
   }
   if(smoke){
     const output=env('SMOKE_DIR');
     try{
       await new Promise(resolve=>setTimeout(resolve,1500));
       const shell={source:cloud.source,...await win.webContents.executeJavaScript(`(()=>{const previous=localStorage.getItem('cloud-smoke-visits');localStorage.setItem('cloud-smoke-visits',String(Number(previous||0)+1));return {marker:document.documentElement.dataset.cloudSmoke||null,previousVisits:previous};})()`)};
+      // A smoke profile starts empty too: install explicitly through the same
+      // verified Store path a user invokes, never by importing bundle bytes.
+      const initialLibrary=installer.library.entries();
+      if(!initialLibrary.length){
+        const empty=await win.webContents.executeJavaScript('!document.querySelector(".game-card") && !!document.querySelector(".shelf-status.empty")');
+        if(!empty)throw Error('Fresh Library is not empty');
+        if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'empty-library.png'),(await win.webContents.capturePage()).toPNG());}
+        if(!registry.length)throw Error('Smoke needs an explicit Store offer');
+        await installer.install(registry[0].id);
+        await win.loadURL('hub://app/');
+        await new Promise(resolve=>setTimeout(resolve,500));
+      }
+      if(tokenSmoke){
+        await require('./token-smoke.cjs').run(win,launcher,account,installer.library,{output});
+        exitSmoke(0);return;
+      }
       const hub=await require('./hub-smoke.cjs').checkHub(win,output);
       const library=await win.webContents.executeJavaScript('fetch("/library").then(r=>r.json())');
       if(!library.length)throw Error('Empty smoke library');
@@ -172,7 +191,9 @@ app.whenReady().then(async()=>{
       if(!await win.webContents.executeJavaScript('!!document.querySelector(".game-card")'))throw Error('System menu did not return to library');
       win.once('closed',()=>console.log('Desktop Quit closed window'));
       await win.webContents.executeJavaScript(`document.querySelector('[aria-label=options]').click();document.querySelector('.quit-app').click();document.querySelector('[aria-label=\"Confirm quit\"]').click();`);
-    }catch(error){console.error(error);app.exit(1);}
+    }catch(error){console.error(error);exitSmoke(1);}
   }
 });
-app.on('window-all-closed',()=>app.quit());
+// Explicit smoke exits must retain their status as the windows close; a normal
+// pictorial Quit still follows Electron's regular last-window shutdown path.
+app.on('window-all-closed',()=>{if(!explicitSmokeExit)app.quit();});

@@ -63,7 +63,7 @@ class GameLibrary{
     return {directory,manifest:m};
   }
   entries(){
-    if(!this.managed())return JSON.parse(fs.readFileSync(path.join(this.site,'library'),'utf8'));
+    if(!this.managed())return [];
     const result=[];
     for(const id of fs.readdirSync(this.games).sort()){
       try{
@@ -75,7 +75,7 @@ class GameLibrary{
   }
   file(raw){
     const bundled=assetPath(raw,this.site),name=assetName(raw);
-    if(!this.managed()||!name.startsWith('/games/'))return bundled;
+    if(!name.startsWith('/games/'))return bundled;
     const match=/^\/games\/([a-z0-9][a-z0-9-]{0,79})\/(.+)$/.exec(name);
     if(!match)throw Error('Invalid game path');
     const {directory,manifest}=this.release(match[1]);

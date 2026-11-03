@@ -8,7 +8,7 @@ async function run(win,launcher,account,library,options={}){
  async function capture(name){if(options.output){await fs.mkdir(options.output,{recursive:true});await new Promise(r=>setTimeout(r,350));await fs.writeFile(path.join(options.output,name+'.png'),(await win.webContents.capturePage()).toPNG());}}
  if((process.env.CUBBY_ARCADE_TOKEN_RESTART_EXPECT??process.env.HUB_TOKEN_RESTART_EXPECT)){assert(account.status().balance===Number((process.env.CUBBY_ARCADE_TOKEN_RESTART_EXPECT??process.env.HUB_TOKEN_RESTART_EXPECT)),'Balance reset at restart');console.log(JSON.stringify({restartPersisted:account.status().balance}));return;}
  assert(account.status().balance===10,'Use a fresh token smoke profile');
- const game=library.entries()[0];assert(game,'Bundled game missing');
+ const game=library.entries()[0];assert(game,'Explicitly installed smoke game missing');
  await wait(()=>evaluate('document.querySelectorAll(".token-budget span").length===10'),'ten pictorial coins');await capture('ten-tokens');
  await evaluate(`document.querySelector('.game-card').click();document.querySelector('.play-game').click();document.querySelector('.play-game')?.click()`);
  await wait(()=>account.status().balance===9,'first launch debit');assert(win.webContents.getURL().includes('/games/'),'First launch failed');

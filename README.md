@@ -249,14 +249,13 @@ Check `jump.sh ls --json` for current status rather than assuming it is running.
 The repo's compose file runs only a Python static preview; Jump owns its lifecycle
 and HTTPS routing. Re-run the build after editing shared code/package sources.
 `web.py build path/to/game.game.zip ...` exports any explicitly selected trusted
-packages after the same installer validation. Default build uses the pinned
-Line Cutter package. Network fetch is separate; cached builds work
-offline. Generated `.cache/web` and game assets are ignored, not checked in.
+packages to Store routes after the same installer validation. The default build
+exports only the launcher and discovery pointers, with an empty Library and no
+game payloads. Generated `.cache/web` is ignored, not checked in.
 
-The export copies `runtime/index.html` and shared core bytes, and copies only
-manifest-inventoried game assets from validated packages into `/games/<id>/`.
-It is not a second launcher. Package changes are released by their game repository;
-web and handheld can install/export that same archive. A browser's saves stay
+The export copies `runtime/index.html` and shared core bytes, never preinstalled
+`/games/<id>/` assets. It is not a second launcher. Package changes are released
+by their game repository; native hosts install validated releases through the Store. A browser's saves stay
 local to its HTTPS origin/profile; they are not synced to the VM or another host.
 
 Library arrow pictures select, the play picture opens the title/trailer, and
@@ -362,10 +361,11 @@ uv run python -m runtime.catalog --root .cache/desktop-profile/games installed
 uv run python -m runtime.catalog --root .cache/desktop-profile/games remove line-cutter
 ```
 
-Without a managed directory, a fresh desktop uses the bundled demo library.
-Once `<userData>/games` exists it becomes the **entire** game library, including
-when empty: removing a game cannot resurrect its bundled copy. `CUBBY_ARCADE_GAMES_DIR`
-can explicitly select another managed directory (create it before launching).
+A fresh desktop starts with an empty Library. Explicit Store or CLI installs
+are stored in `<userData>/games`, which is the **entire** game library, including
+when empty. Existing installs and saves remain intact; no bundled copies are
+imported or used as a fallback. `CUBBY_ARCADE_GAMES_DIR` can explicitly select
+another managed directory (create it before launching).
 The launcher/core still come from the app export; game bytes come from installed
 releases. Close/reopen a library page after management changes to refresh it.
 Run management operations serially and close a running game before updating or
@@ -560,9 +560,9 @@ The native host resolves the selected ID from its validated catalog, fetches its
 HTTPS release manifest and archive, verifies compressed size/SHA-256 and every
 inventory file, and rejects unsupported runtimes, identity mismatches, ZIP path
 traversal, duplicate/unlisted files, directories, symlinks, and oversized content.
-It requires no system Python. A pristine desktop imports its bundled archives
-atomically so adding a downloaded game does not hide the shipped game. Existing
-externally managed libraries remain authoritative.
+It requires no system Python. A pristine desktop starts with an empty Library.
+Only an explicit Store install adds a game; launchers never import bundled games.
+Existing disk installs and separate saves remain authoritative and are not deleted.
 
 Every return to the hub checks installed games' stable manifest URLs in the
 background. Downloads may finish during gameplay, but activation waits until the
@@ -636,16 +636,23 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.4.0**, adding domain-free relative download URLs for both file and
-ZIP releases while retaining absolute-URL compatibility. Replace older desktop
-executables before publishing relative-path game manifests. Source-hosted previews
-still pin upstream Line Cutter **0.3.0** as their historical offline seed. No external
-store release or hardware certification is implied by local packaging.
+desktop **0.5.0**, adding Store-only game discovery and save-preserving uninstall
+with a pictorial confirmation. Fresh libraries contain no bundled games; Line
+Cutter and Trail Mix are installed explicitly from their game-owned publishers.
+Domain-free relative download URLs for file and ZIP releases remain supported,
+alongside absolute URLs. Replace older desktop executables to use uninstall and
+relative-path game manifests. Historical hosted archives remain available for
+compatibility, not as a fresh-library seed. No external store release or hardware
+certification is implied by local packaging.
 
 Run native budget tests with `node --test tests/launch_tokens.cjs`. The isolated
 `--token-smoke` executable mode verifies the actual pictorial UI, duplicate launch,
 10 → 9 → 8 spending, free resume/reload, failed launch, legacy navigation, zero
-balance, adult refill, and disk persistence. Use a fresh `CUBBY_ARCADE_USER_DATA` profile,
+balance, adult refill, and disk persistence. A fresh smoke profile first verifies
+an empty Library, then explicitly installs the first Store offer through the
+normal verified installer before the budget checks. Store download access is
+required even when `CUBBY_ARCADE_SMOKE_OFFLINE=1` disables cloud-shell refresh.
+Use a fresh `CUBBY_ARCADE_USER_DATA` profile,
 `CUBBY_ARCADE_SMOKE_SITE` pointing to a newly generated export, `CUBBY_ARCADE_SMOKE_OFFLINE=1`, and
 optional `CUBBY_ARCADE_SMOKE_DIR` for screenshots. A second run with the same profile and
 `CUBBY_ARCADE_TOKEN_RESTART_EXPECT=9` verifies persistence across actual process restarts.
@@ -685,12 +692,14 @@ Render can deploy source `main` with the checked-in `render.yaml`:
 
 ```sh
 uv run python hosting/build.py
-# Render: python3 hosting/build.py ; python3 hosting/serve.py
+# Render build: python3 -m pip install -r requirements.txt && python3 hosting/build.py
+# Render start: python3 hosting/serve.py
 ```
 
-The stdlib build fetches/verifies the pinned upstream archive, exports the current
-launcher and both Line Cutter and Little Camp, and keeps all immutable previously
-published releases. `hosting/releases/` contains the exact historical distribution
+The build uses pinned PyYAML for the hand-authored Store catalog and fetches/verifies the historical pinned upstream archive, exports
+the launcher with an empty Library, and lists only Line Cutter and Trail Mix in
+the Store. It keeps all immutable previously published releases (including the
+unlisted Little Camp) for existing clients. `hosting/releases/` contains the exact historical distribution
 archives, not editable game source. Their size/hash/provenance inventory is
 `hosting/releases.json`; old package and media URLs remain byte-identical.
 The server serves only `.cache/web`, supports CORS/media ranges, and revalidates
@@ -704,20 +713,64 @@ releases without a Cubby rebuild. Forwarding is bounded to 256 KiB and a 20-seco
 socket timeout, validates schema/identity, rejects upstream redirects, and returns
 502 on failure; it never substitutes a stale local release snapshot. This retains
 compatibility with installers that reject metadata redirects. Former versioned
-ZIP/media URLs stay byte-identical. Little Camp's publication remains on Cubby.
+ZIP/media URLs stay byte-identical. Little Camp is no longer listed in the Store.
 The generated forwarding map is server-private, not part of the downloaded shell.
 
-Line Cutter 0.3.0 is retained as a historical ZIP bootstrap/offline preview, not
+Line Cutter 0.3.0 is retained as a historical hosted ZIP, not
 a requirement for new releases. New game-owned releases use the ZIP-free schema-2
 file manifest and single GitHub-release workflow documented above.
 That seed lock does not pin the updater: future Line Cutter releases need no new
 ZIP, `games.lock.json` edit, or Cubby release.
 
-The browser preview is the pinned offline package baseline; native game updates
-resolve the publisher manifest independently on hub entry and activate outside
-gameplay. Updating Line Cutter's website/package/manifest does not require a
-Cubby launcher release. Updating this repo's pin changes fresh bundles/browser
-previews only. Existing game IDs, origins, storage keys and token logic stay
-unchanged. Do not run Cubby's local `runtime.publishing` command for a game whose
-manifest is owned by its external publisher; publish it in the game's repository.
+`web.py build` exports a shell-only fallback with the reviewed pointers in
+`hosting/catalog.yaml` (parsed with `yaml.safe_load` and registry validation; generated
+`/catalog` remains JSON): no payload download, no `games/`, no Store archives in
+the desktop bundle, and `library` is always empty. Explicit package arguments
+publish those packages to Store routes only; they never preinstall them. Browser
+previews show discovery metadata; installation requires a capable native host.
+Native game updates resolve the publisher manifest independently on hub entry
+and activate outside gameplay. Updating Line Cutter does not require a Cubby
+launcher release. Existing game IDs, origins, storage keys and tokens are unchanged.
 
+Trail Mix owns its schema-2 releases at `https://trailmix.david.app`.
+The Store follows its stable `/arcade/manifest.json` pointer and uses
+`/discovery/cover.png` and `/discovery/trailer.webm` for discovery media.
+The publisher manifest selects immutable versioned files; Cubby neither embeds
+nor pins a Trail Mix payload. Future game releases need no launcher release.
+`hosting/releases.json` retains only previously published historical archives;
+the unpublished temporary Trail Mix archive has been removed.
+Never rebuild or edit game bytes inside the launcher repository.
+
+Build dependencies are pinned in `pyproject.toml` / `uv.lock`. Regenerate Render’s
+`requirements.txt` with `uv export --locked --no-dev --no-hashes --no-emit-project --output-file requirements.txt`.
+Static serving itself uses only the Python standard library.
+
+### Uninstalling installed games
+
+Native game previews include a separate trash control. It opens a picture-only
+confirmation showing that game's cover. Cancel is initially selected; Back/Escape
+also cancels. Removing a game deletes its managed downloaded releases, not saves,
+favorites, settings, or tokens. The Store offers it for installation again, and
+reinstallation picks up the retained saves. Removal is unavailable during a launch,
+an install/update, or gameplay. Discovery-only web and older native bridges do not
+show an unsupported uninstall control.
+
+An isolated offline native smoke uses the checked-in historical test package and
+checks cancellation/default focus/repeat protection, failure/retry, actual IPC
+removal and reinstall, save retention, and game-frame rejection:
+
+```bash
+uv run python web.py build --output /tmp/cubby-uninstall-site
+CUBBY_ARCADE_USER_DATA="$(mktemp -d /tmp/cubby-uninstall-profile-XXXXXX)" \
+  CUBBY_ARCADE_SMOKE_SITE=/tmp/cubby-uninstall-site \
+  CUBBY_ARCADE_SMOKE_DIR=/tmp/cubby-uninstall-evidence \
+  ./node_modules/.bin/electron . --uninstall-smoke --ozone-platform=x11 --disable-gpu
+```
+
+Never run smoke modes against a family profile. The smoke captures desktop and
+narrow confirmation screenshots plus a JSON report in `CUBBY_ARCADE_SMOKE_DIR`.
+
+For a packaged `--uninstall-smoke` run, set
+`CUBBY_ARCADE_SMOKE_UNINSTALL_PACKAGE` to the absolute path of the historical
+`hosting/releases/line-cutter/0.2.1/line-cutter-0.2.1.game.zip` fixture. The desktop
+distribution does not contain that game archive.

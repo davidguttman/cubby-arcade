@@ -15,13 +15,13 @@ test('desktop protocol confines assets and sender game scope',()=>{
   for(const name of ['/games%2fdemo/play.html','//games/demo/play.html','/%2567ames/demo/play.html','/games/demo/%2e%2e/secret'])assert.throws(()=>assetPath('hub://app'+name,'/tmp/site'));
   assert.throws(()=>gameScope('hub://app/'));assert.throws(()=>gameScope('https://app/games/demo/'));
 });
-test('managed disk library overrides bundled demo and removal never resurrects it',()=>{
+test('fresh library ignores bundled demos and explicit disk installs survive restarts',()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'hub-library-'));
   try{
     const site=path.join(root,'web'),games=path.join(root,'games');fs.mkdirSync(site);
     fs.writeFileSync(path.join(site,'library'),JSON.stringify([{id:'bundled'}]));
     const library=new GameLibrary(site,games);
-    assert.deepEqual(library.entries(),[{id:'bundled'}]);
+    assert.deepEqual(library.entries(),[]);assert.throws(()=>library.file('hub://app/games/bundled/index.html'));
     fs.mkdirSync(games);assert.deepEqual(library.entries(),[]);
     const release=path.join(games,'test-game/releases/1');fs.mkdirSync(release,{recursive:true});
     fs.writeFileSync(path.join(release,'index.html'),'game');

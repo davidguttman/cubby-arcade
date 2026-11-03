@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('HandheldPlatformOptions',{
     onAccountState:callback=>{const listener=(_event,state)=>callback(state);ipcRenderer.on('hub:account-state',listener);return ()=>ipcRenderer.removeListener('hub:account-state',listener);},
     library:()=>ipcRenderer.invoke('hub:library'),
     install:id=>ipcRenderer.invoke('hub:install',id),
+    uninstall:id=>ipcRenderer.invoke('hub:uninstall',id),
     installStatus:()=>ipcRenderer.invoke('hub:install-status'),
     onInstallState:callback=>{const listener=(_event,state)=>callback(state);ipcRenderer.on('hub:install-state',listener);return ()=>ipcRenderer.removeListener('hub:install-state',listener);},
     quit:()=>ipcRenderer.invoke('hub:quit'),saves(game){return {

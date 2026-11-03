@@ -27,10 +27,12 @@ test('ZIP inventory rejects duplicate/unlisted entries, directories, symlinks, o
   await assert.rejects(f.installer.install('demo'),undefined,change);assert.equal(f.lib.entries()[0].version,'1');
  }
 });
-test('native installation survives process restart and bundled seeding retains the shipped game alongside downloads',async t=>{
- const f=fixture(t);const a=archive(f);const store=path.join(f.lib.site,'store/demo/1');fs.mkdirSync(store,{recursive:true});fs.writeFileSync(path.join(store,'demo.zip'),a.bytes);fs.writeFileSync(path.join(f.lib.site,'store/demo/manifest.json'),JSON.stringify(a.release));
+test('fresh profile never auto-installs bundled games; explicit installs survive restart',async t=>{
+ const f=fixture(t);const a=archive(f);offer(f,a);
  fs.writeFileSync(path.join(f.lib.site,'library'),JSON.stringify([{id:'demo',version:'1',runtime:'web',entrypoint:'/games/demo/index.html',artwork:'/games/demo/art.svg'}]));
- fs.writeFileSync(path.join(f.lib.site,'catalog'),JSON.stringify([{id:'demo',title:'Demo',manifest_url:'https://store.test/demo.json',artwork:'https://store.test/art.svg'}]));
- await f.installer.seedBundle();assert.equal(new GameLibrary(f.lib.site,f.lib.games).entries()[0].version,'1');
+ assert.deepEqual(f.lib.entries(),[]);
+ await f.installer.checkUpdates();assert.deepEqual(f.lib.entries(),[]);
+ await f.installer.install('demo');
+ assert.equal(new GameLibrary(f.lib.site,f.lib.games).entries()[0].version,'1');
  f.documents.clear();await f.installer.checkUpdates();assert.equal(f.lib.entries()[0].version,'1');
 });

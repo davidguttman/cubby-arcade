@@ -7,14 +7,14 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
-from runtime import packages, game_shell, publishing, public_site, catalog
+from runtime import publishing, public_site, catalog
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE / '.cache/web'
 DEFAULT_ORIGIN = 'https://cubby-arcade.onrender.com'
 
 
-def build(output, archives, base_url=DEFAULT_ORIGIN, manifest_urls=None):
+def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, registry=None):
     archives = list(archives)
     output = Path(output).resolve()
     if output == HERE or HERE.is_relative_to(output):
@@ -25,27 +25,12 @@ def build(output, archives, base_url=DEFAULT_ORIGIN, manifest_urls=None):
     # Validate everything before replacing a previous export.
     with tempfile.TemporaryDirectory(dir=output.parent, prefix='.web-') as temporary:
         stage = Path(temporary)
-        installed = stage / 'installed'
-        for archive in archives:
-            packages.install(archive, installed)
         site = stage / 'site'
         site.mkdir()
         shutil.copyfile(HERE / 'runtime/index.html', site / 'index.html')
         shutil.copytree(HERE / 'runtime/core', site / 'runtime/core', ignore=shutil.ignore_patterns('__pycache__'))
-        library = packages.library(installed)
-        for entry in library:
-            release = (installed / entry['id'] / 'current').resolve()
-            manifest = packages.validate_manifest(json.loads((release / 'manifest.json').read_text()))
-            target = site / 'games' / entry['id']
-            for name in manifest['files']:
-                destination = target / name
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if destination.suffix.lower() == '.html':
-                    destination.write_bytes(game_shell.inject((release / name).read_bytes()))
-                else:
-                    shutil.copyfile(release / name, destination)
         (site / '.handheld-web-export').write_text('generated\n')
-        (site / 'library').write_text(json.dumps(library, sort_keys=True) + '\n')
+        (site / 'library').write_text(json.dumps([]) + '\n')
         for archive in archives:
             publishing.publish(archive, site, base_url)
         if not archives:
@@ -54,7 +39,7 @@ def build(output, archives, base_url=DEFAULT_ORIGIN, manifest_urls=None):
         # A catalog can discover a game whose publisher owns its live release
         # pointer. Installed game bytes remain pinned, validated and offline.
         urls = manifest_urls if manifest_urls is not None else default_manifest_urls()
-        registry = json.loads((site / 'catalog').read_text())
+        registry = list(registry) if registry is not None else json.loads((site / 'catalog').read_text())
         for entry in registry:
             if entry['id'] in urls:
                 entry['manifest_url'] = urls[entry['id']]
@@ -77,6 +62,18 @@ def build(output, archives, base_url=DEFAULT_ORIGIN, manifest_urls=None):
 def default_manifest_urls():
     lock = json.loads((HERE / 'games.lock.json').read_text())
     return {lock['game']: lock['manifest_url']} if 'manifest_url' in lock else {}
+
+
+def default_registry():
+    """Reviewed discovery pointers; downloading/installing remains explicit."""
+    # Only builds parse hand-authored YAML; static serving remains stdlib-only.
+    import yaml
+    try:
+        registry = yaml.safe_load((HERE / 'hosting/catalog.yaml').read_text())
+    except yaml.YAMLError as error:
+        raise ValueError('Invalid Store catalog YAML') from error
+    catalog.validate_registry(registry)
+    return registry
 
 
 class PreviewHandler(http.server.SimpleHTTPRequestHandler):
@@ -110,11 +107,9 @@ def main():
     parser.add_argument('--port', type=int, default=8080)
     args = parser.parse_args()
     if args.command == 'build':
-        archives = args.packages
-        if not archives:
-            from vm import build_example
-            archives = [build_example()]
-        print(build(args.output, archives, args.base_url))
+        # The desktop fallback is a shell and discovery metadata, not game payloads.
+        print(build(args.output, args.packages, args.base_url,
+                    registry=None if args.packages else default_registry()))
     else:
         if not (args.output / 'library').is_file():
             parser.error('Build the web output first')
