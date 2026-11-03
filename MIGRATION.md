@@ -51,9 +51,14 @@ and old catalog previews usable. The token implementation was released separatel
 in desktop 0.2.0; this migration changes no budget/session behavior.
 
 Line Cutter source now belongs to `davidguttman/line-cutter`; its published complete
-0.3.0 package replaces the old portfolio asset dependency. Fresh catalogs point
+0.3.0 historical bootstrap package replaces the old portfolio asset dependency.
+New releases follow the schema-2 file manifest and single GitHub-release contract
+introduced in Cubby 0.3.0, without requiring ZIP publication.
+The historical bootstrap lock is not an updater version pin: future releases
+require no new ZIP, lock edit, or Cubby release. Fresh catalogs point
 to its publisher-owned stable manifest. The old Cubby stable metadata endpoint
-redirects there permanently as a routing policy (HTTP 302 with revalidation), not
-a copied release snapshot. Native clients keep their origin, ID, saves and update
+forwards bounded, validated live publisher JSON with HTTP 200 and revalidation,
+not an HTTP redirect or a copied release snapshot. Upstream failures/redirects
+return 502, leaving installed versions unchanged. Native clients keep their origin, ID, saves and update
 activation rules, and future game releases do not require a launcher rebuild.
 The native installer remains a desktop/VM adapter, not a browser capability.

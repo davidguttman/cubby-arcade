@@ -1,9 +1,11 @@
 import hashlib
 import http.client
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -11,6 +13,7 @@ import zipfile
 import vm
 import web
 from hosting import serve
+from runtime import catalog
 
 
 def package(path, game='line-cutter', version='0.3.0'):
@@ -75,14 +78,19 @@ class UpstreamDistribution(unittest.TestCase):
             data = (output / 'catalog').read_bytes()
             self.assertEqual(cloud['files']['/catalog'], dict(size=len(data), sha256=hashlib.sha256(data).hexdigest()))
 
-    def test_host_redirects_only_stable_metadata_and_preserves_archives(self):
+    def test_host_preserves_routes_legacy_back_and_immutable_archives(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             old = root / 'store/line-cutter/0.2.1/game.game.zip'
             old.parent.mkdir(parents=True)
             old.write_bytes(b'old immutable bytes')
-            (root / '.manifest-redirects.json').write_text(json.dumps({
-                '/store/line-cutter/manifest.json': 'https://game.example/latest.json'}))
+            (root / 'site').mkdir()
+            (root / 'site/index.html').write_bytes(b'landing')
+            (root / 'index.html').write_bytes(b'wordless native hub')
+            (root / 'docs').mkdir()
+            (root / 'docs/game-authoring.html').write_bytes(b'author guide')
+            (root / 'tools').mkdir()
+            (root / 'tools/cubby_manifest.py').write_bytes(b'generator')
             host = serve.server(('127.0.0.1', 0), root)
             worker = threading.Thread(target=host.serve_forever, daemon=True)
             worker.start()
@@ -94,17 +102,108 @@ class UpstreamDistribution(unittest.TestCase):
                     result = response.status, dict(response.getheaders()), response.read()
                     connection.close()
                     return result
-                for method in ['GET', 'HEAD']:
-                    status, headers, body = request('/store/line-cutter/manifest.json', method)
+                for path in ['/', '/index.html']:
+                    self.assertEqual(request(path)[2], b'landing')
+                    self.assertEqual(request(path)[1]['Vary'], 'Referer')
+                    same = f'http://127.0.0.1:{host.server_port}/games/line-cutter/play.html'
+                    status, headers, _ = request(path, headers={'Referer': same})
                     self.assertEqual(status, 302)
-                    self.assertEqual(headers['Location'], 'https://game.example/latest.json')
-                    self.assertNotIn('immutable', headers['Cache-Control'])
-                    self.assertEqual(body, b'')
+                    self.assertEqual(headers['Location'], '/play')
+                    self.assertEqual(request(path, headers={'Referer': 'https://foreign.example/games/test/'})[2], b'landing')
+                for path in ['/play', '/play/', '/native/index.html']:
+                    self.assertEqual(request(path)[2], b'wordless native hub')
+                self.assertEqual(request('/docs/game-authoring.html')[2], b'author guide')
+                self.assertEqual(request('/tools/cubby_manifest.py')[2], b'generator')
+                self.assertEqual(request('/play/missing.js')[0], 404)
                 status, headers, body = request('/store/line-cutter/0.2.1/game.game.zip')
                 self.assertEqual((status, body), (200, b'old immutable bytes'))
                 self.assertIn('immutable', headers['Cache-Control'])
                 self.assertEqual(request('/store/line-cutter/0.2.1/game.game.zip', headers={'Range':'bytes=0-2'})[2], b'old')
-                self.assertEqual(request('/.manifest-redirects.json')[0], 404)
+                self.assertEqual(request('/.manifest-proxies.json')[0], 404)
             finally:
                 host.shutdown()
                 host.server_close()
+
+    def test_live_metadata_proxy_supports_current_file_installer_and_updates_without_rebuild(self):
+        state = {'body': b'', 'status': 200, 'delay': 0, 'truncate': False, 'requests': []}
+        payloads = {}
+        class Publisher(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+            def do_GET(self):
+                state['requests'].append(self.path)
+                if self.path == '/latest.json':
+                    time.sleep(state['delay'])
+                    data, status = state['body'], state['status']
+                else:
+                    data = payloads.get(self.path, b'')
+                    status = 200 if self.path in payloads else 404
+                self.send_response(status)
+                self.send_header('Content-Length', str(len(data) + int(state['truncate'])))
+                if status == 302:
+                    self.send_header('Location', '/unexpected.json')
+                self.end_headers()
+                try:
+                    self.wfile.write(data)
+                except BrokenPipeError:
+                    pass
+        publisher = ThreadingHTTPServer(('127.0.0.1', 0), Publisher)
+        threading.Thread(target=publisher.serve_forever, daemon=True).start()
+        upstream = f'http://127.0.0.1:{publisher.server_port}'
+        def release(version):
+            files = {'play.html': ('game ' + version).encode(), 'cover.png': b'cover'}
+            inventory = {}
+            for name, body in files.items():
+                path = f'/releases/{version}/{name}'
+                payloads[path] = body
+                inventory[name] = dict(url=upstream + path, size=len(body), sha256=hashlib.sha256(body).hexdigest())
+            state['body'] = json.dumps(dict(schema_version=2, id='line-cutter', version=version,
+                runtime='web', entrypoint='play.html', artwork='cover.png', files=inventory)).encode()
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / '.manifest-proxies.json').write_text(json.dumps({
+                    '/store/line-cutter/manifest.json': upstream + '/latest.json'}))
+                host = serve.server(('127.0.0.1', 0), root, developer_local=True)
+                threading.Thread(target=host.serve_forever, daemon=True).start()
+                try:
+                    url = f'http://127.0.0.1:{host.server_port}/store/line-cutter/manifest.json'
+                    entry = dict(id='line-cutter', title='Line Cutter', artwork=upstream + '/cover.png', manifest_url=url)
+                    games = root / 'installed'
+                    release('1.0.0')
+                    first = catalog.install_entry(entry, games, developer=True)
+                    self.assertEqual(first['version'], '1.0.0')
+                    for method in ['GET', 'HEAD']:
+                        connection = http.client.HTTPConnection(*host.server_address, timeout=5)
+                        connection.request(method, '/store/line-cutter/manifest.json')
+                        response = connection.getresponse()
+                        self.assertEqual(response.status, 200)
+                        self.assertIsNone(response.getheader('Location'))
+                        self.assertEqual(response.getheader('Access-Control-Allow-Origin'), '*')
+                        self.assertIn('must-revalidate', response.getheader('Cache-Control'))
+                        self.assertEqual(response.read(), state['body'] if method == 'GET' else b'')
+                        connection.close()
+                    release('1.1.0')
+                    updated = catalog.install_entry(entry, games, developer=True, update=True)
+                    self.assertEqual(updated['version'], '1.1.0')
+                    self.assertTrue((games / 'line-cutter/releases/1.0.0').is_dir())
+                    active = (games / 'line-cutter/current').resolve()
+                    for body, status, delay, truncate in [(b'bad JSON', 200, 0, False), (b'x' * (catalog.MAX_RELEASE + 1), 200, 0, False), (b'', 302, 0, False), (state['body'], 200, .15, False), (b'{}', 200, 0, True)]:
+                        state.update(body=body, status=status, delay=delay, truncate=truncate)
+                        host.metadata_timeout = .05
+                        connection = http.client.HTTPConnection(*host.server_address, timeout=5)
+                        connection.request('GET', '/store/line-cutter/manifest.json')
+                        response = connection.getresponse()
+                        self.assertEqual(response.status, 502)
+                        response.read()
+                        connection.close()
+                        with self.assertRaises(OSError):
+                            catalog.install_entry(entry, games, developer=True, update=True)
+                        self.assertEqual((games / 'line-cutter/current').resolve(), active)
+                    self.assertNotIn('/unexpected.json', state['requests'])
+                finally:
+                    host.shutdown()
+                    host.server_close()
+        finally:
+            publisher.shutdown()
+            publisher.server_close()

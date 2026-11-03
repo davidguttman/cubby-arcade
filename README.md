@@ -419,7 +419,7 @@ The stable `/store/<id>/manifest.json` describes the currently offered release:
   "runtime": "web",
   "entrypoint": "play.html",
   "package": {
-    "url": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.0/line-cutter-0.3.0.game.zip",
+    "url": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
     "size": 12345,
     "sha256": "<64 lowercase hexadecimal characters>"
   }
@@ -665,7 +665,7 @@ separate; `/play` is the free browser demo on the public deployment.
 
 `web.py build` exports website assets under `site/`, documentation under `docs/`,
 and `tools/cubby_manifest.py`. Its physical `index.html` remains the native hub,
-with an identical `native/index.html` transport alias. The deployment-only Render
+with an identical `native/index.html` transport alias. The source-hosted Render
 adapter maps `/` and `/index.html` to `site/index.html`, `/play` and `/play/` to
 the wordless hub, and `/native/index.html` to the hub. Do not replace the native
 shell inventory with landing-page bytes. The current desktop fetches that native
@@ -696,11 +696,20 @@ live catalog/shell metadata. Free Render instances may cold-start.
 
 New exports advertise Line Cutter's independent stable manifest:
 `https://linecutter.david.app/store/line-cutter/manifest.json`. The previous Cubby
-stable URL `/store/line-cutter/manifest.json` redirects with HTTP 302 to that same
-publisher URL (GET and HEAD), so clients with a cached old catalog also get future
-releases without a Cubby rebuild. Its former versioned ZIP/media URLs are **not**
-redirected or changed. Little Camp's publication remains on the Cubby host.
-The generated redirect map is server-private and not part of the downloaded shell.
+stable URL `/store/line-cutter/manifest.json` forwards live publisher metadata as
+HTTP 200 JSON (GET and HEAD), so clients with a cached old catalog get future
+releases without a Cubby rebuild. Forwarding is bounded to 256 KiB and a 20-second
+socket timeout, validates schema/identity, rejects upstream redirects, and returns
+502 on failure; it never substitutes a stale local release snapshot. This retains
+compatibility with installers that reject metadata redirects. Former versioned
+ZIP/media URLs stay byte-identical. Little Camp's publication remains on Cubby.
+The generated forwarding map is server-private, not part of the downloaded shell.
+
+Line Cutter 0.3.0 is retained as a historical ZIP bootstrap/offline preview, not
+a requirement for new releases. New game-owned releases use the ZIP-free schema-2
+file manifest and single GitHub-release workflow documented above.
+That seed lock does not pin the updater: future Line Cutter releases need no new
+ZIP, `games.lock.json` edit, or Cubby release.
 
 The browser preview is the pinned offline package baseline; native game updates
 resolve the publisher manifest independently on hub entry and activate outside
