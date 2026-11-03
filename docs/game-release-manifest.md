@@ -84,6 +84,15 @@ The desktop installer accepts both the existing schema-1 ZIP release and the
 new schema-2 file release at the same registry `manifest_url`. Downloads and
 updates remain free; the native launcher charges only for game launches.
 
+The browser hub also checks installed games' stable manifests on hub entry,
+every five minutes while visible, and on visibility/connectivity recovery.
+Unchanged identities fetch no payload files. Browser updates download the complete
+new file inventory into a private Cache Storage release and atomically select it
+in IndexedDB; retained release URLs keep games already open in other tabs pinned
+to their original bytes. Navigating away cancels the hub's update work. Offline
+or failed checks retain the active release and retry at a later check. Browser
+timers can be throttled, and there is no updater running after the hub closes.
+
 For file updates it reuses matching active-version files only after checking
 their actual size/hash and rejecting symlinked sources. Reused bytes are copied,
 not hard-linked. Missing, changed, or corrupt files download independently.
