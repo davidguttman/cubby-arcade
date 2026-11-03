@@ -1,6 +1,6 @@
 {
   "name": "cubby-arcade-desktop",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "main": "desktop/main.cjs",
   "scripts": {
