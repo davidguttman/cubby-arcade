@@ -1,5 +1,5 @@
 {
-  "name": "handheld-os-desktop",
+  "name": "cubby-arcade-desktop",
   "version": "0.1.0",
   "private": true,
   "main": "desktop/main.cjs",
@@ -8,7 +8,7 @@
     "desktop:start": "electron .",
     "desktop:smoke": "electron . --smoke",
     "desktop:build": "npm run desktop:prepare && node desktop/build.cjs",
-    "test:desktop": "node --test tests/desktop_host.cjs"
+    "test:desktop": "node --test tests/branding.cjs tests/desktop_host.cjs"
   },
   "devDependencies": {
     "@electron/packager": "20.3.0",

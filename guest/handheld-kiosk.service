@@ -1,5 +1,5 @@
 [Unit]
-Description=Fullscreen WPE handheld game session
+Description=Cubby Arcade fullscreen WPE game session
 After=systemd-user-sessions.service handheld-http.service
 Requires=handheld-http.service
 Conflicts=getty@tty1.service

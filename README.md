@@ -1,7 +1,11 @@
-# handheld-os (working name)
+# Cubby Arcade
 
 An independent home for Linux/OS integration, a picture-first launcher, and the
 ARM64 development VM. Not a flashable RG353V OS; do not flash its QEMU disk.
+
+Repository: https://github.com/davidguttman/cubby-arcade . Local checkout:
+`/mnt/data/play/native/cubby-arcade`. See `MIGRATION.md` for preserved profile,
+game-package and prepared-VM compatibility, plus deployment boundaries.
 
 ## Audience: pre-literate children
 
@@ -67,7 +71,7 @@ From this repo on the prepared development host:
 ./vm.py fetch-games
 ./vm.py sync
 ./vm.py build-example
-./vm.py install-game /mnt/data/vms/handheld-os/line-cutter-0.2.0.game.zip
+./vm.py install-game /mnt/data/vms/cubby-arcade/line-cutter-0.2.0.game.zip
 ./vm.py view
 ```
 
@@ -85,7 +89,7 @@ fails checksum validation instead of silently replacing it. The installed manife
 records that separate provenance. Assets stay in ignored `.cache/games`; no
 credentials or game payload are committed here. Package building is deterministic
 and offline, and rechecks cached hashes. The generated `.game.zip` stays outside
-Git in `/mnt/data/vms/handheld-os`.
+Git in `/mnt/data/vms/cubby-arcade`.
 
 `sync` updates **only OS runtime/services**, not packages or saves. Fresh bootstrap
 starts with an empty pictorial library; install is explicit. Cover, title/attract,
@@ -132,17 +136,17 @@ VNC is host loopback port 5907 and SSH port 12222, with a task-specific SSH key;
 there is no public server or jump.sh URL. Forward VNC over SSH for remote access.
 
 The executable uses `uv` with pinned utility dependencies. The prepared rootless
-QEMU 11.1.2 toolchain is under `/mnt/data/vms/handheld-os/toolchain/root/usr`;
+QEMU 11.1.2 toolchain is under `/mnt/data/vms/cubby-arcade/toolchain/root/usr`;
 manifest/signature provenance is alongside it. Prerequisites are `uv`, `curl`,
 `ssh`, `ssh-keygen`, `vncviewer`, plus QEMU ARM64/image tools/EDK2 firmware (system
 or the prepared rootless toolchain), QEMU GPU/audio modules and host PipeWire/PA.
-`HANDHELD_FIRMWARE_DIR` overrides system EDK2 paths; `HANDHELD_VM_DIR` overrides
+`CUBBY_ARCADE_FIRMWARE_DIR` overrides system EDK2 paths; `CUBBY_ARCADE_VM_DIR` overrides
 artifact state. Fixed ports mean only one VM at a time.
 
 Debian cloud image build 20261026-2643 is SHA-512 pinned in `vm.py`; signed guest
 packages use snapshot 20261027T000000Z. Installed versions are recorded in
 `/var/lib/handheld/packages.lock.tsv`. VM disks, keys, logs, screenshots, generated
-packages and firmware state stay outside Git at `/mnt/data/vms/handheld-os`.
+packages and firmware state stay outside Git at `/mnt/data/vms/cubby-arcade`.
 No host filesystem is mounted into the guest. Original VM migration preserved
 its complete state from `/mnt/data/vms/david-app-handheld`; never replace a disk
 to migrate saves. Inspect serial/bootstrap/session logs there and under
@@ -240,10 +244,11 @@ Run shared input/platform/lifecycle regression tests with
 
 ```sh
 uv run python web.py build
-jump.sh start handheld-os --json
+jump.sh start cubby-arcade --json
 ```
 
-The registered development preview is https://handheld-os.davidguttman.jump.sh .
+The local development preview is https://cubby-arcade.davidguttman.jump.sh .
+The public browser preview and package registry use https://cubby-arcade.onrender.com .
 Check `jump.sh ls --json` for current status rather than assuming it is running.
 The repo's compose file runs only a Python static preview; Jump owns its lifecycle
 and HTTPS routing. Re-run the build after editing shared code/package sources.
@@ -278,11 +283,11 @@ npm ci
 npm run desktop:prepare
 npm run desktop:start
 npm run desktop:build
-# Result: dist/HandheldHub-linux-x64/HandheldHub
+# Result: dist/CubbyArcade-linux-x64/CubbyArcade
 ```
 
 The Linux x64 folder is a self-contained local distribution (runtime and games
-included). Add its `HandheldHub` executable as a non-Steam game to open one
+included). Add its `CubbyArcade` executable as a non-Steam game to open one
 fullscreen hub. In Steam, use **Games → Add a Non-Steam Game → Browse**, select that executable, then **Properties → Controller → Enable Steam Input** and the **Gamepad** template. Leave forced compatibility/Proton disabled for this native Linux build; keep the entire distribution folder intact. Steam account integration, Steam Cloud, achievements, store
 publishing and Steam Deck verification are **not** implemented or claimed.
 Windows/macOS packaging and physical controller behavior remain unverified.
@@ -310,13 +315,13 @@ mirrored to disk JSON or Steam Cloud. Web/VM profiles remain separate and untouc
 Run isolated, self-terminating smoke checks without using the live VM profile:
 
 ```sh
-HUB_USER_DATA=/tmp/handheld-desktop-test HUB_SMOKE_DIR=/tmp/handheld-desktop-evidence npm run desktop:smoke -- --ozone-platform=x11 --disable-gpu
+CUBBY_ARCADE_USER_DATA=/tmp/cubby-arcade-desktop-test CUBBY_ARCADE_SMOKE_DIR=/tmp/cubby-arcade-desktop-evidence npm run desktop:smoke -- --ozone-platform=x11 --disable-gpu
 ```
 
 Smoke mode uses a hidden offscreen window and exits itself (X11 is needed for
 full-size screenshots on this host; headless Ozone can return a 1×1 capture); it checks local library,
 trailer playback, native saves and absent renderer Node APIs, writing screenshots
-and `report.json` when `HUB_SMOKE_DIR` is set. Without `HUB_USER_DATA`, smoke mode
+and `report.json` when `CUBBY_ARCADE_SMOKE_DIR` is set. Without `CUBBY_ARCADE_USER_DATA`, smoke mode
 uses a dedicated temporary-directory profile, not the real app profile. The same
 `--smoke` arguments work with the built executable. No Steam credentials or App ID
 are required. Rebuild the web export and desktop bundle after package updates;
@@ -351,10 +356,10 @@ Create an offline example catalog and manage a disposable desktop profile:
 
 ```sh
 ./vm.py build-example
-uv run python -m runtime.catalog create /mnt/data/vms/handheld-os/line-cutter-0.2.0.game.zip --output .cache/catalog/catalog.json
+uv run python -m runtime.catalog create /mnt/data/vms/cubby-arcade/line-cutter-0.2.0.game.zip --output .cache/catalog/catalog.json
 uv run python -m runtime.catalog --developer-local list "file://$PWD/.cache/catalog/catalog.json"
 uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games install "file://$PWD/.cache/catalog/catalog.json" line-cutter
-HUB_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
+CUBBY_ARCADE_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
 # After publishing a newer version into the selected catalog:
 uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games update "file://$PWD/.cache/catalog/catalog.json" line-cutter
 uv run python -m runtime.catalog --root .cache/desktop-profile/games installed
@@ -363,7 +368,7 @@ uv run python -m runtime.catalog --root .cache/desktop-profile/games remove line
 
 Without a managed directory, a fresh desktop uses the bundled demo library.
 Once `<userData>/games` exists it becomes the **entire** game library, including
-when empty: removing a game cannot resurrect its bundled copy. `HUB_GAMES_DIR`
+when empty: removing a game cannot resurrect its bundled copy. `CUBBY_ARCADE_GAMES_DIR`
 can explicitly select another managed directory (create it before launching).
 The launcher/core still come from the app export; game bytes come from installed
 releases. Close/reopen a library page after management changes to refresh it.
@@ -395,7 +400,7 @@ native installation and static web export are intentionally different adapters.
 ### Store registry and stable release manifests
 
 `web.py build` exports both the playable web preview and a hosted registry. The
-public root defaults to `https://handheld-os.davidguttman.jump.sh`; override it
+public root defaults to `https://cubby-arcade.onrender.com`; override it
 with `--base-url https://your-host.example/`. All advertised media, manifests,
 and ZIP archives are written into the selected export, not just referenced.
 
@@ -414,7 +419,7 @@ The stable `/store/<id>/manifest.json` describes the currently offered release:
   "runtime": "web",
   "entrypoint": "play.html",
   "package": {
-    "url": "https://handheld-os.davidguttman.jump.sh/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
+    "url": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
     "size": 12345,
     "sha256": "<64 lowercase hexadecimal characters>"
   }
@@ -431,7 +436,7 @@ arbitrary executable installer or cryptographic publisher-authentication scheme.
 To add or update a game on the existing generated host:
 
 ```sh
-uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://handheld-os.davidguttman.jump.sh/
+uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://cubby-arcade.onrender.com/
 ```
 
 This command validates before publishing, creates immutable versioned archive
@@ -449,8 +454,8 @@ The existing management CLI accepts either this registry or the legacy schema-1
 inline catalog without breaking old callers:
 
 ```sh
-uv run python -m runtime.catalog list https://handheld-os.davidguttman.jump.sh/catalog
-uv run python -m runtime.catalog --root path/to/games install https://handheld-os.davidguttman.jump.sh/catalog line-cutter
+uv run python -m runtime.catalog list https://cubby-arcade.onrender.com/catalog
+uv run python -m runtime.catalog --root path/to/games install https://cubby-arcade.onrender.com/catalog line-cutter
 ```
 
 Installation/update resolves the stable manifest at the time of the operation.
@@ -517,7 +522,7 @@ The shared-origin catalog continues to require trusted developer game packages.
 ### Cloud-backed desktop launcher
 
 The desktop executable is a thin, sandboxed shell. On launch it requests
-`https://handheld-os.davidguttman.jump.sh/hub-manifest.json`, downloads the small
+`https://cubby-arcade.onrender.com/hub-manifest.json`, downloads the small
 launcher UI/core/catalog snapshot, verifies its size/hash inventory, and caches
 it coherently before opening the hub. Rebuilding/publishing the web export is
 all that is needed to deliver launcher/store UI changes on the next app launch.
@@ -536,9 +541,11 @@ has a five-second total deadline. The current shell stays fixed for that process
 The HTTPS cloud host is trusted to supply launcher JavaScript, but never gets
 Node access or arbitrary filesystem/native bridge access. `bridge_version: 1`
 is the compatibility gate; future native-runtime changes still require a new
-executable. This currently uses the development Jump host, not a production CDN.
-`HUB_CLOUD_ORIGIN` can select another HTTPS root for adult deployment/testing.
-For the built-executable offline smoke only, `HUB_SMOKE_OFFLINE=1` simulates a
+executable. The default browser preview/catalog host is Render at
+https://cubby-arcade.onrender.com; the local Jump preview is a separate adult
+development override, not the desktop default.
+`CUBBY_ARCADE_CLOUD_ORIGIN` can select another HTTPS root for adult deployment/testing.
+For the built-executable offline smoke only, `CUBBY_ARCADE_SMOKE_OFFLINE=1` simulates a
 network failure while keeping the same origin/profile and cache.
 
 ### Desktop downloads and automatic game updates
@@ -571,9 +578,9 @@ node --test tests/desktop_installer.cjs
 ```
 
 The self-terminating `--install-smoke` option additionally accepts an isolated
-`HUB_USER_DATA`, a freshly generated `HUB_SMOKE_SITE`, and
-`HUB_SMOKE_INSTALL_DIR` containing `demo-1.zip` and `demo-2.zip` fixture packages
+`CUBBY_ARCADE_USER_DATA`, a freshly generated `CUBBY_ARCADE_SMOKE_SITE`, and
+`CUBBY_ARCADE_SMOKE_INSTALL_DIR` containing `demo-1.zip` and `demo-2.zip` fixture packages
 (ID `demo`, entrypoint `index.html`). It exercises the real Electron IPC and UI
-with HTTPS fetch fixtures, without running a server. `HUB_SMOKE_DIR` captures
+with HTTPS fetch fixtures, without running a server. `CUBBY_ARCADE_SMOKE_DIR` captures
 retry/progress/installed/mobile evidence. Keep fixture profiles separate from
 family/test profiles; this smoke installs its demo and stages updates.

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run python
-"""Export the shared launcher and validated game packages for a static web host."""
+"""Export Cubby Arcade and validated game packages for a static web host."""
 import argparse
 import http.server
 import hashlib
@@ -11,7 +11,7 @@ from runtime import packages, game_shell, publishing
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE / '.cache/web'
-DEFAULT_ORIGIN = 'https://handheld-os.davidguttman.jump.sh'
+DEFAULT_ORIGIN = 'https://cubby-arcade.onrender.com'
 
 
 def build(output, archives, base_url=DEFAULT_ORIGIN):

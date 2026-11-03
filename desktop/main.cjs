@@ -7,13 +7,15 @@ const {assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=require('./hos
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 const installSmoke=process.argv.includes('--install-smoke');
 const smoke=process.argv.includes('--smoke')||installSmoke;
-if(process.env.HUB_USER_DATA)app.setPath('userData',path.resolve(process.env.HUB_USER_DATA));
-else if(smoke)app.setPath('userData',path.join(app.getPath('temp'),'handheld-hub-smoke-profile'));
+const env=name=>process.env['CUBBY_ARCADE_'+name]??process.env['HUB_'+name];
+const {userDataPath}=require('./profile.cjs');
+app.setName('Cubby Arcade');
+app.setPath('userData',userDataPath({appData:app.getPath('appData'),temp:app.getPath('temp'),packaged:app.isPackaged,smoke,override:env('USER_DATA')}));
 app.whenReady().then(async()=>{
-  const site=smoke&&process.env.HUB_SMOKE_SITE?path.resolve(process.env.HUB_SMOKE_SITE):app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
+  const site=smoke&&env('SMOKE_SITE')?path.resolve(env('SMOKE_SITE')):app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
   const store=new SaveStore(path.join(app.getPath('userData'),'saves'));
-  const library=new GameLibrary(site,process.env.HUB_GAMES_DIR?path.resolve(process.env.HUB_GAMES_DIR):path.join(app.getPath('userData'),'games'));
-  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:process.env.HUB_CLOUD_ORIGIN,...(smoke&&process.env.HUB_SMOKE_OFFLINE==='1'?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
+  const library=new GameLibrary(site,env('GAMES_DIR')?path.resolve(env('GAMES_DIR')):path.join(app.getPath('userData'),'games'));
+  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),...(smoke&&env('SMOKE_OFFLINE')==='1'?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
   await cloud.refresh();
   console.log('Hub shell: '+cloud.source);
   let hubActive=true,win;
@@ -94,11 +96,11 @@ app.whenReady().then(async()=>{
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
   if(installSmoke){
-    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:process.env.HUB_SMOKE_DIR});app.exit(0);}
+    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:env('SMOKE_DIR')});app.exit(0);}
     catch(error){console.error(error);app.exit(1);}return;
   }
   if(smoke){
-    const output=process.env.HUB_SMOKE_DIR;
+    const output=env('SMOKE_DIR');
     try{
       await new Promise(resolve=>setTimeout(resolve,1500));
       const shell={source:cloud.source,...await win.webContents.executeJavaScript(`(()=>{const previous=localStorage.getItem('cloud-smoke-visits');localStorage.setItem('cloud-smoke-visits',String(Number(previous||0)+1));return {marker:document.documentElement.dataset.cloudSmoke||null,previousVisits:previous};})()`)};

@@ -2,7 +2,7 @@
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 async function run(win,installer,library,registry,options={}){
- const fixture=process.env.HUB_SMOKE_INSTALL_DIR;if(!fixture)throw Error('HUB_SMOKE_INSTALL_DIR required');
+ const fixture=(process.env.CUBBY_ARCADE_SMOKE_INSTALL_DIR??process.env.HUB_SMOKE_INSTALL_DIR);if(!fixture)throw Error('HUB_SMOKE_INSTALL_DIR required');
  const first=await fs.readFile(path.join(fixture,'demo-1.zip')),second=await fs.readFile(path.join(fixture,'demo-2.zip'));
  const origin='https://install-smoke.invalid';
  const release=(version,bytes)=>({schema_version:1,id:'demo',version,runtime:'web',entrypoint:'index.html',package:{url:origin+'/demo.zip',size:bytes.length,sha256:hash(bytes)}});

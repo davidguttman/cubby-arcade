@@ -1,5 +1,5 @@
 #!/usr/bin/env -S uv run --with pycdlib==1.14.0 --with pillow==11.3.0 --with vncdotool==1.2.0 python
-"""Reproducible, rootless QEMU ARM64 handheld development appliance."""
+"""Cubby Arcade reproducible, rootless QEMU ARM64 development appliance."""
 import argparse
 import hashlib
 import json
@@ -18,7 +18,7 @@ from runtime import packages
 HERE = Path(__file__).resolve().parent
 GAME_LOCK = HERE / 'games.lock.json'
 GAME_CACHE = HERE / '.cache/games'
-STATE = Path(os.environ.get('HANDHELD_VM_DIR', '/mnt/data/vms/handheld-os')).resolve()
+STATE = Path(os.environ.get('CUBBY_ARCADE_VM_DIR', os.environ.get('HANDHELD_VM_DIR', '/mnt/data/vms/cubby-arcade'))).resolve()
 IMAGE = 'debian-13-generic-arm64-20261026-2643.qcow2'
 IMAGE_URL = 'https://cloud.debian.org/images/cloud/trixie/20261026-2643/' + IMAGE
 IMAGE_SHA512 = '5fc0eba340b16651f1b4163f3249b0c8fb91acd2bc5898b609181ee47ac50a5bf3e24166ba8647279db05e883883e22e9308193ef4ad75293cb254b919e358d8'
@@ -39,7 +39,7 @@ def toolchain():
     binary = shutil.which('qemu-system-aarch64')
     if not binary:
         raise SystemExit('Install qemu-system-aarch64, qemu-img and AArch64 EDK2 firmware, or provide the documented rootless toolchain.')
-    firmware = Path(os.environ.get('HANDHELD_FIRMWARE_DIR', '/usr/share/edk2/aarch64'))
+    firmware = Path(os.environ.get('CUBBY_ARCADE_FIRMWARE_DIR', os.environ.get('HANDHELD_FIRMWARE_DIR', '/usr/share/edk2/aarch64')))
     return Path(binary).parent, firmware, Path('/usr/share/qemu'), env
 
 
@@ -186,7 +186,7 @@ def seed():
     key = (STATE / 'id_ed25519.pub').read_text().strip()
     bootstrap = (HERE / 'guest/bootstrap.sh').read_text()
     user_data = '#cloud-config\n' + json.dumps({
-        'hostname': 'handheld-dev', 'manage_etc_hosts': True,
+        'hostname': 'cubby-arcade-dev', 'manage_etc_hosts': True,
         'users': [{'name': 'arcade', 'groups': ['sudo', 'audio', 'video', 'render', 'input'],
                    'shell': '/bin/bash', 'lock_passwd': True,
                    'sudo': ['ALL=(ALL) NOPASSWD:ALL'], 'ssh_authorized_keys': [key]}],
@@ -196,7 +196,7 @@ def seed():
     })
     # Preserve cloud-init identity when regenerating a migrated VM's seed.
     metadata_path = STATE / 'meta-data'
-    metadata = metadata_path.read_text() if metadata_path.exists() else json.dumps({'instance-id': 'handheld-os-v1', 'local-hostname': 'handheld-dev'})
+    metadata = metadata_path.read_text() if metadata_path.exists() else json.dumps({'instance-id': 'cubby-arcade-v1', 'local-hostname': 'cubby-arcade-dev'})
     (STATE / 'user-data').write_text(user_data)
     (STATE / 'meta-data').write_text(metadata)
     iso = pycdlib.PyCdlib()
@@ -225,7 +225,7 @@ def init():
     if not (STATE/'QEMU_VARS.fd').exists():
         shutil.copy2(firmware/'QEMU_VARS.fd', STATE/'QEMU_VARS.fd')
     if not (STATE/'id_ed25519').exists():
-        run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'handheld-vm-only', '-f', STATE/'id_ed25519'])
+        run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-C', 'cubby-arcade-vm-only', '-f', STATE/'id_ed25519'])
     seed()
     (STATE/'image.lock.json').write_text(json.dumps({'url': IMAGE_URL, 'sha512': IMAGE_SHA512, 'debian_snapshot': '20261027T000000Z'}, indent=2)+'\n')
     print('Initialized:', STATE)
@@ -268,7 +268,7 @@ def start():
     if not (STATE/'disk.qcow2').exists():
         raise SystemExit('Run init first.')
     binary, firmware, roms, env = toolchain()
-    arguments = [binary/'qemu-system-aarch64', '-L', roms, '-name', 'handheld-os',
+    arguments = [binary/'qemu-system-aarch64', '-L', roms, '-name', 'cubby-arcade',
         '-machine', 'virt', '-cpu', 'cortex-a55', '-accel', 'tcg,thread=multi', '-smp', '4', '-m', '2048',
         '-drive', f'if=pflash,format=raw,readonly=on,file={firmware}/QEMU_EFI.fd',
         '-drive', f'if=pflash,format=raw,file={STATE}/QEMU_VARS.fd',

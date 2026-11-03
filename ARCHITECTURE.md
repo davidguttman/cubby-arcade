@@ -1,6 +1,6 @@
 # Shared game hub architecture
 
-Working product name: handheld-os. Audience: pre-literate children; no words by
+Product name: Cubby Arcade. Audience: pre-literate children; no words by
 default in any child-facing surface. Line Cutter is only a compatibility payload.
 
 ## Product contract
