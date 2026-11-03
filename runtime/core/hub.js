@@ -70,18 +70,20 @@ function mount(host){
  function setBadge(badge,id){badge.innerHTML=badgeFor(id);badge.dataset.kind=state.isFavorite(id)?'favorite':badge.innerHTML?'installed':'';}
  // The hero always shows a game: the open preview, or a resting cover that invites a pick below.
  function feature(game){featured=game||null;const art=game?.artwork||'';if(restArt.getAttribute('src')!==art){if(art)restArt.src=art;else restArt.removeAttribute('src');}backdrop.style.backgroundImage=art?'url("'+art.replace(/["\\]/g,'\\$&')+'")':'';markSelection();}
- function markSelection(){const id=detail.hidden?null:state.detail?.id;shelf.classList.toggle('has-selection',!!id);for(const card of shelf.querySelectorAll('.game-card'))card.classList.toggle('is-selected',card.dataset.gameId===id);}
+ function markSelection(){const id=detail.hidden?(state.view==='library'?featured?.id:null):state.detail?.id;shelf.classList.toggle('has-selection',!!id);for(const card of shelf.querySelectorAll('.game-card'))card.classList.toggle('is-selected',card.dataset.gameId===id);}
  function renderGrid(){shelf.replaceChildren();const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'';body.classList.toggle('is-status',!!status);
- if(status){const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');feature(null);return;}
+ if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');feature(null);return;}
  for(const game of entries()){
  const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');image.src=game.artwork;image.alt='';
  setBadge(element(card,'span','card-badge'),game.id);
  card.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')preview(game);});card.addEventListener('focus',()=>preview(game));
  }
- // Entering Store opens its first offer; later ownership updates preserve an
- // explicit preview. Library keeps the resting-cover discovery flow.
+ // Library always starts with a selection and keeps it through refreshes.
+ const keep=entries().find(g=>g.id===(state.detail?.id||featured?.id));
+ if(state.view==='library'){preview(keep||entries()[0]);markSelection();return;}
+ // Entering Store opens its first offer; later ownership updates preserve it.
  if(state.view==='store'&&!state.detail){preview(entries()[0]);return;}
- const keep=entries().find(g=>g.id===(state.detail?.id||featured?.id));feature(keep||entries()[0]);}
+ feature(keep||entries()[0]);}
  function preview(game){if(state.detail?.id===game.id&&!detail.hidden)return;pausePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
  const stage=element(detail,'div','stage');
  button(stage,'back','Close preview',()=>closePreview(true),'detail-close');
