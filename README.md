@@ -668,7 +668,9 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.8.1**. Empty libraries start on Store, Store opens its first game's
+desktop **0.8.2**. Touch controls always follow device detection; the manual
+selector is removed and legacy on/off preferences normalize to automatic.
+Empty libraries start on Store, Store opens its first game's
 preview and controls automatically, and Trail Mix is first in the catalog.
 Manual tab choices remain intact during startup. The 0.8.0 release made the
 on-screen controller a Cubby-owned host module
