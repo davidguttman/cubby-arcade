@@ -323,12 +323,14 @@ release assets are immutable: a rerun must match every archive and checksum.
 Deploy the landing page only after its first Windows release is published.
 
 Windows 10/11 x64 uses the same launcher, Store, controller input and offline
-game library as Linux. Download the portable `CubbyArcade-win32-x64.zip` from
-the latest GitHub Release. Extract **the entire ZIP**, then
+game library as Linux. Download the portable
+[`CubbyArcade-win32-x64.zip`](https://github.com/davidguttman/cubby-arcade/releases/latest/download/CubbyArcade-win32-x64.zip)
+from the [latest GitHub Release](https://github.com/davidguttman/cubby-arcade/releases/latest).
+Extract **the entire ZIP**, then
 open `CubbyArcade-win32-x64/CubbyArcade.exe`; moving only the EXE will not work.
 No Python, Node, administrator access or Developer Mode is needed to play or
-install games. This build is unsigned; no code-signing or Microsoft Store
-certification is claimed.
+install games. There is no installer. This build is unsigned; no code-signing or
+Microsoft Store certification is claimed.
 
 Saves, downloaded games, settings and tokens live outside the extracted folder,
 normally under `%APPDATA%/CubbyArcade`. Existing recognized legacy profiles are
@@ -368,7 +370,7 @@ The Linux x64 folder is a self-contained local distribution (runtime and games
 included). Add its `CubbyArcade` executable as a non-Steam game to open one
 fullscreen hub. In Steam, use **Games → Add a Non-Steam Game → Browse**, select that executable, then **Properties → Controller → Enable Steam Input** and the **Gamepad** template. Leave forced compatibility/Proton disabled for this native Linux build; keep the entire distribution folder intact. Steam account integration, Steam Cloud, achievements, store
 publishing and Steam Deck verification are **not** implemented or claimed.
-Windows/macOS packaging and physical controller behavior remain unverified.
+macOS packaging and physical controller behavior remain unverified.
 Standard keyboard/Gamepad API/pictorial controls are the shared implementations.
 Exit using the pictorial power control in Settings and its cancel/confirm pictures,
 or the window-manager/Steam close action (e.g. Alt+F4). The child UI has no text menus. Blur suppresses input, suspends the game loop/audio and pauses
@@ -740,8 +742,10 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.9.0**. The browser hub now checks installed games for updates on
-entry, every five minutes while visible, and when visibility or connectivity
+desktop **0.10.0**, adding a portable Windows x64 build, versionless platform
+download links, and automatic dual-platform GitHub Releases after native
+Windows and Linux verification. The 0.9.0 release added browser hub checks for
+installed game updates on entry, every five minutes while visible, and when visibility or connectivity
 returns. Unchanged releases fetch metadata only; complete verified releases
 activate atomically while already-running games keep their original isolated
 assets. Offline or failed checks preserve the installed release and saves.
