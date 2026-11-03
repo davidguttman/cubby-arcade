@@ -5,7 +5,7 @@
   else root.HandheldInput = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (preferencesAPI) {
   'use strict';
-  const buttons = {0:'a', 1:'b', 8:'select', 9:'start', 12:'up', 13:'down', 14:'left', 15:'right'};
+  const buttons = {0:'a', 1:'b', 2:'x', 3:'y', 8:'select', 9:'start', 12:'up', 13:'down', 14:'left', 15:'right'};
   const directions = new Set(['up', 'down', 'left', 'right']);
   const semantic = {a:'confirm', b:'back', start:'pause'};
   function createInput(options) {

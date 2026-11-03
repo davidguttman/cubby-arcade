@@ -19,6 +19,14 @@ test('navigation requires release; axes repeat; reconnect requires neutral; chor
   f.frame(null);f.frame([0]);assert.equal(f.events.length,3);f.frame([]);f.frame([4,5]);assert.equal(f.events.at(-1).action,'exit');
   f.frame([4,5]);assert.equal(f.events.length,4);f.input.dispose();
 });
+test('four gamepad face buttons preserve distinct pointer-equivalent logical events',()=>{
+ const f=fixture();f.frame([]);
+ for(const [index,button,action] of [[0,'a','confirm'],[1,'b','back'],[2,'x','x'],[3,'y','y']]){
+  f.frame([index]);assert.deepEqual(f.events.at(-1),{action,button,source:'gamepad'});
+  const count=f.events.length;f.frame([index]);assert.equal(f.events.length,count);f.frame([]);
+ }
+ f.input.dispose();
+});
 test('keyboard repeat cannot activate next screen; blur resets; touch and teardown work',()=>{
   const f=fixture();f.fire('keydown',{code:'Enter',repeat:true});assert.equal(f.events.length,0);
   f.fire('keydown',{code:'KeyZ'});f.fire('keydown',{code:'KeyZ'});assert.equal(f.events.length,1);

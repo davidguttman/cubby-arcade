@@ -1,5 +1,5 @@
 *{box-sizing:border-box}
-:root{--control-size:clamp(44px,7vh,52px);--control-gap:4px;--game-controls-height:calc(4 * var(--control-size) + 3 * var(--control-gap));--controls-bottom:max(8px,env(safe-area-inset-bottom))}
+:root{--control-size:clamp(44px,min(7vh,calc((100vw - 56px) / 6)),52px);--control-gap:4px;--game-controls-height:calc(4 * var(--control-size) + 3 * var(--control-gap));--controls-bottom:max(8px,env(safe-area-inset-bottom))}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101614;color:#edf3dc}
 body{display:grid;place-items:center;touch-action:none}
 .screen,canvas#screen,canvas.library{width:min(480px,94vw,calc((100vh - 112px)*1.5));width:min(480px,94vw,calc((100dvh - 112px)*1.5));aspect-ratio:3/2;height:auto;image-rendering:pixelated}
@@ -7,23 +7,27 @@ body{display:grid;place-items:center;touch-action:none}
 .screen video{position:absolute;top:0;width:100%;height:91%;object-fit:contain;image-rendering:pixelated}
 .screen canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
 .hub-controls{position:fixed;bottom:var(--controls-bottom);left:0;width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
-.hub-controls button{appearance:none;flex:none;width:var(--control-size);height:var(--control-size);padding:8px;border:2px solid #a7d07a;border-radius:50%;background:#18251e;color:#edf3dc;touch-action:none;cursor:pointer}
+.hub-controls button{appearance:none;flex:none;width:var(--control-size);height:var(--control-size);padding:8px;border:2px solid #a7d07a;border-radius:50%;background:#18251e;color:#edf3dc;font:bold 22px system-ui,sans-serif;touch-action:none;cursor:pointer}
 .hub-controls button:active{background:#476838}
 .hub-controls button:focus-visible{outline:3px solid #edf3dc;outline-offset:2px}
 .hub-controls svg{width:100%;height:100%;fill:currentColor;pointer-events:none}
 .hub-controls .back{position:fixed;left:max(8px,env(safe-area-inset-left));top:max(8px,env(safe-area-inset-top))}
 .hub-controls .spacer{width:10px}
 
-/* A real controller arrangement: cross on the left, B below/left of A,
-   and Start below the two thumb areas. Keep every target at least 44px. */
-.game-controls{left:0;right:0;margin-inline:auto;width:min(560px,calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));display:grid;grid-template-columns:repeat(3,var(--control-size)) minmax(var(--control-size),1fr) repeat(2,var(--control-size));grid-template-rows:repeat(4,var(--control-size));gap:var(--control-gap);height:var(--game-controls-height)}
+/* D-pad left, handheld face-button diamond right, Select/Start below.
+   The flexible center can collapse on narrow screens; targets stay >=44px. */
+.game-controls{left:0;right:0;margin-inline:auto;width:min(560px,calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));display:grid;grid-template-columns:repeat(3,var(--control-size)) minmax(0,1fr) repeat(3,var(--control-size));grid-template-rows:repeat(4,var(--control-size));gap:var(--control-gap);height:var(--game-controls-height)}
 .game-controls .control-up{grid-area:1 / 2}
 .game-controls .control-left{grid-area:2 / 1}
 .game-controls .control-right{grid-area:2 / 3}
 .game-controls .control-down{grid-area:3 / 2}
-.game-controls .control-a{grid-area:1 / 6}
-.game-controls .control-b{grid-area:2 / 5}
-.game-controls .control-start{grid-row:4;grid-column:1 / -1;justify-self:center}
+.game-controls .control-x{grid-area:1 / 6}
+.game-controls .control-y{grid-area:2 / 5}
+.game-controls .control-a{grid-area:2 / 7}
+.game-controls .control-b{grid-area:3 / 6}
+.game-controls .control-select,.game-controls .control-start{grid-row:4;grid-column:1 / -1;justify-self:center}
+.game-controls .control-select{transform:translateX(calc(-.5 * var(--control-size) - 4px))}
+.game-controls .control-start{transform:translateX(calc(.5 * var(--control-size) + 4px))}
 /* With no touch deck, gameplay still fills the viewport. When the deck is
    visible reserve its actual height so controls never cover game pixels. */
 canvas#screen{width:min(100vw,calc(100vh * 1.5));width:min(100vw,calc(100dvh * 1.5));height:auto;aspect-ratio:3/2;image-rendering:pixelated}

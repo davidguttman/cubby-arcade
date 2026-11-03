@@ -1,4 +1,5 @@
 <!doctype html>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Control layout verification</title>
 <link rel="stylesheet" href="/runtime/core/screen.css">
@@ -20,10 +21,14 @@ window.verifyLayout=()=>{
  for(const key of keys){const r=key.getBoundingClientRect();if(r.width<44||r.height<44)failures.push('small '+key.ariaLabel);if(r.left<0||r.top<0||r.right>innerWidth||r.bottom>innerHeight)failures.push('offscreen '+key.ariaLabel);}
  for(let i=0;i<keys.length;i++)for(let j=i+1;j<keys.length;j++){const a=keys[i].getBoundingClientRect(),b=keys[j].getBoundingClientRect();if(a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom)failures.push('overlapping keys');}
  if(document.querySelector('.game-controls')){
-  const u=rect('.control-up'),d=rect('.control-down'),l=rect('.control-left'),r=rect('.control-right'),a=rect('.control-a'),b=rect('.control-b'),s=rect('.control-start'),screen=rect('#screen');
+  const u=rect('.control-up'),d=rect('.control-down'),l=rect('.control-left'),r=rect('.control-right'),a=rect('.control-a'),b=rect('.control-b'),x=rect('.control-x'),y=rect('.control-y'),s=rect('.control-start'),select=rect('.control-select'),screen=rect('#screen');
   if(!(u.top<l.top&&d.top>l.top&&u.left>l.left&&u.left<r.left&&l.top===r.top&&u.left===d.left))failures.push('D-pad is not a cross');
-  if(!(a.left>b.left&&a.top<b.top))failures.push('action diagonal');
-  if(!(s.top>d.top&&s.top>b.top))failures.push('Start not below');
+  if(!(x.top<y.top&&b.top>y.top&&x.left>y.left&&x.left<a.left&&y.top===a.top&&x.left===b.left))failures.push('face buttons are not a handheld diamond');
+  for(const button of ['a','b','x','y'])if(document.querySelector('.control-'+button).textContent!==button.toUpperCase())failures.push('missing face letter '+button);
+  if(document.querySelector('.control-start').textContent!=='+')failures.push('Start is not plus');
+  if(document.querySelector('.control-select').textContent!=='\u2212')failures.push('Select is not minus');
+  if(!(s.top>d.top&&s.top>b.top&&select.top===s.top&&select.right<s.left))failures.push('Select/Start not separated below');
+  if(Math.abs((select.left+s.right)/2-innerWidth/2)>1)failures.push('Select/Start not centered');
   for(const key of keys){const k=key.getBoundingClientRect();if(k.left<screen.right&&k.right>screen.left&&k.top<screen.bottom&&k.bottom>screen.top)failures.push('screen occluded by '+key.ariaLabel);}
  }
  if(failures.length)throw Error(failures.join('; '));
