@@ -9,7 +9,6 @@ import zipfile
 
 import web
 from hosting import build as hosting_build
-from runtime import packages
 
 
 def archive(root, game):
@@ -48,6 +47,10 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
                              ['line-cutter', 'trail-mix'])
+            trail = next(e for e in json.loads((site / 'catalog').read_text()) if e['id'] == 'trail-mix')
+            self.assertEqual(trail['manifest_url'], 'https://trailmix.david.app/arcade/manifest.json')
+            self.assertEqual(trail['artwork'], 'https://trailmix.david.app/discovery/cover.png')
+            self.assertEqual(trail['attract'], 'https://trailmix.david.app/discovery/trailer.webm')
             self.assertFalse((site / 'games').exists())
             self.assertFalse((site / 'store').exists())
 
@@ -55,9 +58,8 @@ class StoreDistribution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             old = archive(root, 'little-camp')
-            trail = archive(root, 'trail-mix')
             line = archive(root, 'line-cutter')
-            with patch.object(hosting_build, 'retained_archives', return_value=[old, trail]), \
+            with patch.object(hosting_build, 'retained_archives', return_value=[old]), \
                  patch.object(hosting_build.vm, 'fetch_games'), \
                  patch.object(hosting_build.vm, 'build_example', return_value=line):
                 site = hosting_build.build(root / 'site')
@@ -66,18 +68,16 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
                              ['line-cutter', 'trail-mix'])
             self.assertEqual((site / 'store/little-camp/1/little-camp-1.game.zip').read_bytes(), old.read_bytes())
-            self.assertEqual(json.loads((site / 'store/trail-mix/manifest.json').read_text())['id'], 'trail-mix')
+            self.assertFalse((site / 'store/trail-mix').exists())
+            self.assertTrue((site / 'store/line-cutter/1/line-cutter-1.game.zip').is_file())
             cloud = json.loads((site / 'hub-manifest.json').read_text())
             data = (site / 'catalog').read_bytes()
             self.assertEqual(cloud['files']['/catalog']['sha256'], hashlib.sha256(data).hexdigest())
 
-    def test_trail_mix_handoff_is_integrity_checked_and_installable(self):
+    def test_only_published_historical_archives_are_retained(self):
         retained = hosting_build.retained_archives()
-        trail = next(p for p in retained if p.name == 'trail-mix-0.1.0.game.zip')
-        with tempfile.TemporaryDirectory() as tmp:
-            manifest = packages.install(trail, Path(tmp))
-            self.assertEqual(manifest['id'], 'trail-mix')
-            self.assertEqual(manifest['version'], '0.1.0')
-            records = json.loads((hosting_build.ROOT / 'hosting/releases.json').read_text())
-            provenance = next(r for r in records if r['path'].endswith(trail.name))
-            self.assertEqual(manifest['files'], provenance['payload_sha256'])
+        self.assertEqual({p.name for p in retained}, {
+            'line-cutter-0.2.0.game.zip', 'line-cutter-0.2.1.game.zip',
+            'little-camp-0.1.0.game.zip',
+        })
+        self.assertFalse((hosting_build.ROOT / 'hosting/releases/trail-mix').exists())

@@ -727,13 +727,13 @@ Native game updates resolve the publisher manifest independently on hub entry
 and activate outside gameplay. Updating Line Cutter does not require a Cubby
 launcher release. Existing game IDs, origins, storage keys and tokens are unchanged.
 
-Trail Mix 0.1.0 is temporarily hosted by Cubby as an independently prepared game
-artifact, not launcher source. `hosting/releases.json` records its source commit,
-archive digest and exact per-file inventory from the game's `dist/game` handoff.
-The payload is unchanged; only a schema-1 package manifest was added around it.
-Until Trail Mix has its own public release publisher, its stable manifest and
-immutable media/archive URLs live under `/store/trail-mix/`. Future releases should
-move to the game-owned schema-2 publishing workflow, retaining these URLs.
+Trail Mix owns its schema-2 releases at `https://trailmix.david.app`.
+The Store follows its stable `/arcade/manifest.json` pointer and uses
+`/discovery/cover.png` and `/discovery/trailer.webm` for discovery media.
+The publisher manifest selects immutable versioned files; Cubby neither embeds
+nor pins a Trail Mix payload. Future game releases need no launcher release.
+`hosting/releases.json` retains only previously published historical archives;
+the unpublished temporary Trail Mix archive has been removed.
 Never rebuild or edit game bytes inside the launcher repository.
 
 Build dependencies are pinned in `pyproject.toml` / `uv.lock`. Regenerate Render’s
