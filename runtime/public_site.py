@@ -81,6 +81,14 @@ def _markdown(text):
     return '\n'.join(blocks)
 
 
+# Same smiling cubby-house mark as the launcher and landing page.
+LOGO = ('<svg class="logo" viewBox="0 0 48 48" aria-hidden="true">'
+        '<path class="logo-roof" d="M24 3.5 44 18.5V39a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V18.5Z"/>'
+        '<rect class="logo-door" x="11" y="20" width="26" height="18" rx="6"/>'
+        '<g class="logo-face"><circle cx="19" cy="27.5" r="2.4"/><circle cx="29" cy="27.5" r="2.4"/>'
+        '<path d="M19.5 32.5q4.5 3.4 9 0"/></g></svg>')
+
+
 def build(output):
     output = Path(output)
     shutil.copytree(HERE / 'website', output / 'site')
@@ -95,10 +103,13 @@ def build(output):
         page = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width,initial-scale=1">'
                 '<title>' + title + ' — Cubby Arcade</title>'
-                '<link rel="stylesheet" href="/site/style.css"></head><body>'
-                '<header><a class="brand" href="/">◈ Cubby Arcade</a>'
-                '<nav aria-label="Documentation"><a href="/docs/game-authoring.html">Game-author guide</a>'
-                '<a href="/docs/game-release-manifest.html">Manifest spec</a></nav></header>'
+                '<link rel="stylesheet" href="/site/style.css">'
+                '<meta name="theme-color" content="#2a1f3d"></head><body>'
+                '<header><a class="brand" href="/">' + LOGO + '<span>Cubby Arcade</span></a>'
+                '<nav aria-label="Documentation">'
+                + ''.join('<a href="/docs/' + key + '.html"' + (' aria-current="page"' if key == slug else '') + '>' + label + '</a>'
+                          for key, label in (('game-authoring', 'Game-author guide'), ('game-release-manifest', 'Manifest spec')))
+                + '</nav></header>'
                 '<main class="document"><p><a href="' + raw + '">Raw Markdown ↗</a> · '
                 '<a href="/tools/cubby_manifest.py">Manifest generator ↓</a></p>'
                 + _markdown(text) + '</main></body></html>')
