@@ -101,7 +101,10 @@ function mount(host){
   let download=actions.querySelector('.download-game');
   if(!download)download=button(actions,'down','Download game',()=>installGame(state.detail.id),'download-game');
   const status=installStates[state.detail.id],busy=status&&['checking','downloading','verifying','pending'].includes(status.phase);
-  download.disabled=!!busy;download.innerHTML=icon(status?.phase==='error'?'auto':busy?'loading':'down');download.classList.toggle('loading',!!busy);download.setAttribute('aria-label',status?.phase==='error'?'Retry download':busy?'Downloading game':'Download game');
+  const glyph=status?.phase==='error'?'auto':busy?'loading':'down';
+  // Keep the same SVG through progress events so its rotation never restarts.
+  if(download.dataset.glyph!==glyph){download.innerHTML=icon(glyph);download.dataset.glyph=glyph;}
+  download.disabled=!!busy;download.classList.toggle('loading',!!busy);download.setAttribute('aria-label',status?.phase==='error'?'Retry download':busy?'Downloading game':'Download game');
   let progress=actions.querySelector('.install-progress');if(!progress){progress=element(actions,'progress','install-progress');progress.setAttribute('aria-label','Download progress');}
   progress.hidden=!busy;if(status?.total){progress.max=status.total;progress.value=status.received||0;}else progress.removeAttribute('value');
  }
