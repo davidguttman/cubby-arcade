@@ -46,6 +46,18 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
         catalog.validate_registry(registry)
         (site / 'catalog').write_bytes(publishing.encoded(registry))
 
+        # Browser worker has its own explicit offline shell; native hosts bypass it.
+        # Hash the shell bytes so independently deployed builds never share caches.
+        browser_paths = ['/play', '/play/', '/native/index.html', '/catalog',
+                         *['/' + str(p.relative_to(site)) for p in sorted((site / 'runtime/core').glob('*')) if p.is_file()]]
+        browser_hash = hashlib.sha256(b''.join(
+            (site / name.lstrip('/')).read_bytes() for name in browser_paths
+            if name not in ('/play', '/play/'))).hexdigest()
+        (site / 'cubby-worker.js').write_text(
+            "importScripts('/runtime/core/browser-store.js');\n" +
+            'HandheldBrowserStore.attachWorker(self,' + json.dumps({
+                'shellVersion': browser_hash, 'shellPaths': browser_paths}) + ');\n')
+
         # Small coherent cloud-shell inventory: game payloads are deliberately excluded.
         shell = [site / 'index.html', site / 'catalog', *sorted((site / 'runtime/core').glob('*'))]
         cloud_files = {'/' + str(p.relative_to(site)): {'size': p.stat().st_size,
@@ -79,7 +91,7 @@ def default_registry():
 class PreviewHandler(http.server.SimpleHTTPRequestHandler):
     def translate_path(self, path):
         # Browser system-menu returns here; keep static previews usable too.
-        if path.split('?', 1)[0] == '/play':
+        if path.split('?', 1)[0] in ('/play', '/play/'):
             path = '/index.html'
         return super().translate_path(path)
 

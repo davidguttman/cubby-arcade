@@ -16,3 +16,4 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .uninstall-actions button:disabled{opacity:.45;}
 .uninstall-error{display:flex;justify-content:center;margin-top:20px;color:#ff8f7f;}
 @media(max-width:420px){.uninstall-confirm{padding:20px}.uninstall-actions{gap:24px}.detail-actions .uninstall-game{width:48px;height:48px}}
+.browser-storage-error{min-height:80vh;display:grid;place-items:center;font-size:64px;color:#ffc94d;}

@@ -1,5 +1,6 @@
 """Loopback-only offline asset server; stores bounded browser diagnostics."""
 import http.server
+import io
 import json
 import re
 from pathlib import Path
@@ -31,8 +32,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.range_length = None
         value = self.headers.get('Range')
         path = Path(self.translate_path(self.path))
+        # The local WPE host already manages disk packages through /library.
+        # Mark that host explicitly: ordinary HTTPS browsers use their own
+        # service worker/storage adapter, not this legacy loopback capability.
+        if path == ROOT / 'runtime/index.html' and path.is_file():
+            original = path.read_bytes()
+            content = original.replace(b'</head>',
+                b'<script>window.HandheldPlatformOptions={kind:"kiosk"};</script></head>', 1)
+            if content != original:
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(content)))
+                self.end_headers()
+                return io.BytesIO(content)
         if urlsplit(self.path).path.startswith('/games/') and path.suffix.lower() == '.html' and path.is_file():
-            import io
             content = game_shell.inject(path.read_bytes())
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -100,9 +113,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return str(target)
             except (ValueError, OSError, StopIteration, KeyError, TypeError):
                 return str(ROOT / '.missing-game-asset')
-        if path in {'/', '/play'}:
+        if path in {'/', '/play', '/play/'}:
             path = '/runtime/index.html'
         if path not in {'/runtime/index.html', '/runtime/core/input.js',
+                         '/runtime/core/browser-store.js', '/runtime/core/browser-bootstrap.js',
                          '/runtime/core/preferences.js', '/runtime/core/platform.js', '/runtime/core/sdk.js',
                          '/runtime/core/controls.js', '/runtime/core/screen.css',
                          '/runtime/core/hub.js', '/runtime/core/hub.css', '/runtime/core/game-shell.js'}:

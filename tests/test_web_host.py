@@ -12,6 +12,21 @@ class WebHostTests(unittest.TestCase):
         handler.directory = '/tmp/cubby-preview'
         self.assertEqual(handler.translate_path('/play?demo=1'), '/tmp/cubby-preview/index.html')
 
+    def test_browser_worker_has_explicit_offline_hub_without_native_inventory_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = web.build(Path(tmp) / 'site')
+            worker = (output / 'cubby-worker.js').read_text()
+            self.assertIn("importScripts('/runtime/core/browser-store.js')", worker)
+            settings = json.loads(worker.split('attachWorker(self,', 1)[1].removesuffix(');\n'))
+            self.assertTrue({'/play', '/play/', '/native/index.html', '/catalog'}.issubset(settings['shellPaths']))
+            self.assertNotIn('/', settings['shellPaths'])
+            self.assertNotIn('/index.html', settings['shellPaths'])
+            self.assertIn('/runtime/core/browser-bootstrap.js', settings['shellPaths'])
+            self.assertEqual(len(settings['shellVersion']), 64)
+            inventory = json.loads((output / 'hub-manifest.json').read_text())['files']
+            self.assertNotIn('/cubby-worker.js', inventory)
+            self.assertIn('/runtime/core/browser-bootstrap.js', inventory)
+
     def test_export_validates_package_and_adds_host_shell_and_shared_launcher(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

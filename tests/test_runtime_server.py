@@ -73,6 +73,23 @@ class RuntimeServerTests(unittest.TestCase):
                      '/runtime/core/%2e%2e/server.py']:
             self.assertEqual(self.request('GET', path)[0], 404)
 
+    def test_kiosk_hub_marks_host_before_browser_bootstrap_and_serves_scripts(self):
+        source = Path(server.__file__).parent
+        self.page.write_bytes((source / 'index.html').read_bytes())
+        core = self.root / 'runtime/core'
+        core.mkdir()
+        for name in ['browser-store.js', 'browser-bootstrap.js']:
+            (core / name).write_bytes((source / 'core' / name).read_bytes())
+            self.assertEqual(self.request('GET', '/runtime/core/' + name)[0], 200)
+        for path in ['/', '/play', '/play/', '/runtime/index.html']:
+            status, headers, body = self.request('GET', path)
+            self.assertEqual(status, 200)
+            self.assertIn(b'window.HandheldPlatformOptions={kind:"kiosk"}', body)
+            self.assertLess(body.index(b'window.HandheldPlatformOptions'),
+                            body.index(b'/runtime/core/browser-bootstrap.js'))
+            self.assertEqual(int(headers['Content-Length']), len(body))
+        self.assertEqual(self.request('GET', '/cubby-worker.js')[0], 404)
+
     def test_reload_delivers_synced_bytes_despite_matching_modified_time(self):
         status, headers, body = self.request('GET', '/')
         self.assertEqual((status, body), (200, b'old runtime'))

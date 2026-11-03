@@ -1,7 +1,7 @@
 /* Host-owned escape hatch, injected before game scripts. Trusted games need no SDK. */
 (function(root,factory){
  const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;
- else if(/^\/games\//.test(root.location.pathname))root.HandheldGameShell=api.install(root);
+ else if(/^\/(?:games|__cubby_games__)\//.test(root.location.pathname))root.HandheldGameShell=api.install(root);
 })(globalThis,function(){
 'use strict';
 function install(win){
