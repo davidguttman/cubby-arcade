@@ -11,9 +11,10 @@ import socket
 import subprocess
 import sys
 import tarfile
+import tempfile
 import zipfile
 from urllib.parse import urlsplit
-from runtime import packages
+from runtime import packages, catalog
 
 HERE = Path(__file__).resolve().parent
 GAME_LOCK = HERE / 'games.lock.json'
@@ -49,6 +50,21 @@ def game_manifest():
         raise SystemExit('Game lock requires schema 1 and a full pinned commit.')
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', manifest.get('repository', '')):
         raise SystemExit('Game lock requires an owner/repository name.')
+    if 'package' in manifest:
+        asset = manifest['package']
+        try:
+            packages.safe_path(asset['path'])
+            if not asset['path'].endswith('.game.zip') or not re.fullmatch(r'[0-9a-f]{64}', asset['sha256']):
+                raise ValueError('Invalid archive path/hash')
+            if type(asset['size']) is not int or not 0 < asset['size'] <= packages.MAX_BYTES:
+                raise ValueError('Invalid archive size')
+            if not catalog.ID.fullmatch(manifest['game']) or not catalog.VERSION.fullmatch(asset['version']):
+                raise ValueError('Invalid package identity')
+            catalog.check_url(asset['url'])
+            catalog.check_url(manifest['manifest_url'])
+        except (KeyError, TypeError, ValueError) as error:
+            raise SystemExit('Invalid locked complete package: ' + str(error)) from error
+        return manifest
     for asset in manifest['assets']:
         path = Path(asset['path'])
         if path.is_absolute() or '..' in path.parts or not path.parts or not re.fullmatch(r'[0-9a-f]{64}', asset['sha256']):
@@ -74,6 +90,22 @@ def verified(path, expected):
 
 def fetch_games():
     manifest = game_manifest()
+    if 'package' in manifest:
+        asset = manifest['package']
+        destination = GAME_CACHE / asset['path']
+        if verified(destination, asset['sha256']) and destination.stat().st_size == asset['size']:
+            return
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(destination.name + '.part')
+        try:
+            catalog.download(asset['url'], temporary, asset['size'], expected_size=asset['size'], digest=asset['sha256'], timeout=90)
+            if not verified(temporary, asset['sha256']) or temporary.stat().st_size != asset['size']:
+                raise SystemExit('Game package checksum/size mismatch')
+            temporary.replace(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        print('Pinned complete game package verified in', GAME_CACHE)
+        return
     for asset in manifest['assets']:
         destination = GAME_CACHE / asset['path']
         if verified(destination, asset['sha256']):
@@ -116,8 +148,26 @@ def fetch_games():
     print('Pinned game assets verified in', GAME_CACHE)
 
 
-def build_example():
+def build_example(state_dir=None):
     manifest = game_manifest()
+    state = Path(state_dir) if state_dir is not None else STATE
+    if 'package' in manifest:
+        asset = manifest['package']
+        source = GAME_CACHE / asset['path']
+        if not source.is_file():
+            raise SystemExit('Missing game package; run ./vm.py fetch-games first.')
+        if not verified(source, asset['sha256']) or source.stat().st_size != asset['size']:
+            raise SystemExit('Game package checksum/size mismatch; run ./vm.py fetch-games to repair.')
+        with tempfile.TemporaryDirectory(prefix='cubby-validate-') as temporary:
+            checked = packages.install(source, Path(temporary) / 'games')
+        if (checked['id'], checked['version']) != (manifest['game'], asset['version']):
+            raise SystemExit('Locked package identity mismatch')
+        state.mkdir(parents=True, exist_ok=True)
+        destination = state / Path(asset['path']).name
+        if source.resolve() != destination.resolve():
+            shutil.copyfile(source, destination)
+        print(destination)
+        return destination
     files = {}
     for asset in manifest['assets']:
         source = GAME_CACHE / asset['path']
@@ -151,8 +201,8 @@ def build_example():
         metadata['attract'] = trailer
     packages.validate_manifest(metadata)
     files['manifest.json'] = (json.dumps(metadata, sort_keys=True, indent=2) + '\n').encode()
-    STATE.mkdir(parents=True, exist_ok=True)
-    destination = STATE / 'line-cutter-0.2.1.game.zip'
+    state.mkdir(parents=True, exist_ok=True)
+    destination = state / 'line-cutter-0.2.1.game.zip'
     with zipfile.ZipFile(destination, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in sorted(files.items()):
             entry = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))

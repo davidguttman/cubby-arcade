@@ -29,16 +29,15 @@ OS and games now have independent lifecycles:
 ```text
 /opt/handheld/runtime/                     OS launcher, server, installer
 /var/lib/handheld/games/line-cutter/
-  releases/0.1.15/                          complete installed package
+  releases/0.3.0/                          complete installed package
     manifest.json                         identity/version/integrity inventory
     cover.png                             game-inspired cover art (title requested)
-    index.html                            wordless controls + recorded gameplay trailer
     play.html                             game-owned browser/input adapter
     line-cutter.js                        unchanged upstream game
     title-loop.mp3
     match-loop.mp3
     trailer-handheld.webm                 recorded gameplay, local/offline
-  current -> releases/0.1.15                atomically selected active release
+  current -> releases/0.3.0                atomically selected active release
 ```
 
 `GET /library` discovers installed manifests, never an upstream repo or catalog.
@@ -71,30 +70,27 @@ From this repo on the prepared development host:
 ./vm.py fetch-games
 ./vm.py sync
 ./vm.py build-example
-./vm.py install-game /mnt/data/vms/cubby-arcade/line-cutter-0.2.0.game.zip
+./vm.py install-game /mnt/data/vms/cubby-arcade/line-cutter-0.3.0.game.zip
 ./vm.py view
 ```
 
-First fetch needs authenticated `gh` access to the private upstream repository
-`davidguttman/misc.davidguttman.com`. `games.lock.json` pins the full upstream
-commit and the three game asset SHA-256 values. It also pins the HTTPS URL and
-SHA-256 for the existing david.app trailer (H.264/AAC, 1280×800, 46.6 seconds).
-`fetch-games` uses FFmpeg n9.0.2 to prepare a checksum-pinned silent
-VP8/WebM 480×300/30fps rendition of that same footage for the small display.
-The recipe/version and both hashes are in the lock; a mismatched encoder output
-fails validation. Building from the verified cache needs no network or FFmpeg.
-The source audio is deliberately omitted from attract playback, not the game.
-`fetch-games` downloads that external media with HTTPS-only curl; a changed file
-fails checksum validation instead of silently replacing it. The installed manifest
-records that separate provenance. Assets stay in ignored `.cache/games`; no
-credentials or game payload are committed here. Package building is deterministic
-and offline, and rechecks cached hashes. The generated `.game.zip` stays outside
-Git in `/mnt/data/vms/cubby-arcade`.
+`games.lock.json` now pins the **complete upstream Line Cutter 0.3.0 package**
+from `davidguttman/line-cutter`, including its full source commit, public immutable
+HTTPS archive URL, byte size and SHA-256. The game, adapter, pinned SDK, audio,
+cover and trailer are maintained/released by that repository, not rebuilt from
+portfolio assets or this repo's legacy example wrapper.
+
+`fetch-games` needs only public HTTPS access using Python's standard library; no
+GitHub credential, FFmpeg or Node is needed for the current package. Verified
+bytes stay in ignored `.cache/games`. `build-example` rechecks package integrity
+and identity, then copies the exact archive to the VM state directory. It works
+offline from a verified cache and cannot silently repackage different game bytes.
+The older individual-asset lock format and `examples/line-cutter/` remain only for
+legacy developer/test compatibility, not as the current game's release source.
 
 `sync` updates **only OS runtime/services**, not packages or saves. Fresh bootstrap
-starts with an empty pictorial library; install is explicit. Cover, title/attract,
-and adapter source for this example live under `examples/line-cutter/`, separate
-from the generic launcher. Future games can supply the same package contract.
+starts with an empty pictorial library; install is explicit. New games supply the
+same complete-package contract; the launcher contains no game-specific code.
 
 ### Controls and saves
 
@@ -254,12 +250,12 @@ The repo's compose file runs only a Python static preview; Jump owns its lifecyc
 and HTTPS routing. Re-run the build after editing shared code/package sources.
 `web.py build path/to/game.game.zip ...` exports any explicitly selected trusted
 packages after the same installer validation. Default build uses the pinned
-Line Cutter example. Network/authenticated fetch is separate; cached builds work
+Line Cutter package. Network fetch is separate; cached builds work
 offline. Generated `.cache/web` and game assets are ignored, not checked in.
 
 The export copies `runtime/index.html` and shared core bytes, and copies only
 manifest-inventoried game assets from validated packages into `/games/<id>/`.
-It is not a second launcher. Package source changes bump the example version;
+It is not a second launcher. Package changes are released by their game repository;
 web and handheld can install/export that same archive. A browser's saves stay
 local to its HTTPS origin/profile; they are not synced to the VM or another host.
 
@@ -356,7 +352,7 @@ Create an offline example catalog and manage a disposable desktop profile:
 
 ```sh
 ./vm.py build-example
-uv run python -m runtime.catalog create /mnt/data/vms/cubby-arcade/line-cutter-0.2.0.game.zip --output .cache/catalog/catalog.json
+uv run python -m runtime.catalog create /mnt/data/vms/cubby-arcade/line-cutter-0.3.0.game.zip --output .cache/catalog/catalog.json
 uv run python -m runtime.catalog --developer-local list "file://$PWD/.cache/catalog/catalog.json"
 uv run python -m runtime.catalog --developer-local --root .cache/desktop-profile/games install "file://$PWD/.cache/catalog/catalog.json" line-cutter
 CUBBY_ARCADE_USER_DATA="$PWD/.cache/desktop-profile" npm run desktop:start
@@ -640,7 +636,8 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.3.0**, with the revised Line Cutter test package **0.2.1**. No external
+desktop **0.3.0**; source-hosted previews now pin upstream Line Cutter **0.3.0**.
+This dependency migration does not require replacing the desktop executable. No external
 store release or hardware certification is implied by local packaging.
 
 Run native budget tests with `node --test tests/launch_tokens.cjs`. The isolated
@@ -668,7 +665,7 @@ separate; `/play` is the free browser demo on the public deployment.
 
 `web.py build` exports website assets under `site/`, documentation under `docs/`,
 and `tools/cubby_manifest.py`. Its physical `index.html` remains the native hub,
-with an identical `native/index.html` transport alias. The deployment-only Render
+with an identical `native/index.html` transport alias. The source-hosted Render
 adapter maps `/` and `/index.html` to `site/index.html`, `/play` and `/play/` to
 the wordless hub, and `/native/index.html` to the hub. Do not replace the native
 shell inventory with landing-page bytes. The current desktop fetches that native
@@ -679,3 +676,46 @@ they never install the landing page as the launcher. Browser demo return-to-home
 returns to the browser hub at `/play`; the native app returns to its wordless hub.
 The root Jump/VM preview may continue showing the hub until its adapter adopts
 these routes; this does not change the installed launcher or children's UI.
+
+## Source-hosted cloud deployment and independent game updates
+
+Render can deploy source `main` with the checked-in `render.yaml`:
+
+```sh
+uv run python hosting/build.py
+# Render: python3 hosting/build.py ; python3 hosting/serve.py
+```
+
+The stdlib build fetches/verifies the pinned upstream archive, exports the current
+launcher and both Line Cutter and Little Camp, and keeps all immutable previously
+published releases. `hosting/releases/` contains the exact historical distribution
+archives, not editable game source. Their size/hash/provenance inventory is
+`hosting/releases.json`; old package and media URLs remain byte-identical.
+The server serves only `.cache/web`, supports CORS/media ranges, and revalidates
+live catalog/shell metadata. Free Render instances may cold-start.
+
+New exports advertise Line Cutter's independent stable manifest:
+`https://linecutter.david.app/store/line-cutter/manifest.json`. The previous Cubby
+stable URL `/store/line-cutter/manifest.json` forwards live publisher metadata as
+HTTP 200 JSON (GET and HEAD), so clients with a cached old catalog get future
+releases without a Cubby rebuild. Forwarding is bounded to 256 KiB and a 20-second
+socket timeout, validates schema/identity, rejects upstream redirects, and returns
+502 on failure; it never substitutes a stale local release snapshot. This retains
+compatibility with installers that reject metadata redirects. Former versioned
+ZIP/media URLs stay byte-identical. Little Camp's publication remains on Cubby.
+The generated forwarding map is server-private, not part of the downloaded shell.
+
+Line Cutter 0.3.0 is retained as a historical ZIP bootstrap/offline preview, not
+a requirement for new releases. New game-owned releases use the ZIP-free schema-2
+file manifest and single GitHub-release workflow documented above.
+That seed lock does not pin the updater: future Line Cutter releases need no new
+ZIP, `games.lock.json` edit, or Cubby release.
+
+The browser preview is the pinned offline package baseline; native game updates
+resolve the publisher manifest independently on hub entry and activate outside
+gameplay. Updating Line Cutter's website/package/manifest does not require a
+Cubby launcher release. Updating this repo's pin changes fresh bundles/browser
+previews only. Existing game IDs, origins, storage keys and token logic stay
+unchanged. Do not run Cubby's local `runtime.publishing` command for a game whose
+manifest is owned by its external publisher; publish it in the game's repository.
+

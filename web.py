@@ -7,14 +7,14 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
-from runtime import packages, game_shell, publishing, public_site
+from runtime import packages, game_shell, publishing, public_site, catalog
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE / '.cache/web'
 DEFAULT_ORIGIN = 'https://cubby-arcade.onrender.com'
 
 
-def build(output, archives, base_url=DEFAULT_ORIGIN):
+def build(output, archives, base_url=DEFAULT_ORIGIN, manifest_urls=None):
     archives = list(archives)
     output = Path(output).resolve()
     if output == HERE or HERE.is_relative_to(output):
@@ -51,6 +51,16 @@ def build(output, archives, base_url=DEFAULT_ORIGIN):
         if not archives:
             (site / 'catalog').write_text('[]\n')
         public_site.build(site)
+        # A catalog can discover a game whose publisher owns its live release
+        # pointer. Installed game bytes remain pinned, validated and offline.
+        urls = manifest_urls if manifest_urls is not None else default_manifest_urls()
+        registry = json.loads((site / 'catalog').read_text())
+        for entry in registry:
+            if entry['id'] in urls:
+                entry['manifest_url'] = urls[entry['id']]
+        catalog.validate_registry(registry)
+        (site / 'catalog').write_bytes(publishing.encoded(registry))
+
         # Small coherent cloud-shell inventory: game payloads are deliberately excluded.
         shell = [site / 'index.html', site / 'catalog', *sorted((site / 'runtime/core').glob('*'))]
         cloud_files = {'/' + str(p.relative_to(site)): {'size': p.stat().st_size,
@@ -62,6 +72,11 @@ def build(output, archives, base_url=DEFAULT_ORIGIN):
             shutil.rmtree(output)
         site.rename(output)
     return output
+
+
+def default_manifest_urls():
+    lock = json.loads((HERE / 'games.lock.json').read_text())
+    return {lock['game']: lock['manifest_url']} if 'manifest_url' in lock else {}
 
 
 class PreviewHandler(http.server.SimpleHTTPRequestHandler):

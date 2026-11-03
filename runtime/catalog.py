@@ -52,12 +52,12 @@ class Redirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, response, code, message, headers, newurl)
 
 
-def download(url, destination, limit, developer=False, expected_size=None, digest=None, allow_redirects=True):
+def download(url, destination, limit, developer=False, expected_size=None, digest=None, allow_redirects=True, timeout=20):
     check_url(url, developer)
     opener = urllib.request.build_opener(Redirects(developer, allow_redirects))
     deadline = time.monotonic() + 120
     size, checksum = 0, hashlib.sha256()
-    with opener.open(url, timeout=20) as response, Path(destination).open('wb') as output:
+    with opener.open(url, timeout=timeout) as response, Path(destination).open('wb') as output:
         length = response.headers.get('Content-Length')
         if length is not None and (int(length) > limit or (expected_size is not None and int(length) != expected_size)):
             raise ValueError('Download size mismatch')
