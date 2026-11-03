@@ -668,11 +668,12 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.7.0**, adding a compact full controller deck with Xbox face-button
-order, separate L/R shoulders, and +/− controls. Physical gamepads now provide
-X/Y and L/R inputs alongside the existing controls. Games that vendor the
-optional shared core need distinct versioned package updates to adopt it;
-updating Cubby alone never rewrites installed game bytes. The 0.6.0 release
+desktop **0.8.0**, making the on-screen controller a Cubby-owned host module
+that supplies standard virtual gamepad input. Existing game packages work
+unchanged: legacy bundled overlays are suppressed without rewriting installed
+bytes. OSD layout, visibility and lifecycle updates require only a Cubby update,
+never a game release. The 0.7.0 release introduced the compact Xbox-style deck,
+separate L/R shoulders, +/− controls, and physical X/Y/L/R input support. The 0.6.0 release
 added browser installation, offline play, save-preserving uninstall, and
 continuous install progress animation on the static site. The
 0.5.1 release corrected static hosting and the canonical cloud origin after
