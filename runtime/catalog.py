@@ -11,7 +11,7 @@ import time
 import urllib.parse
 import urllib.request
 import zipfile
-from . import packages
+from . import packages, file_manifest
 
 MAX_CATALOG = 1024 * 1024
 MAX_RELEASE = 256 * 1024
@@ -38,10 +38,13 @@ class Redirects(urllib.request.HTTPRedirectHandler):
     max_redirections = 3
     max_repeats = 1
 
-    def __init__(self, developer):
+    def __init__(self, developer, allow_redirects=True):
         self.developer = developer
+        self.allow_redirects = allow_redirects
 
     def redirect_request(self, request, response, code, message, headers, newurl):
+        if not self.allow_redirects:
+            raise ValueError('Release file redirects rejected')
         check_url(newurl, self.developer)
         # HTTP redirects must never open files, even in local development mode.
         if urllib.parse.urlsplit(newurl).scheme == 'file':
@@ -49,9 +52,9 @@ class Redirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, response, code, message, headers, newurl)
 
 
-def download(url, destination, limit, developer=False, expected_size=None, digest=None):
+def download(url, destination, limit, developer=False, expected_size=None, digest=None, allow_redirects=True):
     check_url(url, developer)
-    opener = urllib.request.build_opener(Redirects(developer))
+    opener = urllib.request.build_opener(Redirects(developer, allow_redirects))
     deadline = time.monotonic() + 120
     size, checksum = 0, hashlib.sha256()
     with opener.open(url, timeout=20) as response, Path(destination).open('wb') as output:
@@ -124,6 +127,8 @@ def validate_registry(document, developer=False):
 
 
 def validate_release(document, game_id, developer=False):
+    if isinstance(document, dict) and document.get('schema_version') == 2:
+        return file_manifest.validate(document, game_id, developer)
     if not isinstance(document, dict) or document.get('schema_version') != 1 or document.get('runtime') != 'web':
         raise ValueError('Unsupported release manifest/runtime')
     if document.get('id') != game_id or not isinstance(game_id, str) or not ID.fullmatch(game_id):
@@ -132,6 +137,8 @@ def validate_release(document, game_id, developer=False):
     if not isinstance(version, str) or not VERSION.fullmatch(version) or '..' in version:
         raise ValueError('Invalid release version')
     packages.safe_path(document.get('entrypoint'))
+    if 'files' in document:
+        raise ValueError('Ambiguous release manifest')
     package = document.get('package')
     if not isinstance(package, dict):
         raise ValueError('Invalid release package')
@@ -150,6 +157,8 @@ def resolve_entry(entry, developer=False):
         target = Path(temporary) / 'release.json'
         download(entry['manifest_url'], target, MAX_RELEASE, developer)
         release = validate_release(json.loads(target.read_text()), entry['id'], developer)
+    if release['schema_version'] == 2:
+        return release
     return dict(release['package'], id=release['id'], version=release['version'],
                 title=entry['title'], runtime=release['runtime'], entrypoint=release['entrypoint'])
 
@@ -167,6 +176,8 @@ def install_entry(entry, root=packages.GAMES, developer=False, update=False):
     root = Path(root)
     if update and not any(item['id'] == entry['id'] for item in packages.library(root)):
         raise ValueError('Update requires an installed game; use install first')
+    if entry.get('schema_version') == 2:
+        return install_files(entry, root, developer)
     with tempfile.TemporaryDirectory(prefix='hub-download-') as temporary:
         archive = Path(temporary) / 'game.zip'
         download(entry['url'], archive, entry['size'], developer, entry['size'], entry['sha256'])
@@ -180,6 +191,95 @@ def install_entry(entry, root=packages.GAMES, developer=False, update=False):
         if 'runtime' in entry and (manifest['runtime'], manifest['entrypoint']) != (entry['runtime'], entry['entrypoint']):
             raise ValueError('Release/package runtime or entrypoint mismatch')
         return packages.install(archive, root)
+
+
+def read_inventory(root, directory):
+    target = directory / 'manifest.json'
+    file_manifest.no_symlinks(root, target)
+    if not target.is_file() or target.stat().st_size > MAX_RELEASE:
+        raise ValueError('Invalid installed manifest')
+    document = packages.validate_manifest(json.loads(target.read_text()))
+    for name in document['files']:
+        file_manifest.safe_path(name)
+    return document
+
+
+def comparable_inventory(document):
+    return {key: document.get(key, [] if key == 'screenshots' else None)
+            for key in ('schema_version', 'id', 'version', 'runtime', 'entrypoint', 'artwork', 'attract', 'screenshots', 'files')}
+
+
+def install_files(release, root, developer=False):
+    """Adult CLI installation; callers must not update a running game."""
+    file_manifest.validate(release, release['id'], developer)
+    root = Path(root).absolute()
+    file_manifest.no_symlinks(root, root)
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = file_manifest.inventory(release)
+    game = root / release['id']
+    releases = game / 'releases'
+    target = releases / release['version']
+    file_manifest.no_symlinks(root, target)
+    if target.exists() and comparable_inventory(read_inventory(root, target)) != comparable_inventory(manifest):
+        raise ValueError('Immutable release conflict')
+    previous, old = None, None
+    try:
+        current = game / 'current'
+        if current.is_symlink():
+            previous = current.resolve(strict=True)
+            previous.relative_to(releases.absolute())
+            file_manifest.no_symlinks(root, previous)
+            old = read_inventory(root, previous)
+            if old['id'] != release['id']:
+                previous, old = None, None
+    except (ValueError, OSError):
+        previous, old = None, None
+    with tempfile.TemporaryDirectory(prefix='.install-files-', dir=root) as temporary:
+        stage = Path(temporary) / 'release'
+        stage.mkdir()
+        for name, item in release['files'].items():
+            destination = stage / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            reused = False
+            if old and old['files'].get(name) == item['sha256']:
+                try:
+                    source = previous / name
+                    file_manifest.no_symlinks(root, source)
+                    if source.is_file() and source.stat().st_size == item['size']:
+                        content = source.read_bytes()
+                        if hashlib.sha256(content).hexdigest() == item['sha256']:
+                            destination.write_bytes(content)
+                            reused = True
+                except OSError:
+                    pass
+                except ValueError:
+                    pass
+            if not reused:
+                download(item['url'], destination, item['size'], developer, item['size'], item['sha256'], allow_redirects=False)
+            # Validate copied bytes too, not just the transport's declaration.
+            if destination.stat().st_size != item['size'] or hashlib.sha256(destination.read_bytes()).hexdigest() != item['sha256']:
+                raise ValueError('File checksum/size mismatch')
+            destination.chmod(0o444)
+        (stage / 'manifest.json').write_bytes(file_manifest.encode(manifest))
+        file_manifest.no_symlinks(root, target)
+        releases.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            if comparable_inventory(read_inventory(root, target)) != comparable_inventory(manifest):
+                raise ValueError('Immutable release conflict')
+            for name, item in release['files'].items():
+                existing = target / name
+                file_manifest.no_symlinks(root, existing)
+                if not existing.is_file() or existing.stat().st_size != item['size'] or hashlib.sha256(existing.read_bytes()).hexdigest() != item['sha256']:
+                    raise ValueError('Existing release checksum mismatch')
+        else:
+            stage.rename(target)
+        selector = game / ('.current-' + Path(temporary).name)
+        try:
+            selector.symlink_to('releases/' + release['version'])
+            os.replace(selector, game / 'current')
+        finally:
+            selector.unlink(missing_ok=True)
+    return manifest
 
 
 def remove(game_id, root=packages.GAMES):

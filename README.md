@@ -399,6 +399,10 @@ native installation and static web export are intentionally different adapters.
 
 ### Store registry and stable release manifests
 
+Native installation also accepts **schema-2 file manifests**, without ZIPs:
+see [Game-owned releases](docs/game-release-manifest.md) for the contract and
+single-release workflow. Schema-1 ZIP releases below remain compatible.
+
 `web.py build` exports both the playable web preview and a hosted registry. The
 public root defaults to `https://cubby-arcade.onrender.com`; override it
 with `--base-url https://your-host.example/`. All advertised media, manifests,
@@ -647,3 +651,8 @@ balance, adult refill, and disk persistence. Use a fresh `CUBBY_ARCADE_USER_DATA
 optional `CUBBY_ARCADE_SMOKE_DIR` for screenshots. A second run with the same profile and
 `CUBBY_ARCADE_TOKEN_RESTART_EXPECT=9` verifies persistence across actual process restarts.
 Never use smoke modes with a family profile.
+
+For game-owned, ZIP-free releases, see [the standalone manifest generator and
+single release workflow](docs/game-release-manifest.md#generate-in-the-games-repository).
+The desktop and adult catalog CLI accept schema-2 per-file manifests while
+retaining compatibility with existing ZIP releases.
