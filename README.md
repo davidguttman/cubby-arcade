@@ -287,8 +287,8 @@ fullscreen hub. In Steam, use **Games → Add a Non-Steam Game → Browse**, sel
 publishing and Steam Deck verification are **not** implemented or claimed.
 Windows/macOS packaging and physical controller behavior remain unverified.
 Standard keyboard/Gamepad API/pictorial controls are the shared implementations.
-Close with the window-manager/Steam close action (e.g. Alt+F4); the child UI has
-no text menus. Blur suppresses input, suspends the game loop/audio and pauses
+Exit using the pictorial power control in Settings and its cancel/confirm pictures,
+or the window-manager/Steam close action (e.g. Alt+F4). The child UI has no text menus. Blur suppresses input, suspends the game loop/audio and pauses
 video; focus resumes. Existing gameplay state is retained within that session.
 
 The `hub://app` protocol reads the generated launcher export and serves media byte
@@ -398,7 +398,10 @@ The shared hub starts on a **cover grid**, not a detail screen. Pointer hover,
 keyboard/controller focus, or tapping a cover opens the actual packaged trailer,
 a persistent favorite star, and a play control. Favorites are a binary preference,
 not a rating. The library, shopping-bag discovery tab, and gear options tab use
-pictures only; accessible names are available to assistive technology.
+pictures only; R1/RB cycles forward and L1/LB backward through these tabs, wrapping
+at either end. Shoulders do not switch views in games or while a dialog/capture is open.
+The desktop Settings power picture quits the hub after pictorial confirmation;
+unsupported web/VM hosts do not show it. Accessible names are available to assistive technology.
 
 The `/catalog` discovery feed currently contains the **packages available to that
 host**: exported packages in the static web build, installed packages in the VM

@@ -47,7 +47,7 @@
     return {
       kind: options.kind || 'web',
       capabilities: Object.freeze({saves:!!storage || nativeSaves, fullscreen:!!(doc && doc.documentElement && doc.documentElement.requestFullscreen),
-        install:typeof native.install === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
+        quit:typeof native.quit === 'function', install:typeof native.install === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
       saves,
       async library() {
         if (native.library) return native.library();
@@ -69,6 +69,7 @@
         if (!doc || !doc.documentElement || !doc.documentElement.requestFullscreen) return false;
         await doc.documentElement.requestFullscreen(); return true;
       },
+      quit: typeof native.quit === 'function' ? native.quit.bind(native) : undefined,
       install: native.install && native.install.bind(native),
       setVolume: native.setVolume && native.setVolume.bind(native),
       sleep: native.sleep && native.sleep.bind(native)

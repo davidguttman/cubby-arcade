@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const {assetPath,gameScope,SaveStore,GameLibrary}=require('../desktop/host.cjs');
+const {assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=require('../desktop/host.cjs');
 test('desktop protocol confines assets and sender game scope',()=>{
   assert.equal(assetPath('hub://app/games/demo/index.html','/tmp/site'),'/tmp/site/games/demo/index.html');
   assert.equal(assetPath('hub://app/runtime/core/preferences.js','/tmp/site'),'/tmp/site/runtime/core/preferences.js');
@@ -43,4 +43,12 @@ test('disk saves persist per game and reject traversal or oversized values',()=>
     assert.throws(()=>store.set('one','huge','x'.repeat(1024*1024+1)));
     assert.deepEqual(store.get('one','run'),{level:3});store.remove('one','run');assert.equal(store.get('one','run'),null);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('native hub controls reject game pages, foreign origins and subframes',()=>{
+ const main={url:'hub://app/'};const sender={mainFrame:main};
+ assert.doesNotThrow(()=>requireHubFrame({sender,senderFrame:main}));
+ main.url='hub://app/index.html';assert.doesNotThrow(()=>requireHubFrame({sender,senderFrame:main}));
+ for(const url of ['hub://app/games/demo/play.html','https://app/','hub://other/','hub://app/runtime/core/hub.js']){main.url=url;assert.throws(()=>requireHubFrame({sender,senderFrame:main}));}
+ assert.throws(()=>requireHubFrame({sender,senderFrame:{url:'hub://app/'}}));
 });

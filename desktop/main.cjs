@@ -2,7 +2,7 @@ const {app,BrowserWindow,protocol,ipcMain}=require('electron');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const {CloudHub}=require('./cloud.cjs');
-const {assetPath,gameScope,SaveStore,GameLibrary}=require('./host.cjs');
+const {assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=require('./host.cjs');
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 const smoke=process.argv.includes('--smoke');
 if(process.env.HUB_USER_DATA)app.setPath('userData',path.resolve(process.env.HUB_USER_DATA));
@@ -62,6 +62,11 @@ app.whenReady().then(async()=>{
   });
   const win=new BrowserWindow({show:!smoke,width:960,height:640,fullscreen:!smoke,autoHideMenuBar:true,backgroundColor:'#101614',
     webPreferences:{offscreen:smoke,preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  ipcMain.handle('hub:quit',event=>{
+    requireHubFrame(event);
+    if(event.sender!==win.webContents)throw Error('Unknown hub window');
+    win.close();
+  });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('will-navigate',(event,url)=>{try{assetPath(url,site);}catch{event.preventDefault();}});
@@ -88,6 +93,8 @@ app.whenReady().then(async()=>{
       if(output){await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'desktop.png'),(await win.webContents.capturePage()).toPNG());await fs.writeFile(path.join(output,'report.json'),JSON.stringify({shell,hub,library,trailer,report},null,2));}
       console.log(JSON.stringify({shell,hub,library,trailer,report}));
       if(report.kind!=='desktop'||!report.save?.ok||report.node!=='undefined'||!report.canvas||report.video.length||!report.url.endsWith(library[0].entrypoint)||!trailer.some(v=>v.time>0&&!v.paused&&!v.error))throw Error('Desktop bridge smoke failed');
+      const gameQuit=await win.webContents.executeJavaScript("HandheldPlatformOptions.bridge.quit().then(()=>false,()=>true)");
+      if(!gameQuit)throw Error('Game page was allowed to quit the app');
       // Exercise the host-owned menu, not the game's optional Quit callback.
       win.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});
       win.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
@@ -105,7 +112,8 @@ app.whenReady().then(async()=>{
       win.webContents.sendInputEvent({type:'keyUp',keyCode:'Return'});
       await new Promise(resolve=>setTimeout(resolve,400));
       if(!await win.webContents.executeJavaScript('!!document.querySelector(".game-card")'))throw Error('System menu did not return to library');
-      app.exit(0);
+      win.once('closed',()=>console.log('Desktop Quit closed window'));
+      await win.webContents.executeJavaScript(`document.querySelector('[aria-label=options]').click();document.querySelector('.quit-app').click();document.querySelector('[aria-label=\"Confirm quit\"]').click();`);
     }catch(error){console.error(error);app.exit(1);}
   }
 });

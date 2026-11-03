@@ -21,6 +21,29 @@ async function checkHub(win,output){
       if(host.querySelector('.preview-media')!==media||document.activeElement!==favorite)throw Error('Ownership refresh interrupted preview or focus');
     }finally{hub?.dispose();host.remove();HandheldPlatform.createPlatform=original;}
   })()`);
+  // Exercise pictorial Quit without closing the verification window.
+  await win.webContents.executeJavaScript(`(async()=>{
+    const originalPlatform=HandheldPlatform.createPlatform,originalInput=HandheldInput.createInput;
+    const host=document.createElement('main');document.body.appendChild(host);
+    let hub,action,quitCount=0;
+    try{
+      HandheldInput.createInput=options=>{if(!options.navigationShoulders)throw Error('Hub shoulder opt-in missing');action=options.onAction;return {dispose(){},captureKeyboard(){return ()=>{};}};};
+      HandheldPlatform.createPlatform=()=>({capabilities:{quit:true},quit:async()=>{quitCount++;},library:async()=>[],catalog:async()=>[]});
+      hub=HandheldHub.mount(host);
+      action({action:'previousView'});if(hub.state.view!=='options')throw Error('Left shoulder did not wrap');
+      action({action:'nextView'});if(hub.state.view!=='library')throw Error('Right shoulder did not wrap');
+      action({action:'nextView'});if(hub.state.view!=='store')throw Error('Right shoulder did not select Store');
+      action({action:'nextView'});
+      host.querySelector('.quit-app').click();if(!host.querySelector('.quit-confirm').open)throw Error('Quit confirmation missing');
+      action({action:'nextView'});if(hub.state.view!=='options')throw Error('Shoulder escaped modal');
+      action({action:'back'});if(host.querySelector('.quit-confirm').open||quitCount)throw Error('Cancel quit failed');
+      host.querySelector('.quit-app').click();action({action:'right'});action({action:'confirm'});await Promise.resolve();
+      if(quitCount!==1)throw Error('Pictorial controller Quit did not call native bridge');
+      hub.dispose();host.replaceChildren();
+      HandheldPlatform.createPlatform=()=>({capabilities:{quit:false},library:async()=>[],catalog:async()=>[]});
+      hub=HandheldHub.mount(host);hub.show('options');if(host.querySelector('.quit-app'))throw Error('Unsupported Quit exposed');
+    }finally{hub?.dispose();host.remove();HandheldPlatform.createPlatform=originalPlatform;HandheldInput.createInput=originalInput;}
+  })()`);
   const report=await win.webContents.executeJavaScript(`(async()=>{
     const assert=(ok,message)=>{if(!ok)throw Error(message);};
     const prefs=HandheldPreferences.preferences,previous=prefs.get(),previousFavorites=localStorage.getItem('handheld:favorites:v1');
@@ -43,13 +66,15 @@ async function checkHub(win,output){
       document.querySelector('[aria-label="library"]').click();
       document.querySelector('.game-card').focus();window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyV',bubbles:true}));window.dispatchEvent(new KeyboardEvent('keyup',{code:'KeyV',bubbles:true}));assert(document.activeElement.classList.contains('play-game'),'Remapped key did not control library');
       document.querySelector('.detail-close').click();
-      return {grid:true,hoverPreview:true,favorite:true,store:true,touchOptions:true,keyboardCapture:true,draftCancel:true};
+      return {grid:true,hoverPreview:true,favorite:true,store:true,touchOptions:true,keyboardCapture:true,draftCancel:true,shoulderNavigation:true,quitConfirmation:true};
     }finally{prefs.set(previous);if(previousFavorites===null)localStorage.removeItem('handheld:favorites:v1');else localStorage.setItem('handheld:favorites:v1',previousFavorites);}
   })()`);
   if(output){const fs=require('node:fs/promises'),path=require('node:path');await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'library.png'),(await win.webContents.capturePage()).toPNG());
     const capture=async(name,script)=>{await win.webContents.executeJavaScript(script);await new Promise(resolve=>setTimeout(resolve,500));await fs.writeFile(path.join(output,name+'.png'),(await win.webContents.capturePage()).toPNG());};
     await capture('detail',"document.querySelector('.game-card').click()");
     await capture('options',"document.querySelector('[aria-label=options]').click()");
+    await capture('quit-confirm',"document.querySelector('.quit-app').click()");
+    await win.webContents.executeJavaScript("document.querySelector('[aria-label=\"Cancel quit\"]').click()");
     await capture('adult',"document.querySelector('[aria-label=\"Adult keyboard setup\"]').click()");
     await win.webContents.executeJavaScript("document.querySelector('dialog').dispatchEvent(new Event('cancel',{cancelable:true}));document.querySelector('[aria-label=library]').click()");
     win.webContents.debugger.attach('1.3');await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await capture('mobile-library','void 0');

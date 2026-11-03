@@ -17,6 +17,12 @@ function gameScope(raw){
   const match=/^\/games\/([a-z0-9][a-z0-9-]{0,79})\//.exec(url.pathname);
   if(!match)throw Error('Game frame required');return match[1];
 }
+// Native system actions belong to the trusted top-level launcher, never games.
+function requireHubFrame(event){
+  if(event.senderFrame!==event.sender.mainFrame)throw Error('Main hub frame required');
+  const url=new URL(event.senderFrame.url);assetPath(url.href,'/scope');
+  if(!['/','/index.html'].includes(url.pathname))throw Error('Hub page required');
+}
 class SaveStore{
   constructor(root){this.root=root;fs.mkdirSync(root,{recursive:true,mode:0o700});}
   file(game,key){
@@ -74,4 +80,4 @@ class GameLibrary{
     return file;
   }
 }
-module.exports={assetPath,gameScope,SaveStore,GameLibrary};
+module.exports={assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary};
