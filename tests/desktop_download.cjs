@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const root=path.join(__dirname,'..');
 const windows='https://github.com/davidguttman/cubby-arcade/releases/latest/download/CubbyArcade-win32-x64.zip';
-const linux='https://github.com/davidguttman/cubby-arcade/releases/download/v0.8.0/CubbyArcade-linux-x64-0.8.0.tar.gz';
+const linux='https://github.com/davidguttman/cubby-arcade/releases/latest/download/CubbyArcade-linux-x64.tar.gz';
 test('landing download defaults to Windows without JavaScript',()=>{
  const html=fs.readFileSync(path.join(root,'website/index.html'),'utf8');
  assert.match(html,/<a[^>]*data-desktop-download[^>]*>Get the Windows app ↓<\/a>/);
