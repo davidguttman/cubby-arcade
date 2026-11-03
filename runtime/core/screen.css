@@ -1,5 +1,42 @@
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101614;color:#edf3dc}body{display:grid;place-items:center;touch-action:none}.screen,canvas#screen,canvas.library{width:min(480px,94vw,calc((100dvh - 112px)*1.5));width:min(480px,94vw,calc((100vh - 112px)*1.5));aspect-ratio:3/2;height:auto;image-rendering:pixelated}.screen{position:relative}.screen video{position:absolute;top:0;width:100%;height:91%;object-fit:contain;image-rendering:pixelated}.screen canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}.hub-controls{position:fixed;bottom:max(6px,env(safe-area-inset-bottom));left:0;width:100%;display:flex;align-items:center;justify-content:center;gap:8px}.hub-controls button{appearance:none;width:44px;height:44px;padding:8px;border:2px solid #a7d07a;border-radius:50%;background:#18251e;color:#edf3dc;touch-action:none;cursor:pointer}.hub-controls button:active{background:#476838}.hub-controls button:focus-visible{outline:3px solid #edf3dc;outline-offset:2px}.hub-controls svg{width:100%;height:100%;fill:currentColor}.hub-controls .back{position:fixed;left:8px;top:8px}.hub-controls .spacer{width:10px}@media(max-width:380px){.hub-controls{gap:3px}.hub-controls button{width:39px;height:39px;padding:8px}.hub-controls .spacer{width:1px}}@media(max-height:360px){.hub-controls button{width:34px;height:34px;padding:6px}.screen,canvas#screen,canvas.library{width:min(480px,90vw,calc((100vh - 76px)*1.5))}}
+*{box-sizing:border-box}
+:root{--control-size:clamp(44px,min(7vh,calc((100vw - 56px) / 6)),52px);--control-gap:4px;--game-controls-height:calc(5 * var(--control-size) + 4 * var(--control-gap));--controls-bottom:max(8px,env(safe-area-inset-bottom))}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101614;color:#edf3dc}
+body{display:grid;place-items:center;touch-action:none}
+.screen,canvas#screen,canvas.library{width:min(480px,94vw,calc((100vh - 112px)*1.5));width:min(480px,94vw,calc((100dvh - 112px)*1.5));aspect-ratio:3/2;height:auto;image-rendering:pixelated}
+.screen{position:relative}
+.screen video{position:absolute;top:0;width:100%;height:91%;object-fit:contain;image-rendering:pixelated}
+.screen canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+.hub-controls{position:fixed;bottom:var(--controls-bottom);left:0;width:100%;display:flex;align-items:center;justify-content:center;gap:8px}
+.hub-controls button{appearance:none;flex:none;width:var(--control-size);height:var(--control-size);padding:8px;border:2px solid #a7d07a;border-radius:50%;background:#18251e;color:#edf3dc;font:bold 22px system-ui,sans-serif;touch-action:none;cursor:pointer}
+.hub-controls button:active{background:#476838}
+.hub-controls button:focus-visible{outline:3px solid #edf3dc;outline-offset:2px}
+.hub-controls svg{width:100%;height:100%;fill:currentColor;pointer-events:none}
+.hub-controls .back{position:fixed;left:max(8px,env(safe-area-inset-left));top:max(8px,env(safe-area-inset-top))}
+.hub-controls .spacer{width:10px}
 
-/* Gameplay uses the full viewport; touch controls float above it. Keep the
-   intrinsic framebuffer and aspect ratio intact for sharp pixel-art scaling. */
+/* Separate shoulder row above the D-pad and Xbox diamond; Select/Start below.
+   Inset each circular key toward its cluster center for a roughly 5px edge
+   gap without shrinking its touch target. Rounded corners clip hit regions. */
+.game-controls{--cluster-inset:calc(.3 * var(--control-size));left:0;right:0;margin-inline:auto;width:min(560px,calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));display:grid;grid-template-columns:repeat(3,var(--control-size)) minmax(0,1fr) repeat(3,var(--control-size));grid-template-rows:repeat(5,var(--control-size));gap:var(--control-gap);height:var(--game-controls-height)}
+.game-controls .control-up{grid-area:2 / 2}
+.game-controls .control-left{grid-area:3 / 1}
+.game-controls .control-right{grid-area:3 / 3}
+.game-controls .control-down{grid-area:4 / 2}
+.game-controls .control-y{grid-area:2 / 6}
+.game-controls .control-x{grid-area:3 / 5}
+.game-controls .control-b{grid-area:3 / 7}
+.game-controls .control-a{grid-area:4 / 6}
+.game-controls .control-l{grid-area:1 / 1}
+.game-controls .control-r{grid-area:1 / 7}
+.game-controls .control-up,.game-controls .control-y{transform:translateY(var(--cluster-inset))}
+.game-controls .control-left,.game-controls .control-x{transform:translateX(var(--cluster-inset))}
+.game-controls .control-right,.game-controls .control-b{transform:translateX(calc(-1 * var(--cluster-inset)))}
+.game-controls .control-down,.game-controls .control-a{transform:translateY(calc(-1 * var(--cluster-inset)))}
+.game-controls .control-select,.game-controls .control-start{grid-row:5;grid-column:1 / -1;justify-self:center}
+.game-controls .control-select{transform:translateX(calc(-.5 * var(--control-size) - 4px))}
+.game-controls .control-start{transform:translateX(calc(.5 * var(--control-size) + 4px))}
+/* With no touch deck, gameplay still fills the viewport. When the deck is
+   visible reserve its actual height so controls never cover game pixels. */
 canvas#screen{width:min(100vw,calc(100vh * 1.5));width:min(100vw,calc(100dvh * 1.5));height:auto;aspect-ratio:3/2;image-rendering:pixelated}
+body:has(.game-controls:not([hidden])){padding-bottom:calc(var(--game-controls-height) + var(--controls-bottom) + 16px)}
+body:has(.game-controls:not([hidden])) :is(.screen,canvas#screen,canvas.library){width:min(94vw,calc((100vh - var(--game-controls-height) - var(--controls-bottom) - 32px) * 1.5));width:min(94vw,calc((100dvh - var(--game-controls-height) - var(--controls-bottom) - 32px) * 1.5))}

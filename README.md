@@ -233,6 +233,22 @@ the rest of the package; they do not depend on mutable host scripts. The generic
 launcher loads the same source under `/runtime/core/`. SDK changes only reach
 installed games through explicit versioned package updates, never OS sync.
 
+The shared touch deck places a compact cross-shaped D-pad on the left and a
+lettered Xbox face-button diamond on the right (Y top, X left, B right, A bottom).
+Adjacent circular buttons sit roughly 5px apart without shrinking touch targets.
+L/R shoulder buttons sit in a separate row above the clusters. Select (−) and
+Start (+) sit
+below; Exit remains separate in the upper-left.
+Pointer presses emit the matching logical button; standard browser gamepads
+retain A/B on indices 0/1 and provide X/Y on indices 2/3 and L/R on indices 4/5.
+The hub still uses shoulders to switch views; pressing both consumes individual
+shoulder input and opens the system menu. Existing keyboard preferences are
+unchanged; X/Y and L/R are available through touch or gamepad.
+Showing the game deck reserves screen space rather than covering gameplay.
+Targets stay at least 44px. `tests/fixtures/controls.html` uses the real core
+modules for browser checks: serve it beside `/runtime/core/`, resize the viewport
+and call `verifyLayout()` to check geometry, bounds and screen clearance.
+
 Run shared input/platform/lifecycle regression tests with
 `node --test tests/shared_core.cjs` or `uv run python -m unittest discover -s tests`.
 
