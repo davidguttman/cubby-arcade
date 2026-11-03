@@ -295,6 +295,13 @@ The web preview is for UX testing, not RG353V hardware/performance validation.
 
 ### Windows (adult setup)
 
+The landing-page download defaults to Windows (including without JavaScript),
+switching to Linux for desktop Linux user agents, not Android. The Windows CTA
+targets the latest release's `CubbyArcade-win32-x64.zip`: upload that exact asset
+when publishing the Windows release before deploying this landing-page change.
+Refresh the versioned Linux asset URL in `website/desktop-download.js` when
+publishing a new Linux release.
+
 Windows 10/11 x64 uses the same launcher, Store, controller input and offline
 game library as Linux. Download the portable `CubbyArcade-win32-x64.zip` from
 the verified Windows desktop build artifact. Extract **the entire ZIP**, then
