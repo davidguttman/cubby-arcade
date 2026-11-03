@@ -30,7 +30,8 @@ test('downloads verified files, persists active Library and serves only owned in
  const s=await setup(),states=[];s.bridge.onInstallState(value=>states.push(value));await s.bridge.catalog();await s.bridge.install('test-game');
  const [game]=await s.bridge.library();assert.match(game.entrypoint,/^\/__cubby_games__\/test-game\/[a-f0-9]+\/play.html$/);assert.equal(game.version,'1.0');
  const fresh=createBridge(s.options);assert.deepEqual(await fresh.library(),[game]);
- const response=await installedResponse(new Request(origin+game.entrypoint),s.options);const served=await response.text();assert.match(served,/data-handheld-system/);assert.match(response.headers.get('content-type'),/text\/html/);
+ const response=await installedResponse(new Request(origin+game.entrypoint),s.options);const served=await response.text();assert.match(served,/data-handheld-system/);assert.ok(served.indexOf('/runtime/core/host-osd.js')<served.indexOf('game.js'));
+ let raw;for(const name of await s.options.caches.keys()){raw=await(await s.options.caches.open(name)).match(origin+game.entrypoint);if(raw)break;}assert.ok(raw);assert.equal(await raw.text(),s.bytes['play.html']);assert.match(response.headers.get('content-type'),/text\/html/);
  assert.equal((await installedResponse(new Request(origin+game.entrypoint.replace('play.html','missing.js')),s.options)).status,404);
  assert.equal((await installedResponse(new Request(origin+game.entrypoint.replace('test-game','other-game')),s.options)).status,404);
  const partial=await installedResponse(new Request(origin+game.entrypoint,{headers:{range:'bytes=1-4'}}),s.options);assert.equal(partial.status,206);assert.equal(await partial.text(),served.slice(1,5));

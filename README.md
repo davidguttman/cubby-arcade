@@ -228,12 +228,17 @@ can configure hosts before boot; these screens use the same default `/library`.
 New games use `host.saves.get/set/remove`; Line Cutter remains byte-for-byte
 upstream and uses its existing storage internally. Its explicit compatibility
 alias maps `run` to `linecutter_run`, preserving old saves at the existing origin.
-Game packages include exact copies of these core source files, checksummed with
-the rest of the package; they do not depend on mutable host scripts. The generic
-launcher loads the same source under `/runtime/core/`. SDK changes only reach
-installed games through explicit versioned package updates, never OS sync.
+Games may bundle optional input/lifecycle/save SDK modules, checksummed with the
+package. Those game-owned SDK bytes still change only with a versioned game
+update. **The on-screen controller is not part of that SDK contract.** Cubby
+loads `runtime/core/host-osd.js` and `host-osd.css` before game scripts at the
+browser-worker, desktop-protocol and WPE delivery boundaries. Installed package
+bytes remain unchanged. The OSD lives in an isolated host-owned Shadow DOM and
+presents a standard virtual controller through `navigator.getGamepads()`; games
+need no OSD module or Cubby-specific input API. Old bundled `createControls`
+calls become no-ops only while hosted, preventing duplicate overlays.
 
-The shared touch deck places a compact cross-shaped D-pad on the left and a
+The host-owned touch deck places a compact cross-shaped D-pad on the left and a
 lettered Xbox face-button diamond on the right (Y top, X left, B right, A bottom).
 Adjacent circular buttons sit roughly 5px apart without shrinking touch targets.
 L/R shoulder buttons sit in a separate row above the clusters. Select (−) and
@@ -244,10 +249,13 @@ retain A/B on indices 0/1 and provide X/Y on indices 2/3 and L/R on indices 4/5.
 The hub still uses shoulders to switch views; pressing both consumes individual
 shoulder input and opens the system menu. Existing keyboard preferences are
 unchanged; X/Y and L/R are available through touch or gamepad.
-Showing the game deck reserves screen space rather than covering gameplay.
-Targets stay at least 44px. `tests/fixtures/controls.html` uses the real core
-modules for browser checks: serve it beside `/runtime/core/`, resize the viewport
-and call `verifyLayout()` to check geometry, bounds and screen clearance.
+The host reserves screen space for the `.screen`/`canvas#screen`/`canvas.library`
+layout conventions. Shadow DOM isolates controls and styles, not the browser
+viewport: arbitrary games that calculate their layout from `innerHeight` still
+need responsive canvas sizing. Hidden controls restore the normal viewport.
+Targets stay at least 44px. `tests/fixtures/host-osd.html` checks a plain Gamepad
+API consumer, or `?legacy` checks an unchanged legacy input/overlay consumer.
+Call `verifyHostOSD()` in the browser after loading beside `/runtime/core/`.
 
 Run shared input/platform/lifecycle regression tests with
 `node --test tests/shared_core.cjs` or `uv run python -m unittest discover -s tests`.

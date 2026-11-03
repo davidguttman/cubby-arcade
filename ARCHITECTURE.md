@@ -13,6 +13,14 @@ One controller-first hub, like EmulationStation, with three hosts:
 
 Physical controllers are supported in the browser as well as native hosts.
 Keyboard and touch are alternative input sources, not separate UI implementations.
+The on-screen controller belongs to Cubby, equivalent to a USB controller.
+`host-osd.js` and its CSS are delivered by the host before game scripts, use an
+isolated Shadow DOM, and expose a standard virtual Gamepad API device. Games
+consume controller input; they do not own OSD layout, visibility or lifecycle.
+Legacy bundled overlay entrypoints are suppressed without changing installed
+bytes. Layout changes require a Cubby update, never a game release.
+The host's canvas-space reservation supports documented `.screen`/`#screen`
+conventions; Shadow DOM does not create a separate browser viewport.
 Game packages, title screens, trailers and game code are shared across hosts.
 Web is the everyday UX testing path; VM validates ARM/WPE integration, not device
 performance. Real RG353V hardware testing remains necessary.

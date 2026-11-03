@@ -1,4 +1,5 @@
-/* Pictorial pointer/touch controls. The same semantic input is used by all hosts. */
+/* Deprecated standalone/legacy fallback. Cubby-owned OSD lives in host-osd.js/CSS.
+ * Hosted game calls are suppressed by the host; do not vendor OSD updates. */
 (function(root){
   'use strict';
   const shapes={left:'M18 3 6 12l12 9Z',right:'m6 3 12 9-12 9Z',up:'m3 18 9-12 9 12Z',down:'m3 6 9 12 9-12Z',

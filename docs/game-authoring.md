@@ -7,8 +7,8 @@ is for adults and coding agents; the games themselves must not require reading.
 
 Use pictures, animation, sound and demonstrated actions, not written tutorials,
 menus or error messages. A button glyph can supplement an action but must not
-be the only explanation. Support keyboard and controller, with touch controls
-when appropriate. Line Cutter is a technical test payload, not a UX template.
+be the only explanation. Support keyboard and standard controller input. Cubby supplies the on-screen
+virtual controller; games must not own or bundle it. Line Cutter is a technical test payload, not a UX template.
 
 ## Build an offline web game
 
@@ -40,8 +40,14 @@ not outdated instructions. Inspect those modules before integrating:
   shared input, pause/resume and saves. Its game instance has `press(button)`,
   `stop()`, `wake()` and optionally `start()`. Follow the actual source and its
   tests for lifecycle details.
-- `controls.js`: optional pictorial controls via
-  `HandheldControls.createControls(input, 'game')`.
+- Cubby's on-screen controller is host-owned, like a USB controller. Consume
+  standard `navigator.getGamepads()` input (directly or through `input.js`), not
+  OSD UI callbacks. Do not include `host-osd.js`/CSS in a game package. Legacy
+  `controls.js` is a standalone fallback; hosted `createControls` calls are
+  suppressed so old packages continue working without an update.
+
+OSD layout/visibility/lifecycle and keyboard binding policy belong to Cubby.
+Updating them must not require releasing or rewriting a game package.
 
 Cubby injects a host-owned game menu even if you do not use the SDK. Escape,
 Select + Start, or both shoulders open it. Do not intercept or repurpose that
