@@ -14,7 +14,13 @@
    if(!workers.controller)await new Promise(resolve=>{const changed=()=>{if(workers.controller){workers.removeEventListener('controllerchange',changed);resolve();}};workers.addEventListener('controllerchange',changed);changed();});
   })(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Worker unavailable')),20000);})]);
   const bridge=win.HandheldBrowserStore.createBridge();await bridge.ready();
-  win.HandheldPlatformOptions={kind:'web',bridge};win.HandheldHub.mount(host);
+  win.HandheldPlatformOptions={kind:'web',bridge};
+  let hub,stopUpdates;
+  function mount(){hub?.dispose();stopUpdates?.();hub=win.HandheldHub.mount(host);stopUpdates=win.HandheldBrowserStore.startUpdateChecks(win,bridge);}
+  mount();
+  // pagehide disposes the hub and cancels update work. A BFCache restoration
+  // needs fresh UI subscriptions and timers, not a second worker registration.
+  win.addEventListener('pageshow',event=>{if(event.persisted)mount();});
  }catch(error){
   const alert=win.document.createElement('div');alert.className='browser-storage-error';alert.setAttribute('role','alert');alert.setAttribute('aria-label','Browser game storage unavailable. Allow site storage and reload to retry.');alert.textContent='⚠';host.replaceChildren();host.appendChild(alert);
  }finally{clearTimeout(timeout);}
