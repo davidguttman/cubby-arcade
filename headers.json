@@ -78,5 +78,10 @@
     "path": "/store/little-camp/0.1.0/*",
     "name": "Cache-Control",
     "value": "public, max-age=31536000, immutable"
+  },
+  {
+    "path": "/store/line-cutter/0.2.1/*",
+    "name": "Cache-Control",
+    "value": "public, max-age=31536000, immutable"
   }
 ]

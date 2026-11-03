@@ -5,11 +5,11 @@ source and should not be merged back into the development branch.
 
 ## Snapshot
 
-- Application snapshot: `1d26b904b70ad6917c0614625ae8cc626151b1d2` (`arcade-store`, committed state only).
-- Included validated packages: Line Cutter 0.2.0; Little Camp 0.1.0.
+- Application snapshot: `ed3e97e6c54790a9a7756fdd5a7194d9fe66e813` (`arcade-store`, committed state only).
+- Included validated packages: Line Cutter 0.2.1; Little Camp 0.1.0.
 - Origin: https://cubby-arcade.onrender.com/
-- The uncommitted token work was deliberately excluded. This is a browser preview
-  and catalog/package host, not a finished token-enabled desktop release.
+- Includes the committed token-aware launcher for compatible native hosts. Browser
+  play remains a free preview; native profiles own token budgets and accounting.
 - Browser play uses the static web platform. Native installation, desktop Quit,
   and the desktop token bridge are not browser capabilities.
 
@@ -34,7 +34,7 @@ Export the chosen committed application revision into an isolated artifact
 staging directory. From that export, run:
 
 ```sh
-uv run python web.py build /path/to/line-cutter-0.2.0.game.zip /path/to/little-camp-0.1.0.game.zip --output /path/to/staging/public --base-url https://cubby-arcade.onrender.com/
+uv run python web.py build /path/to/line-cutter-0.2.1.game.zip /path/to/little-camp-0.1.0.game.zip --output /path/to/staging/public --base-url https://cubby-arcade.onrender.com/
 ```
 
 Set the generated `index.html` browser title to `Cubby Arcade`, then update its

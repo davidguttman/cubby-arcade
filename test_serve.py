@@ -62,6 +62,12 @@ class HTTPContract(unittest.TestCase):
         self.assertEqual(status,200)
         self.assertNotIn('immutable',headers['Cache-Control'])
 
+    def test_new_line_cutter_release_is_immutable(self):
+        status, headers, body = self.request('GET', '/store/line-cutter/0.2.1/line-cutter-0.2.1.game.zip')
+        self.assertEqual(status, 200)
+        self.assertIn('immutable', headers['Cache-Control'])
+        self.assertEqual(hashlib.sha256(body).hexdigest(), json.loads((serve.PUBLIC/'store/line-cutter/manifest.json').read_text())['package']['sha256'])
+
     def test_video_byte_ranges_and_invalid_ranges(self):
         path='/store/line-cutter/0.2.0/trailer-handheld.webm'
         full=(serve.PUBLIC/path.lstrip('/')).read_bytes()

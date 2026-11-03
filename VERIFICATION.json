@@ -1,11 +1,11 @@
 {
-  "source_commit": "1d26b904b70ad6917c0614625ae8cc626151b1d2",
+  "source_commit": "ed3e97e6c54790a9a7756fdd5a7194d9fe66e813",
   "packages": [
     {
       "id": "line-cutter",
-      "version": "0.2.0",
-      "archive_sha256": "29d4bd4c09b845019a32a1f745005d3fb15ba1b5086987ece8fec8e077153768",
-      "archive_bytes": 9646354,
+      "version": "0.2.1",
+      "archive_sha256": "39f9a48ae1716dfb3c9717fd48d87ea693ee41f12552f426668748c58b5b12d2",
+      "archive_bytes": 9647227,
       "inventoried_files": 17
     },
     {
@@ -16,26 +16,69 @@
       "inventoried_files": 13
     }
   ],
-  "checked_inventory_and_media_files": 45,
+  "checked_package_inventory_files": 30,
+  "checked_discovery_media_files": 4,
   "cloud_files": 11,
   "static_library_entries": 2,
-  "public_files": 52,
-  "public_bytes": 24852766,
+  "public_files": 55,
+  "public_bytes": 38282239,
+  "registry_preserved_sha256": "db8aab038aae76e43dbb464553debd0480910898b5d5540dae587854076959af",
+  "preserved_immutable_files": [
+    {
+      "path": "public/store/line-cutter/0.2.0/cover.png",
+      "sha256": "044dc9195cfb581f0a255553d047207abaf09a8a1d16e75e92d08406e550f5ba",
+      "bytes": 2110060
+    },
+    {
+      "path": "public/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
+      "sha256": "29d4bd4c09b845019a32a1f745005d3fb15ba1b5086987ece8fec8e077153768",
+      "bytes": 9646354
+    },
+    {
+      "path": "public/store/line-cutter/0.2.0/trailer-handheld.webm",
+      "sha256": "7f9a2bccc560cb194565fbab217731549a6b10fc889f283ceee3b883b13fe246",
+      "bytes": 1665350
+    },
+    {
+      "path": "public/store/little-camp/0.1.0/attract.webm",
+      "sha256": "56dfb85db5b22ebf560f0fcf206f7b7849e381570588d7a6c9c8a25a9e2bfd59",
+      "bytes": 374672
+    },
+    {
+      "path": "public/store/little-camp/0.1.0/cover.png",
+      "sha256": "88c1afa65454b1ff70fd04640aa28a719f1b5fc8ce8b14cb33f9b4b8b9c73f40",
+      "bytes": 28687
+    },
+    {
+      "path": "public/store/little-camp/0.1.0/little-camp-0.1.0.game.zip",
+      "sha256": "d3c279d79de4d9e50d1a47d289e99dd490fdf744061ad80e9003159214510874",
+      "bytes": 429504
+    }
+  ],
+  "line_cutter_0_2_1_provenance": {
+    "sha256": "39f9a48ae1716dfb3c9717fd48d87ea693ee41f12552f426668748c58b5b12d2",
+    "identical_to": [
+      ".cache/web/store/line-cutter/0.2.1/line-cutter-0.2.1.game.zip",
+      "dist/CubbyArcade-linux-x64/resources/web/store/line-cutter/0.2.1/line-cutter-0.2.1.game.zip"
+    ],
+    "new_version_minted": false
+  },
   "http_smoke": {
-    "tests": 5,
+    "tests": 6,
     "result": "pass",
+    "red_observed": "new0.2.1 archive initially lacked immutable caching; passed after exact regex inclusion",
     "coverage": [
       "JSON pointer MIME/CORS/revalidation",
-      "cloud inventory hashes over HTTP",
-      "game HTML",
+      "cloud inventory hashes overHTTP",
+      "gameHTML",
       "HEAD",
-      "stable manifest caching",
-      "versioned media immutable caching",
-      "closed/open/suffix byte ranges 206",
-      "invalid ranges 416",
-      "missing paths/source/directory/dotpath 404",
-      "report POST 204",
-      "CORS preflight 204"
+      "stablemanifestcaching",
+      "old/newversion immutablecaching",
+      "closed/open/suffixranges206",
+      "invalidranges416",
+      "missing/source/directory/dotpath404",
+      "reportPOST204",
+      "CORSpreflight204"
     ]
   }
 }

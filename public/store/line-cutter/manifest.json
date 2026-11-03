@@ -2,11 +2,11 @@
   "entrypoint": "play.html",
   "id": "line-cutter",
   "package": {
-    "sha256": "29d4bd4c09b845019a32a1f745005d3fb15ba1b5086987ece8fec8e077153768",
-    "size": 9646354,
-    "url": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip"
+    "sha256": "39f9a48ae1716dfb3c9717fd48d87ea693ee41f12552f426668748c58b5b12d2",
+    "size": 9647227,
+    "url": "https://cubby-arcade.onrender.com/store/line-cutter/0.2.1/line-cutter-0.2.1.game.zip"
   },
   "runtime": "web",
   "schema_version": 1,
-  "version": "0.2.0"
+  "version": "0.2.1"
 }

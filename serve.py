@@ -8,7 +8,7 @@ import re
 from urllib.parse import unquote, urlsplit
 
 PUBLIC = Path(__file__).resolve().parent / 'public'
-IMMUTABLE = re.compile(r'^/store/(?:line-cutter/0\.2\.0|little-camp/0\.1\.0)/[^/].*$')
+IMMUTABLE = re.compile(r'^/store/(?:line-cutter/0\.2\.(?:0|1)|little-camp/0\.1\.0)/[^/].*$')
 
 
 class Handler(SimpleHTTPRequestHandler):
