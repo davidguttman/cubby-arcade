@@ -13,6 +13,12 @@
 - Line Cutter is an unchanged technical test payload, **not** the intended
   audience, game design, art direction, or UX template. Its text is not precedent.
 
+## Controller ownership — invariant
+
+- Cubby owns the on-screen controller, just like a USB/gamepad input device.
+- OSD layout, visibility, lifecycle and key-binding policy live in the host/input layer, never in a game package. Games consume standard controller input.
+- Do not vendor OSD changes into games or release games to update the controller. Preserve immutable game bytes; legacy bundled overlays are suppressed at host delivery.
+
 ## Scope
 
 This repo owns the Linux/OS integration, launcher, development VM, and future

@@ -1,7 +1,7 @@
 /* Host-owned escape hatch, injected before game scripts. Trusted games need no SDK. */
 (function(root,factory){
  const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;
- else if(/^\/(?:games|__cubby_games__)\//.test(root.location.pathname))root.HandheldGameShell=api.install(root);
+ else {root.HandheldGameShellAPI=api;if(/^\/(?:games|__cubby_games__)\//.test(root.location.pathname))root.HandheldGameShell=api.install(root);}
 })(globalThis,function(){
 'use strict';
 function install(win){
@@ -74,7 +74,7 @@ function install(win){
  }
  if(doc.readyState==='loading')listen(doc,'DOMContentLoaded',mount);else mount();
  frame=win.requestAnimationFrame(poll);
- return {open,resume,home,isOpen:()=>opened,dispose(){disposed=true;win.cancelAnimationFrame(frame);listeners.forEach(f=>f());if(originalPads)Object.defineProperty(nav,'getGamepads',{configurable:true,value:originalPads});menu?.remove();touch?.remove();}};
+ return {open,resume,home,isOpen:()=>opened,dispose(){disposed=true;win.cancelAnimationFrame(frame);listeners.forEach(f=>f());if(originalPads)Object.defineProperty(nav,'getGamepads',{configurable:true,value:originalPads});menu?.remove();touch?.remove();win.HandheldOSD?.dispose();}};
 }
 return {install};
 });

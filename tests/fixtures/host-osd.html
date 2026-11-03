@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Host controller verification</title><link rel="stylesheet" href="/runtime/core/screen.css">
+<script src="/runtime/core/preferences.js"></script><script src="/runtime/core/host-osd.js"></script><script src="/runtime/core/game-shell.js"></script>
+</head><body><canvas id="screen" width="240" height="160"></canvas>
+<script>
+HandheldPreferences.preferences.set({touchOverlay:'on'});
+window.HandheldOSD=HandheldHostOSD.install(window);
+window.HandheldGameShell=HandheldGameShellAPI.install(window);
+window.osdEvents=[];
+const canvas=document.getElementById('screen'),ctx=canvas.getContext('2d');let x=120;
+ctx.fillStyle='#263c30';ctx.fillRect(0,0,240,160);
+const legacy=new URLSearchParams(location.search).has('legacy');
+function script(src){return new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=reject;document.head.appendChild(s);});}
+window.fixtureReady=(async()=>{
+ if(legacy){
+  await script('/runtime/core/controls.js');await script('/runtime/core/input.js');
+  window.gameInput=HandheldInput.createInput({onAction:e=>osdEvents.push(e.button)});
+  HandheldControls.createControls(gameInput,'game');
+ }else{
+  let last=[];function tick(){const p=navigator.getGamepads().find(Boolean),current=p.buttons.map(b=>b.pressed);current.forEach((down,index)=>{if(down&&!last[index])osdEvents.push(index);});last=current;requestAnimationFrame(tick);}requestAnimationFrame(tick);
+ }
+ function draw(){const pad=navigator.getGamepads().find(Boolean);if(pad.buttons[14].pressed)x--;if(pad.buttons[15].pressed)x++;ctx.fillStyle='#263c30';ctx.fillRect(0,0,240,160);ctx.fillStyle='#edf3dc';ctx.fillRect((x+240)%240,72,12,16);requestAnimationFrame(draw);}draw();
+ document.body.dataset.ready='true';
+})();
+window.verifyHostOSD=()=>{
+ const root=HandheldOSD.root,keys=[...root.querySelectorAll('button')],fail=[];
+ if(keys.length!==13)fail.push('host control set');
+ if(document.querySelector('.hub-controls'))fail.push('game-owned overlay');
+ const r=n=>root.querySelector('.control-'+n).getBoundingClientRect(),screen=canvas.getBoundingClientRect();
+ for(const key of keys){const box=key.getBoundingClientRect();if(box.width<43.9||box.height<43.9||box.left<0||box.top<0||box.right>innerWidth||box.bottom>innerHeight)fail.push('target bounds');if(box.left<screen.right&&box.right>screen.left&&box.top<screen.bottom&&box.bottom>screen.top)fail.push('screen overlap');}
+ if(r('l').bottom>r('up').top-12||r('r').bottom>r('y').top-12)fail.push('shoulder clearance');
+ if(!(r('y').top<r('x').top&&r('x').left<r('a').left&&r('b').left>r('a').left&&r('a').top>r('b').top))fail.push('Xbox order');
+ if(fail.length)throw Error(fail.join('; '));return {mode:legacy?'legacy':'no-SDK',buttons:keys.length,events:osdEvents,gameOwnedOverlay:false};
+};
+</script></body></html>
