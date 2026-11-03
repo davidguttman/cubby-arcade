@@ -235,9 +235,26 @@ def pid():
     try:
         value = int((STATE/'qemu.pid').read_text())
         command = Path(f'/proc/{value}/cmdline').read_bytes()
-        if b'qemu-system-aarch64' not in command or str(STATE/'disk.qcow2').encode() not in command:
+        arguments = os.fsdecode(command).rstrip('\0').split('\0')
+        if value <= 0 or Path(arguments[0]).name != 'qemu-system-aarch64':
             return None
-        return value
+        for index, argument in enumerate(arguments[:-1]):
+            if argument != '-drive':
+                continue
+            # QEMU escapes a literal comma in a drive option as a doubled comma.
+            fields = arguments[index + 1].replace(',,', '\0').split(',')
+            pairs = [field.replace('\0', ',').split('=', 1) for field in fields]
+            if any(len(pair) != 2 for pair in pairs):
+                continue
+            options = dict(pairs)
+            if len(options) != len(pairs) or options.get('id') != 'os':
+                continue
+            disk = Path(options.get('file', ''))
+            # Compare actual disk identity, not a substring in a name/other drive.
+            # An old-path symlink remains the same disk after host migration.
+            if disk.is_absolute() and disk.samefile(STATE / 'disk.qcow2'):
+                return value
+        return None
     except (OSError, ValueError):
         return None
 
