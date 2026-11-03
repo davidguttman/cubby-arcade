@@ -1,0 +1,32 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Control layout verification</title>
+<link rel="stylesheet" href="/runtime/core/screen.css">
+<canvas id="screen" width="240" height="160" aria-label="Game screen"></canvas>
+<script src="/runtime/core/preferences.js"></script>
+<script src="/runtime/core/input.js"></script>
+<script src="/runtime/core/controls.js"></script>
+<script>
+const canvas=document.getElementById('screen'),ctx=canvas.getContext('2d');
+ctx.fillStyle='#263c30';ctx.fillRect(0,0,240,160);ctx.strokeStyle='#a7d07a';ctx.strokeRect(1,1,238,158);
+const preferences=HandheldPreferences.createPreferences({storage:null});preferences.set({touchOverlay:'on'});
+const input=HandheldInput.createInput({preferences,onAction:e=>document.body.dataset.lastButton=e.button});
+HandheldControls.createControls(input,new URLSearchParams(location.search).get('mode')||'game');
+// Call from a browser test after changing the viewport; throws on regression.
+window.verifyLayout=()=>{
+ const rect=selector=>document.querySelector(selector).getBoundingClientRect();
+ const keys=[...document.querySelectorAll('.hub-controls button')];
+ const failures=[];
+ for(const key of keys){const r=key.getBoundingClientRect();if(r.width<44||r.height<44)failures.push('small '+key.ariaLabel);if(r.left<0||r.top<0||r.right>innerWidth||r.bottom>innerHeight)failures.push('offscreen '+key.ariaLabel);}
+ for(let i=0;i<keys.length;i++)for(let j=i+1;j<keys.length;j++){const a=keys[i].getBoundingClientRect(),b=keys[j].getBoundingClientRect();if(a.left<b.right&&b.left<a.right&&a.top<b.bottom&&b.top<a.bottom)failures.push('overlapping keys');}
+ if(document.querySelector('.game-controls')){
+  const u=rect('.control-up'),d=rect('.control-down'),l=rect('.control-left'),r=rect('.control-right'),a=rect('.control-a'),b=rect('.control-b'),s=rect('.control-start'),screen=rect('#screen');
+  if(!(u.top<l.top&&d.top>l.top&&u.left>l.left&&u.left<r.left&&l.top===r.top&&u.left===d.left))failures.push('D-pad is not a cross');
+  if(!(a.left>b.left&&a.top<b.top))failures.push('action diagonal');
+  if(!(s.top>d.top&&s.top>b.top))failures.push('Start not below');
+  for(const key of keys){const k=key.getBoundingClientRect();if(k.left<screen.right&&k.right>screen.left&&k.top<screen.bottom&&k.bottom>screen.top)failures.push('screen occluded by '+key.ariaLabel);}
+ }
+ if(failures.length)throw Error(failures.join('; '));
+ return {viewport:[innerWidth,innerHeight],buttons:keys.length,result:'pass'};
+};
+</script>

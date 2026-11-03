@@ -233,6 +233,13 @@ the rest of the package; they do not depend on mutable host scripts. The generic
 launcher loads the same source under `/runtime/core/`. SDK changes only reach
 installed games through explicit versioned package updates, never OS sync.
 
+The shared touch deck places a cross-shaped D-pad on the left, diagonal action
+buttons on the right and Start below; Exit remains separate in the upper-left.
+Showing the game deck reserves screen space rather than covering gameplay.
+Targets stay at least 44px. `tests/fixtures/controls.html` uses the real core
+modules for browser checks: serve it beside `/runtime/core/`, resize the viewport
+and call `verifyLayout()` to check geometry, bounds and screen clearance.
+
 Run shared input/platform/lifecycle regression tests with
 `node --test tests/shared_core.cjs` or `uv run python -m unittest discover -s tests`.
 
