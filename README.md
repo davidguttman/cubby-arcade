@@ -361,6 +361,19 @@ evict storage despite the best-effort persistence request. Uninstall uses the
 same Cancel-default confirmation as native, removes managed releases, and keeps
 saves and favorites. Native game files are not installed into a browser.
 
+The browser hub checks installed, still-listed games on entry, every five minutes
+while the tab is visible, and when visibility or connectivity returns. Background
+tabs may have their timers throttled; closing/navigating away from the hub stops
+checks and cancels its pending update work. Returning via browser Back restarts
+the hub and checks. Each check fetches the current catalog and stable manifests;
+an unchanged release identity does not download game files again. A complete new
+release is verified in a private cache before an IndexedDB transaction switches
+the active release. Existing game tabs retain their old, version-isolated URLs,
+so an update never reloads a running game or mixes its assets. Failed/offline
+checks keep the current release and saves; a later check retries. There is no
+background-service update promise when the hub is closed, and browser storage
+eviction remains possible.
+
 A schema-1 catalog contains `games`, one entry per game, with `id`, `version`,
 adult `title`, HTTPS package `url`, exact compressed `size` and `sha256`.
 `list` validates the full catalog; `install` downloads to temporary storage,

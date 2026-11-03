@@ -76,3 +76,51 @@ test('catalog is discovery-only, cached for offline use and malformed entries ne
  const offline=createBridge({...s.options,fetch:async()=>{throw Error('offline');}});assert.equal((await offline.catalog())[0].id,'test-game');
  await assert.rejects(s.bridge.install('../game'));await assert.rejects(s.bridge.install('not-offered'));
 });
+test('automatic checks update only installed offers, share a check and preserve old session URLs',async()=>{
+ const s=await setup();await s.bridge.checkUpdates();assert.equal(s.requests.includes(manifestURL),false);
+ await s.bridge.install('test-game');const first=(await s.bridge.library())[0];s.manifest.version='1.1';
+ const check=s.bridge.checkUpdates();assert.equal(check,s.bridge.checkUpdates());await check;
+ assert.equal((await s.bridge.library())[0].version,'1.1');
+ assert.match(await(await installedResponse(new Request(origin+first.entrypoint),s.options)).text(),/game.js/);
+});
+test('unchanged checks fetch metadata only, including relocated download URLs',async()=>{
+ const s=await setup();await s.bridge.install('test-game');const first=await s.bridge.library(),keys=await s.caches.keys();s.requests.length=0;
+ for(const file of Object.values(s.manifest.files))file.url='https://elsewhere.test/'+new URL(file.url,manifestURL).pathname.split('/').pop();
+ await s.bridge.checkUpdates();assert.deepEqual(await s.bridge.library(),first);assert.deepEqual(await s.caches.keys(),keys);
+ assert.deepEqual(s.requests.sort(),[origin+'/catalog',manifestURL].sort());
+});
+test('failed background check retains active release and retries later',async()=>{
+ const s=await setup();await s.bridge.install('test-game');const first=await s.bridge.library();s.manifest.version='1.1';s.breakDownloads();
+ await s.bridge.checkUpdates();assert.deepEqual(await s.bridge.library(),first);
+ const offline=createBridge({...s.options,fetch:async()=>{throw Error('offline');}});await offline.checkUpdates();assert.deepEqual(await offline.library(),first);
+});
+test('unlisted installed games are not checked',async()=>{
+ const s=await setup();await s.bridge.install('test-game');const requests=[];
+ const bridge=createBridge({...s.options,fetch:async url=>{requests.push(url);return Response.json([]);}});
+ await bridge.checkUpdates();assert.deepEqual(requests,[origin+'/catalog']);assert.equal((await bridge.library()).length,1);
+});
+test('a check cannot resurrect a game uninstalled while catalog discovery was pending',async()=>{
+ const s=await setup();await s.bridge.install('test-game');let release;const gate=new Promise(resolve=>release=resolve);
+ const bridge=createBridge({...s.options,fetch:async(url,options)=>{if(url===origin+'/catalog')await gate;return s.options.fetch(url,options);}});
+ const check=bridge.checkUpdates();await new Promise(resolve=>setImmediate(resolve));await s.bridge.uninstall('test-game');release();await check;
+ assert.deepEqual(await bridge.library(),[]);
+});
+test('aborted background work never commits even if fetch ignores its signal',async()=>{
+ const s=await setup();await s.bridge.install('test-game');const first=await s.bridge.library();s.manifest.version='1.1';let release;const gate=new Promise(resolve=>release=resolve);s.blockDownloads(gate);
+ const controller=new AbortController(),check=s.bridge.checkUpdates({signal:controller.signal});await new Promise(resolve=>setImmediate(resolve));controller.abort();release();await check;
+ assert.deepEqual(await s.bridge.library(),first);assert.equal((await s.caches.keys()).filter(name=>name.startsWith('cubby-game-')).length,1);
+});
+test('cancellation during IndexedDB commit preparation leaves the old release active',async()=>{
+ const s=await setup();await s.bridge.install('test-game');const first=await s.bridge.library();s.manifest.version='1.1';
+ const controller=new AbortController(),change=s.metadata.change.bind(s.metadata);
+ s.metadata.change=async(id,generation,update)=>{controller.abort();return change(id,generation,update);};
+ await s.bridge.checkUpdates({signal:controller.signal});assert.deepEqual(await s.bridge.library(),first);
+ assert.equal((await s.caches.keys()).filter(name=>name.startsWith('cubby-game-')).length,1);
+});
+test('background update detects multi-tab removal after fetching starts',async()=>{
+ const s=await setup();await s.bridge.install('test-game');s.manifest.version='1.1';let release,reached;
+ const gate=new Promise(resolve=>release=resolve),started=new Promise(resolve=>reached=resolve);
+ const updater=createBridge({...s.options,fetch:async(url,options)=>{if(url===manifestURL){reached();await gate;}return s.options.fetch(url,options);}});
+ const check=updater.checkUpdates();await started;await s.bridge.uninstall('test-game');release();await check;
+ assert.deepEqual(await updater.library(),[]);assert.equal((await s.caches.keys()).filter(name=>name.startsWith('cubby-game-')).length,0);
+});

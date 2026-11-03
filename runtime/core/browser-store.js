@@ -121,23 +121,38 @@
   function createBridge(options={}){
     const ctx=context(options),listeners=new Set(),jobs=new Map(),states={};
     const state=(id,phase,details={})=>{states[id]={phase,...details};for(const listener of listeners)try{listener(structuredClone(states));}catch{/* Observer failures cannot change an install. */}};
-    let catalog=[];
+    let catalog=[],checking=null;
     const bridge={
       async ready(){await ctx.metadata.list();if(!ctx.caches||!ctx.crypto?.subtle)throw Error('Browser game storage unavailable');},
       async library(){return (await ctx.metadata.list()).filter(record=>record.active).map(libraryEntry);},
-      async catalog(){
+      async catalog({signal}={}){
         const key=ctx.origin+'/catalog',cache=await ctx.caches.open(CATALOG_CACHE);
         try{
-          const response=await ctx.fetch(key,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)}),bytes=await readBytes(response,1024*1024);
+          signal?.throwIfAborted();
+          const response=await ctx.fetch(key,{cache:'no-store',redirect:'error',signal:AbortSignal.any([AbortSignal.timeout(20000),...(signal?[signal]:[])])}),bytes=await readBytes(response,1024*1024);
+          signal?.throwIfAborted();
           catalog=validateCatalog(JSON.parse(new TextDecoder().decode(bytes)));
           await cache.put(key,new Response(JSON.stringify(catalog),{headers:{'Content-Type':'application/json'}}));
-        }catch(error){const saved=await cache.match(key);if(!saved)throw error;catalog=validateCatalog(await saved.json());}
+        }catch(error){signal?.throwIfAborted();const saved=await cache.match(key);if(!saved)throw error;catalog=validateCatalog(await saved.json());}
         return structuredClone(catalog);
       },
       install(id){
         if(typeof id!=='string'||!ID.test(id))return Promise.reject(Error('Invalid game id'));
-        if(jobs.has(id))return jobs.get(id);
-        const job=run(id).catch(error=>{state(id,'error');throw error;}).finally(()=>jobs.delete(id));jobs.set(id,job);return job;
+        return startJob(id);
+      },
+      checkUpdates({signal}={}){
+        if(checking)return checking;
+        checking=(async()=>{
+          // Refresh discovery, but never turn an uninstalled Store offer into an install.
+          const offers=await bridge.catalog({signal});
+          const installed=new Map((await ctx.metadata.list()).filter(record=>record.active).map(record=>[record.id,record.generation]));
+          for(const offer of offers){
+            signal?.throwIfAborted();
+            if(!installed.has(offer.id))continue;
+            try{await startJob(offer.id,{signal,generation:installed.get(offer.id)});}catch{/* Current bytes stay playable; a later check retries. */}
+          }
+        })().catch(()=>{/* Offline/disposed checks are best effort. */}).finally(()=>checking=null);
+        return checking;
       },
       async uninstall(id){
         if(typeof id!=='string'||!ID.test(id))throw Error('Invalid game id');
@@ -154,12 +169,21 @@
       async installStatus(){return structuredClone(states);},
       onInstallState(listener){listeners.add(listener);return ()=>listeners.delete(listener);}
     };
-    async function run(id){
-      const before=await ctx.metadata.get(id);state(id,'checking');
+    function startJob(id,jobOptions={}){
+      if(jobs.has(id))return jobs.get(id);
+      const job=run(id,jobOptions).catch(error=>{state(id,'error');throw error;}).finally(()=>jobs.delete(id));jobs.set(id,job);return job;
+    }
+    async function run(id,{signal:cancel,generation}={}){
+      cancel?.throwIfAborted();
+      const before=await ctx.metadata.get(id);
+      // An uninstall/reinstall in this or another tab invalidates a queued update.
+      if(generation!==undefined&&(!before.active||before.generation!==generation))return;
+      state(id,'checking');
       if(!catalog.length)await bridge.catalog();
       const offer=catalog.find(entry=>entry.id===id);if(!offer)throw Error('Game not offered');
-      const signal=AbortSignal.timeout(120000),url=downloadURL(offer.manifest_url);
+      const signal=AbortSignal.any([AbortSignal.timeout(120000),...(cancel?[cancel]:[])]),url=downloadURL(offer.manifest_url);
       const raw=await readBytes(await ctx.fetch(url,{redirect:'error',cache:'no-store',signal}),MAX_MANIFEST);
+      signal.throwIfAborted();
       const manifest=validateRelease(JSON.parse(new TextDecoder().decode(raw)),id,url);
       const identity=m=>JSON.stringify([m.id,m.version,m.runtime,m.entrypoint,m.artwork,m.attract??null,m.screenshots??[],Object.entries(m.files).map(([path,file])=>[path,file.size,file.sha256]).sort(([a],[b])=>a.localeCompare(b))]);
       // All retained releases remain immutable, not just the active version.
@@ -167,6 +191,11 @@
       if(before.active)identities[before.active.manifest.version]=identity(before.active.manifest);
       const currentIdentity=identity(manifest);
       if(Object.hasOwn(identities,manifest.version)&&identities[manifest.version]!==currentIdentity)throw Error('Immutable release conflict');
+      if(before.active&&identity(before.active.manifest)===currentIdentity){
+        const current=await ctx.metadata.get(id);signal.throwIfAborted();
+        if(current.generation!==before.generation)throw Error('Game changed during installation');
+        state(id,'installed',{version:manifest.version});return manifest;
+      }
       // A random staging identity, not the game version, keeps interrupted writes
       // and simultaneous tabs isolated. Older active sessions retain their URLs.
       const token=hex(ctx.crypto.getRandomValues(new Uint8Array(16))),name=CACHE_PREFIX+token,base=ctx.origin+releaseBase(id,token),cache=await ctx.caches.open(name);
@@ -175,13 +204,15 @@
       state(id,'downloading',{received,total});
       try{
         for(const [path,file] of Object.entries(manifest.files)){
+          signal.throwIfAborted();
           const bytes=await readBytes(await ctx.fetch(file.url,{redirect:'error',cache:'no-store',signal}),file.size,n=>state(id,'downloading',{received:received+n,total}));
+          signal.throwIfAborted();
           if(bytes.byteLength!==file.size||hex(await ctx.crypto.subtle.digest('SHA-256',bytes))!==file.sha256)throw Error('Download checksum/size mismatch');
           await cache.put(base+path.split('/').map(encodeURIComponent).join('/'),new Response(bytes,{headers:{'Content-Type':mediaType(path),'X-Content-Type-Options':'nosniff'}}));
           received+=file.size;state(id,'downloading',{received,total});
         }
         state(id,'verifying');
-        await ctx.metadata.change(id,before.generation,record=>({...record,title:offer.title,generation:record.generation+1,active:{token,manifest},releases:[...record.releases,token],identities:{...identities,[manifest.version]:currentIdentity}}));
+        await ctx.metadata.change(id,before.generation,record=>{signal.throwIfAborted();return {...record,title:offer.title,generation:record.generation+1,active:{token,manifest},releases:[...record.releases,token],identities:{...identities,[manifest.version]:currentIdentity}};});
         committed=true;
         // Best effort only: browsers may still evict site data. Never promise
         // durable storage or block an otherwise successful install on a prompt.
@@ -190,6 +221,23 @@
       }finally{if(!committed)await ctx.caches.delete(name);}
     }
     return bridge;
+  }
+  // This runs only in a browser hub document, not in a game or service worker.
+  // Browsers throttle background timers; visibility/online events catch up later.
+  function startUpdateChecks(win,bridge){
+    const controller=new AbortController();let stopped=false,running=false;
+    async function check(){
+      if(stopped||running||win.document.hidden||win.navigator.onLine===false)return;
+      running=true;
+      try{await bridge.checkUpdates({signal:controller.signal});}catch{/* Never block hub/play on an update. */}finally{running=false;}
+    }
+    const timer=win.setInterval(check,5*60*1000);
+    function stop(){
+      if(stopped)return;stopped=true;controller.abort();win.clearInterval(timer);
+      win.document.removeEventListener('visibilitychange',check);win.removeEventListener('online',check);win.removeEventListener('pagehide',stop);
+    }
+    win.document.addEventListener('visibilitychange',check);win.addEventListener('online',check);win.addEventListener('pagehide',stop);check();
+    return stop;
   }
   async function installedResponse(request,options={}){
     const ctx=context(options),url=new URL(request.url);
@@ -251,5 +299,5 @@
       })());
     });
   }
-  return {createBridge,createMetadataStore,validateRelease,validateCatalog,installedResponse,attachWorker,PREFIX};
+  return {createBridge,createMetadataStore,validateRelease,validateCatalog,installedResponse,attachWorker,startUpdateChecks,PREFIX};
 });
