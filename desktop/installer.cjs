@@ -98,6 +98,15 @@ async function extract(buffer,directory,release){
 function noSymlinks(root,target){
  let current=root;for(const piece of path.relative(root,target).split(path.sep)){if(!piece)continue;if(piece==='..')throw Error('Path outside games');current=path.join(current,piece);try{if(fs.lstatSync(current).isSymbolicLink())throw Error('Symlinked install path');}catch(e){if(e.code!=='ENOENT')throw e;}}
 }
+// Windows maps mode 0444 to a read-only file attribute. Clear it only when
+// removing an already ownership-validated managed game; never follow links or
+// change the separate saves/profile trees. Linux keeps immutable file modes.
+function writableWindowsFiles(directory){
+ const stat=fs.lstatSync(directory);
+ if(stat.isSymbolicLink())return;
+ if(stat.isDirectory())for(const name of fs.readdirSync(directory))writableWindowsFiles(path.join(directory,name));
+ else if(stat.isFile())fs.chmodSync(directory,0o600);
+}
 async function diskManifest(root,directory){
  const file=path.join(directory,'manifest.json');noSymlinks(root,file);
  const stat=await fsp.lstat(file);if(!stat.isFile()||stat.size>MAX_MANIFEST)throw Error('Invalid installed manifest');
@@ -127,7 +136,7 @@ class GameInstaller{
   // directories or follow a symlink supplied in place of a managed game.
   const {directory}=this.library.release(id);noSymlinks(root,directory);
   this.state(id,'uninstalling');
-  try{fs.rmSync(game,{recursive:true});this.state(id,'uninstalled');}
+  try{if(process.platform==='win32')writableWindowsFiles(game);fs.rmSync(game,{recursive:true});this.state(id,'uninstalled');}
   catch(error){this.state(id,'error');throw error;}
   return this.library.entries();
  }

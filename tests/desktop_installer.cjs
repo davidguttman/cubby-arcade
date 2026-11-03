@@ -49,3 +49,26 @@ test('fresh profile never auto-installs bundled games; explicit installs survive
  assert.equal(new GameLibrary(f.lib.site,f.lib.games).entries()[0].version,'1');
  f.documents.clear();await f.installer.checkUpdates();assert.equal(f.lib.entries()[0].version,'1');
 });
+test('Windows native readonly recursive-removal control records filesystem semantics', {skip:process.platform!=='win32'},t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'cubby-readonly-control-')),tree=path.join(root,'game'),file=path.join(tree,'readonly.txt');
+ t.after(()=>{if(fs.existsSync(file))fs.chmodSync(file,0o600);fs.rmSync(root,{recursive:true,force:true});});
+ fs.mkdirSync(tree);fs.writeFileSync(file,'control',{mode:0o444});
+ let result='removed';try{fs.rmSync(tree,{recursive:true});}catch(error){assert(['EPERM','EACCES'].includes(error.code));result=error.code;}
+ console.log(JSON.stringify({windowsReadonlyRemoval:result,node:process.version}));
+ if(result!=='removed'){fs.chmodSync(file,0o600);fs.rmSync(tree,{recursive:true});}
+ assert(!fs.existsSync(tree));
+});
+test('uninstall clears Windows readonly attributes only within the owned game tree',async t=>{
+ const f=fixture(t);offer(f,archive(f));await f.installer.install('demo');
+ const game=path.join(f.lib.games,'demo'),asset=path.join(game,'releases/1/index.html'),save=path.join(f.root,'save.json');
+ fs.writeFileSync(save,'retain',{mode:0o600});fs.chmodSync(asset,0o444);
+ const descriptor=Object.getOwnPropertyDescriptor(process,'platform');
+ Object.defineProperty(process,'platform',{...descriptor,value:'win32'});t.after(()=>Object.defineProperty(process,'platform',descriptor));
+ const remove=fs.rmSync;
+ t.mock.method(fs,'rmSync',(target,...args)=>{
+  if(target===game&&!(fs.statSync(asset).mode&0o200))throw Object.assign(Error('Readonly Windows asset'),{code:'EPERM'});
+  return remove(target,...args);
+ });
+ await f.installer.uninstall('demo');
+ assert(!fs.existsSync(game));assert.equal(fs.readFileSync(save,'utf8'),'retain');assert.deepEqual(f.lib.entries(),[]);
+});
