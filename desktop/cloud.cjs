@@ -2,7 +2,7 @@
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const crypto=require('node:crypto');
-const DEFAULT_ORIGIN='https://cubby-arcade.onrender.com';
+const DEFAULT_ORIGIN='https://cubby.david.app';
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 function shellPath(name){return name==='/index.html'||name==='/catalog'||/^\/runtime\/core\/[a-z0-9-]+\.(js|css)$/.test(name);}
 function validate(raw){

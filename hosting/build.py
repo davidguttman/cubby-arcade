@@ -5,11 +5,14 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import shutil
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import vm
 import web
+from runtime import catalog
 
 
 def retained_archives():
@@ -26,16 +29,40 @@ def retained_archives():
     return archives
 
 
+def legacy_manifests(urls):
+    """Freeze only compatibility endpoints; current catalogs use publisher URLs.
+
+    Resolve at the final publisher URL before exporting: a static copy must not
+    reinterpret relative download paths against Cubby's unrelated origin.
+    Invalid or unavailable metadata fails the build, never creates a fake offer.
+    """
+    result = {}
+    with tempfile.TemporaryDirectory(prefix='cubby-metadata-') as temporary:
+        for game, url in urls.items():
+            target = Path(temporary) / 'manifest.json'
+            final_url = catalog.download(url, target, catalog.MAX_RELEASE)
+            result[game] = catalog.validate_release(json.loads(target.read_bytes()), game,
+                                                    manifest_url=final_url)
+    return result
+
+
 def build(output=None):
     output = Path(output) if output is not None else ROOT / '.cache/web'
     # Build/cache outputs stay in this checkout, not the development VM's state.
     vm.fetch_games()
     current = vm.build_example(ROOT / '.cache/packages')
     urls = web.default_manifest_urls()
-    result = web.build(output, [*retained_archives(), current], manifest_urls=urls,
+    snapshots = legacy_manifests(urls)
+    result = web.build(output, [*retained_archives(), current],
+                       base_url='https://cubby.david.app', manifest_urls=urls,
                        registry=web.default_registry())
-    proxies = {f'/store/{game}/manifest.json': url for game, url in urls.items()}
-    (result / '.manifest-proxies.json').write_text(json.dumps(proxies, sort_keys=True) + '\n')
+    for game, document in snapshots.items():
+        destination = result / 'store' / game / 'manifest.json'
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(json.dumps(document, sort_keys=True) + '\n')
+    # Native cache keys remain /index.html, but native transport is a distinct
+    # physical file. Root becomes the adult landing page with no runtime router.
+    shutil.copyfile(result / 'site/index.html', result / 'index.html')
     return result
 
 

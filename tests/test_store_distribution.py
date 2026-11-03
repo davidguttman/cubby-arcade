@@ -61,7 +61,8 @@ class StoreDistribution(unittest.TestCase):
             line = archive(root, 'line-cutter')
             with patch.object(hosting_build, 'retained_archives', return_value=[old]), \
                  patch.object(hosting_build.vm, 'fetch_games'), \
-                 patch.object(hosting_build.vm, 'build_example', return_value=line):
+                 patch.object(hosting_build.vm, 'build_example', return_value=line), \
+                 patch.object(hosting_build, 'legacy_manifests', return_value={}):
                 site = hosting_build.build(root / 'site')
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertFalse((site / 'games').exists())

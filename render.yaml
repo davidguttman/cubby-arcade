@@ -1,11 +1,53 @@
 services:
   - type: web
     name: cubby-arcade
-    runtime: python
-    plan: free
+    runtime: static
     buildCommand: python3 -m pip install -r requirements.txt && python3 hosting/build.py
-    startCommand: python3 hosting/serve.py
-    healthCheckPath: /hub-manifest.json
+    staticPublishPath: .cache/web
     autoDeployTrigger: off
     domains:
       - cubby.david.app
+    routes:
+      - type: rewrite
+        source: /play
+        destination: /native/index.html
+      - type: rewrite
+        source: /play/
+        destination: /native/index.html
+    headers:
+      - source: /*
+        headers:
+          - key: Access-Control-Allow-Origin
+            value: '*'
+          - key: Cache-Control
+            value: public, max-age=0, must-revalidate
+          - key: X-Content-Type-Options
+            value: nosniff
+      - source: /catalog
+        headers:
+          - key: Content-Type
+            value: application/json; charset=utf-8
+      - source: /library
+        headers:
+          - key: Content-Type
+            value: application/json; charset=utf-8
+      - source: /hub-manifest.json
+        headers:
+          - key: Content-Type
+            value: application/json; charset=utf-8
+      - source: /store/line-cutter/0.2.0/*
+        headers:
+          - key: Cache-Control
+            value: public, max-age=31536000, immutable
+      - source: /store/line-cutter/0.2.1/*
+        headers:
+          - key: Cache-Control
+            value: public, max-age=31536000, immutable
+      - source: /store/line-cutter/0.3.0/*
+        headers:
+          - key: Cache-Control
+            value: public, max-age=31536000, immutable
+      - source: /store/little-camp/0.1.0/*
+        headers:
+          - key: Cache-Control
+            value: public, max-age=31536000, immutable
