@@ -1,8 +1,10 @@
 """The registry is discovery; stable manifests resolve immutable releases."""
 import hashlib
+import http.server
 import json
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 import urllib.parse
@@ -59,6 +61,59 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(packages.library(self.games)[0]['version'], '2')
         self.assertTrue(old.is_dir())
         self.assertTrue((self.site / 'store/demo/1/demo-1.game.zip').is_file())
+
+    def test_redirected_release_resolves_downloads_from_final_manifest_url(self):
+        archive = self.archive().read_bytes()
+        files = {'index.html': b'<canvas/>', 'art.svg': b'<svg/>'}
+        documents = {
+            1: dict(schema_version=1, id='demo', version='1', runtime='web', entrypoint='index.html',
+                    package=dict(url='files/demo.zip', size=len(archive), sha256=hashlib.sha256(archive).hexdigest())),
+            2: dict(schema_version=2, id='demo', version='1', runtime='web', entrypoint='index.html', artwork='art.svg',
+                    files={name: dict(url='files/' + name, size=len(body), sha256=hashlib.sha256(body).hexdigest())
+                           for name, body in files.items()}),
+        }
+        bodies = {'/releases/1/files/demo.zip': archive,
+                  **{'/releases/2/files/' + name: body for name, body in files.items()}}
+        for schema, document in documents.items():
+            bodies[f'/releases/{schema}/manifest.json'] = json.dumps(document).encode()
+        redirects = {f'/stable/{schema}.json': f'/releases/{schema}/manifest.json' for schema in documents}
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path in redirects:
+                    self.send_response(302)
+                    self.send_header('Location', redirects[self.path])
+                    self.end_headers()
+                elif self.path in bodies:
+                    self.send_response(200)
+                    self.send_header('Content-Length', str(len(bodies[self.path])))
+                    self.end_headers()
+                    self.wfile.write(bodies[self.path])
+                else:
+                    self.send_error(404)
+
+            def log_message(self, *args):
+                pass
+
+        with http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base = 'http://127.0.0.1:' + str(server.server_port)
+            try:
+                for schema in documents:
+                    with self.subTest(schema=schema):
+                        entry = dict(id='demo', title='Demo', manifest_url=f'{base}/stable/{schema}.json',
+                                     artwork=base + '/art.svg')
+                        resolved = catalog.resolve_entry(entry, developer=True)
+                        url = resolved['url'] if schema == 1 else resolved['files']['index.html']['url']
+                        payload = 'demo.zip' if schema == 1 else 'index.html'
+                        self.assertEqual(url, f'{base}/releases/{schema}/files/{payload}')
+                        games = self.games / str(schema)
+                        catalog.install_entry(entry, games, developer=True)
+                        self.assertEqual((games / 'demo/current/index.html').read_bytes(), files['index.html'])
+            finally:
+                server.shutdown()
+                thread.join()
 
     def test_invalid_release_or_payload_preserves_installed_release(self):
         entry = self.publish(self.archive())

@@ -53,11 +53,13 @@ class Redirects(urllib.request.HTTPRedirectHandler):
 
 
 def download(url, destination, limit, developer=False, expected_size=None, digest=None, allow_redirects=True, timeout=20):
+    """Download verified bytes and return their final response URL."""
     check_url(url, developer)
     opener = urllib.request.build_opener(Redirects(developer, allow_redirects))
     deadline = time.monotonic() + 120
     size, checksum = 0, hashlib.sha256()
     with opener.open(url, timeout=timeout) as response, Path(destination).open('wb') as output:
+        final_url = response.geturl()
         length = response.headers.get('Content-Length')
         if length is not None and (int(length) > limit or (expected_size is not None and int(length) != expected_size)):
             raise ValueError('Download size mismatch')
@@ -76,6 +78,7 @@ def download(url, destination, limit, developer=False, expected_size=None, diges
         raise ValueError('Download size mismatch')
     if digest is not None and checksum.hexdigest() != digest:
         raise ValueError('Download checksum mismatch')
+    return final_url
 
 
 def validate(document, developer=False):
@@ -156,8 +159,9 @@ def resolve_entry(entry, developer=False):
     validate_registry([entry], developer)
     with tempfile.TemporaryDirectory(prefix='hub-release-') as temporary:
         target = Path(temporary) / 'release.json'
-        download(entry['manifest_url'], target, MAX_RELEASE, developer)
-        release = validate_release(json.loads(target.read_text()), entry['id'], developer, entry['manifest_url'])
+        manifest_url = download(entry['manifest_url'], target, MAX_RELEASE, developer)
+        release = validate_release(json.loads(target.read_text()), entry['id'], developer,
+                                   manifest_url if manifest_url is not None else entry['manifest_url'])
     if release['schema_version'] == 2:
         return release
     return dict(release['package'], id=release['id'], version=release['version'],
