@@ -78,9 +78,9 @@
         if (axes[1] < -deadzone) current.add('up');
         if (axes[1] > deadzone) current.add('down');
         if (!down[4] && !down[5]) shouldersBlocked = false;
-        if (options.navigationShoulders && !shouldersBlocked) {
-          if (down[4]) current.add('previousView');
-          if (down[5]) current.add('nextView');
+        if (!shouldersBlocked) {
+          if (down[4]) current.add(options.navigationShoulders ? 'previousView' : 'l');
+          if (down[5]) current.add(options.navigationShoulders ? 'nextView' : 'r');
         }
         if (down[4] && down[5]) { shouldersBlocked = true; current.clear(); current.add('exit'); }
         if (!ready) ready = neutral;

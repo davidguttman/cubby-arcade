@@ -13,11 +13,11 @@ function fixture(mode,encoding='utf8'){
 test('game controls expose spatial hooks without changing any logical pointer mapping',()=>{
  const {bar,attached}=fixture('game');
  assert.match(bar.className,/\bgame-controls\b/);
- assert.deepEqual(attached.map(([,button])=>button),['exit','left','up','down','right','a','b','x','y','select','start']);
+ assert.deepEqual(attached.map(([,button])=>button),['exit','left','up','down','right','a','b','x','y','l','r','select','start']);
  for(const [node,button] of attached){
   assert.match(node.className,new RegExp('\\bcontrol-'+button+'\\b'));
   assert.equal(node.attributes['aria-label'],button);
-  if(['a','b','x','y'].includes(button))assert.equal(node.textContent,button.toUpperCase());
+  if(['a','b','x','y','l','r'].includes(button))assert.equal(node.textContent,button.toUpperCase());
   else if(button==='start'||button==='select')assert.equal(node.textContent,button==='start'?'+':'−');
   else assert.match(node.innerHTML,/<svg/);
  }

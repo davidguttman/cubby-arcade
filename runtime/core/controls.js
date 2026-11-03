@@ -3,10 +3,10 @@
   'use strict';
   const shapes={left:'M18 3 6 12l12 9Z',right:'m6 3 12 9-12 9Z',up:'m3 18 9-12 9 12Z',down:'m3 6 9 12 9-12Z',
     exit:'M11 3 1 12l10 9v-6h11V9H11Z'};
-  const glyphs={a:'A',b:'B',x:'X',y:'Y',start:'+',select:'\u2212'};
+  const glyphs={a:'A',b:'B',x:'X',y:'Y',l:'L',r:'R',start:'+',select:'\u2212'};
   function createControls(input,mode){
     const bar=document.createElement('nav');bar.className='hub-controls'+(mode==='game'?' game-controls':'');bar.setAttribute('aria-label','Game controls');
-    const list=mode==='game'?['exit','left','up','down','right','a','b','x','y','select','start']:mode==='title'?['exit','start']:['left','start','right'];
+    const list=mode==='game'?['exit','left','up','down','right','a','b','x','y','l','r','select','start']:mode==='title'?['exit','start']:['left','start','right'];
     list.forEach(button=>{
       const node=document.createElement('button');node.type='button';node.setAttribute('aria-label',button);
       node.className='control-'+button+(button==='exit'?' back':'');

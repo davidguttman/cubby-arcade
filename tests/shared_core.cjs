@@ -27,6 +27,16 @@ test('four gamepad face buttons preserve distinct pointer-equivalent logical eve
  }
  f.input.dispose();
 });
+test('gameplay shoulders emit L/R once and the exit chord latches until both release',()=>{
+ const f=fixture();f.frame([]);
+ for(const [index,button] of [[4,'l'],[5,'r']]){
+  f.frame([index]);assert.deepEqual(f.events.at(-1),{action:button,button,source:'gamepad'});
+  const count=f.events.length;f.frame([index]);assert.equal(f.events.length,count);f.frame([]);
+ }
+ f.frame([4,5]);assert.equal(f.events.at(-1).action,'exit');const count=f.events.length;
+ f.frame([4,5]);f.frame([4]);f.frame([5]);assert.equal(f.events.length,count);
+ f.frame([]);f.frame([4]);assert.equal(f.events.at(-1).button,'l');f.input.dispose();
+});
 test('keyboard repeat cannot activate next screen; blur resets; touch and teardown work',()=>{
   const f=fixture();f.fire('keydown',{code:'Enter',repeat:true});assert.equal(f.events.length,0);
   f.fire('keydown',{code:'KeyZ'});f.fire('keydown',{code:'KeyZ'});assert.equal(f.events.length,1);
@@ -93,7 +103,6 @@ test('hub shoulders wrap views through discrete edges and latch after menu chord
  f.frame(null);f.frame([4]);assert.equal(f.events.at(-1).action,'nextView');f.frame([]);f.frame([4]);assert.equal(f.events.at(-1).action,'previousView');
  const cancel=f.input.captureKeyboard(()=>{});const captured=f.events.length;f.frame([]);f.frame([5]);assert.equal(f.events.length,captured);cancel();
  f.input.dispose();
- const game=fixture();game.frame([]);game.frame([5]);assert.equal(game.events.length,0);game.input.dispose();
 });
 test('quit is only advertised by platforms with native support',async()=>{
  const web=createPlatform({document:{}});assert.equal(web.capabilities.quit,false);assert.equal(web.quit,undefined);
