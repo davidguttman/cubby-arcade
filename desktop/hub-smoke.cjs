@@ -150,7 +150,7 @@ async function checkHub(win,output){
       const video=document.querySelector('.detail video');assert(video,'Actual trailer missing');
       await new Promise(resolve=>setTimeout(resolve,1500));assert(video.currentTime>0&&!video.error,'Detail trailer is not playing');
       document.querySelector('.favorite').click();assert(document.querySelector('.favorite').getAttribute('aria-pressed')==='true','Favorite did not toggle');
-      document.querySelector('.detail-close').click();card.click();assert(document.querySelector('.favorite').getAttribute('aria-pressed')==='true','Favorite lost on reopening');
+      document.querySelector('.detail-close').click();assert(!document.querySelector('.detail').hidden&&document.querySelector('.play-game'),'Back hid Library actions');assert(document.querySelector('.detail video')===video&&document.activeElement===card,'Back replaced trailer or lost shelf focus');card.click();assert(document.querySelector('.favorite').getAttribute('aria-pressed')==='true','Favorite lost on returning to shelf');
       document.querySelector('[aria-label="store"]').click();assert(document.querySelector('[aria-current]').getAttribute('aria-label')==='store','Store not selected');assert(document.querySelector('.game-card'),'Catalog missing');
       document.querySelector('[aria-label="options"]').click();assert(!document.querySelector('.touch-settings,[data-mode]'),'Manual touch options must not exist');
       prefs.set({touchOverlay:'on'});assert(!prefs.showTouchControls({navigator:{maxTouchPoints:0}}),'Legacy on override forced desktop controls');
@@ -162,7 +162,7 @@ async function checkHub(win,output){
       document.querySelector('[aria-label="Adult keyboard setup"]').click();Array.from(document.querySelectorAll('dialog button')).find(b=>b.textContent==='Reset keys').click();Array.from(document.querySelectorAll('dialog button')).find(b=>b.textContent==='Cancel').click();assert(prefs.get().keyboard.a[0]==='KeyV','Cancel applied draft');
       document.querySelector('[aria-label="library"]').click();
       document.querySelector('.game-card').focus();window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyV',bubbles:true}));window.dispatchEvent(new KeyboardEvent('keyup',{code:'KeyV',bubbles:true}));assert(document.activeElement.classList.contains('play-game'),'Remapped key did not control library');
-      document.querySelector('.detail-close').click();
+      document.querySelector('.detail-close').click();assert(!document.querySelector('.detail').hidden&&document.querySelector('.play-game'),'Back must keep Library actionable');
       return {grid:true,hoverPreview:true,favorite:true,store:true,automaticTouch:true,keyboardCapture:true,draftCancel:true,shoulderNavigation:true,quitConfirmation:true};
     }finally{prefs.set(previous);if(previousFavorites===null)localStorage.removeItem('handheld:favorites:v1');else localStorage.setItem('handheld:favorites:v1',previousFavorites);}
   })()`);

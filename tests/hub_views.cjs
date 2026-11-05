@@ -15,8 +15,8 @@ test('options contain adult setup but no manual touch controls',()=>{
 });
 
 // Small DOM adapter for exercising the mounted hub without a browser dependency.
-function mountedHub(games){
- let onInstall,revision=0;
+function mountedHub(games,catalog=[],capabilities={}){
+ let onInstall,onAction,revision=0;
  class Element{
   constructor(tag='div'){this.tagName=tag;this.children=[];this.attributes={};this.dataset={};this.hidden=false;this.listeners={};this.style={setProperty(){},removeProperty(){}};this.className='';this.ownerDocument=doc;this.classList={contains:n=>this.className.split(' ').includes(n),add:n=>{if(!this.classList.contains(n))this.className+=' '+n;},remove:n=>{this.className=this.className.split(' ').filter(x=>x!==n).join(' ');},toggle:(n,on)=>{on??=!this.classList.contains(n);this.classList[on?'add':'remove'](n);}};}
   appendChild(e){this.children.push(e);e.parent=this;return e;}
@@ -34,16 +34,16 @@ function mountedHub(games){
   click(){for(const fn of this.listeners.click||[])fn();}
   insertAdjacentHTML(){}
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
-  play(){return Promise.resolve();}pause(){}load(){}
+  play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){}
  }
  const doc={createElement:tag=>new Element(tag),activeElement:null};
- const platform={capabilities:{},library:async()=>games,catalog:async()=>[],onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({})};
+ const platform={capabilities,library:async()=>games,catalog:async()=>catalog,onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({})};
  const windowListeners=new Map();
- doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:()=>({dispose(){}})},
+ doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:options=>(onAction=options.onAction,{dispose(){}})},
  addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
  removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{}};
  const host=new Element(),hub=Hub.mount(host);
- return {host,hub,refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
+ return {host,hub,action:action=>onAction({action}),refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 const games=[{id:'one',artwork:'one.svg',entrypoint:'/one'},{id:'two',artwork:'two.svg',entrypoint:'/two'}];
@@ -61,11 +61,35 @@ test('Library refresh preserves a selection and falls back when it disappears',a
  refresh([games[0]]);await settle();assert.equal(hub.state.detail.id,'one');assert.equal(host.querySelectorAll('.is-selected').length,1);
  refresh([]);await settle();assert.equal(hub.state.detail,null);assert.equal(host.querySelector('.detail').hidden,true);assert.equal(host.querySelectorAll('.is-selected').length,0);
 });
-test('closing a Library preview retains the selected card without reopening it',async()=>{
- const {host,hub}=mountedHub(games);await settle();host.querySelector('[data-game-id="two"]').click();
+for(const view of ['library','store'])test(view+' Back preserves actionable selection and returns focus through shelf to tab',async()=>{
+ const offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
+ const {host,hub,action}=mountedHub(offers,offers);await settle();hub.show(view);
+ const card=host.querySelector('[data-game-id="two"]');card.click();
+ const media=host.querySelector('.preview-media'),actions=host.querySelector('.detail-actions');
+ const pauseCount=media.pauseCount||0,playCount=media.playCount;
+ const assertSelection=()=>{
+  assert.equal(hub.state.view,view);assert.equal(hub.state.detail?.id,'two');
+  assert.equal(host.querySelector('.detail').hidden,false);
+  assert.equal(host.querySelector('.preview-media'),media);assert.equal(host.querySelector('.detail-actions'),actions);
+  assert.ok(host.querySelector('.play-game'));assert.equal(host.querySelector('.is-selected'),card);
+  assert.equal(media.pauseCount||0,pauseCount);assert.equal(media.playCount,playCount);
+ };
+ host.querySelector('.detail-close').click();assertSelection();assert.equal(host.ownerDocument.activeElement,card);
+ action('back');assertSelection();assert.equal(host.ownerDocument.activeElement.getAttribute('aria-label'),view);
+ action('back');assertSelection();assert.equal(host.ownerDocument.activeElement.getAttribute('aria-label'),view);
+ host.querySelector('.favorite').focus();action('exit');assertSelection();assert.equal(host.ownerDocument.activeElement,card);
+ action('exit');assertSelection();assert.equal(host.ownerDocument.activeElement.getAttribute('aria-label'),view);
+});
+test('uninstalled Store selection keeps its download action after Back',async()=>{
+ const offers=games.map(game=>({...game,manifest_url:'/manifest'}));
+ const {host,hub,action}=mountedHub([],offers,{install:true});await settle();
+ const card=host.querySelector('[data-game-id="two"]');card.click();
+ const download=host.querySelector('.download-game');assert.ok(download);
  host.querySelector('.detail-close').click();
- assert.equal(host.querySelector('.detail').hidden,true);assert.equal(hub.state.detail,null);
- assert.equal(host.querySelectorAll('.is-selected').length,1);assert.equal(host.querySelector('.is-selected').dataset.gameId,'two');
+ for(const control of ['back','back','exit']){
+  action(control);assert.equal(hub.state.view,'store');assert.equal(hub.state.detail?.id,'two');
+  assert.equal(host.querySelector('.detail').hidden,false);assert.equal(host.querySelector('.download-game'),download);
+ }
 });
 test('empty Library remains an empty pictorial state',async()=>{
  const {host,hub}=mountedHub([]);await settle();hub.show('library');
