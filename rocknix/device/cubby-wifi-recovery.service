@@ -1,0 +1,15 @@
+[Unit]
+Description=Cubby bounded RG353V Wi-Fi boot recovery
+After=local-fs.target systemd-udev-trigger.service
+Before=essway.service
+ConditionPathExists=!/flash/CUBBY-WIFI-RECOVERY-DISABLED
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /flash/cubby-wifi-recovery/recover.py
+TimeoutStartSec=45
+RemainAfterExit=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

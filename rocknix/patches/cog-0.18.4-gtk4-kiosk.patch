@@ -1,0 +1,16 @@
+--- a/platform/gtk4/cog-platform-gtk4.c
++++ b/platform/gtk4/cog-platform-gtk4.c
+@@ -620,6 +620,13 @@
+     gtk_window_set_child(GTK_WINDOW(window->gtk_window), box);
+     gtk_box_append(GTK_BOX(box), window->gl_drawing_area);
+ 
++    /* Cubby appliance profile: retain the normal renderer and input path. */
++    if (g_strcmp0(g_getenv("COG_PLATFORM_GTK4_KIOSK"), "1") == 0) {
++        gtk_widget_set_visible(header_bar, FALSE);
++        gtk_window_set_decorated(GTK_WINDOW(window->gtk_window), FALSE);
++        gtk_window_fullscreen(GTK_WINDOW(window->gtk_window));
++    }
++
+     gtk_widget_show(window->gtk_window);
+ }
+ 

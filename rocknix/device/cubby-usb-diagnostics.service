@@ -1,0 +1,17 @@
+[Unit]
+Description=Cubby read-only USB boot diagnostics
+After=local-fs.target
+Before=rocknix-autostart.service
+ConditionPathExists=!/flash/CUBBY-USB-DISABLED
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh /flash/cubby-usb-diagnostics/start.sh
+ExecStart=/usr/bin/python3 /flash/cubby-usb-diagnostics/status.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

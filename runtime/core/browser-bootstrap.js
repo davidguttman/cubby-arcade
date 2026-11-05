@@ -3,7 +3,7 @@
 (async function(win){
  'use strict';
  const host=win.document.getElementById('hub');
- if(win.HandheldPlatformOptions?.bridge||win.HandheldPlatformOptions?.kind==='kiosk'){win.HandheldHub.mount(host);return;}
+ if(win.HandheldPlatformOptions?.bridge||win.HandheldPlatformOptions?.kind==='kiosk'){win.HandheldHub.mount(host);win.CubbyUIReady?.();return;}
  let timeout;
  try{
   if(!win.isSecureContext||!win.navigator?.serviceWorker)throw Error('Browser storage unavailable');
@@ -16,7 +16,7 @@
   const bridge=win.HandheldBrowserStore.createBridge();await bridge.ready();
   win.HandheldPlatformOptions={kind:'web',bridge};
   let hub,stopUpdates;
-  function mount(){hub?.dispose();stopUpdates?.();hub=win.HandheldHub.mount(host);stopUpdates=win.HandheldBrowserStore.startUpdateChecks(win,bridge);}
+  function mount(){hub?.dispose();stopUpdates?.();hub=win.HandheldHub.mount(host);stopUpdates=win.HandheldBrowserStore.startUpdateChecks(win,bridge);win.CubbyUIReady?.();}
   mount();
   // pagehide disposes the hub and cancels update work. A BFCache restoration
   // needs fresh UI subscriptions and timers, not a second worker registration.

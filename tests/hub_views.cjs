@@ -102,3 +102,12 @@ test('mounted hub disposal removes its window lifecycle listeners and is idempot
  assert.doesNotThrow(()=>hub.dispose());assert.equal(win.listenerCount(),0);
  hub.dispose();assert.equal(win.listenerCount(),0);
 });
+
+test('nonempty Store selects its first offer on load and return',async()=>{
+ const {host,hub}=mountedHub(games,[{id:'offer',artwork:'offer.svg',manifest_url:'/offer.json'}]);await settle();
+ hub.show('store');
+ assert.equal(hub.state.detail?.id,'offer');assert.equal(host.querySelector('.detail').hidden,false);
+ assert.equal(host.querySelectorAll('.is-selected').length,1);
+ hub.show('options');hub.show('store');
+ assert.equal(hub.state.detail?.id,'offer');assert.equal(host.querySelectorAll('.is-selected').length,1);
+});

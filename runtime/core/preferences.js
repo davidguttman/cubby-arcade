@@ -32,14 +32,17 @@
   function validate(value) {
     if (!value || !['auto','on','off'].includes(value.touchOverlay)) throw Error('Invalid touch overlay mode');
     // Keep the v1 shape for old callers, but retire manual visibility overrides.
-    return {touchOverlay:'auto', keyboard:validateKeyboard(value.keyboard)};
+    return {touchOverlay:root.CubbyDeviceProfile === 'rg353v' ? 'off' : 'auto', keyboard:validateKeyboard(value.keyboard)};
   }
   function createPreferences(options) {
     options = options || {};
     const target = options.target || root;
     let storage = options.storage;
     if (storage === undefined) { try { storage = root.localStorage; } catch (_) {} }
-    const defaults = () => ({touchOverlay:'auto', keyboard:copy(DEFAULT_KEYBOARD)});
+    // Device-host policy is supplied before this module executes. A touchscreen
+    // on a physical handheld is not a request to reserve a virtual button deck.
+    // This is host policy, not a manual visibility preference.
+    const defaults = () => ({touchOverlay:root.CubbyDeviceProfile === 'rg353v' ? 'off' : 'auto', keyboard:copy(DEFAULT_KEYBOARD)});
     const listeners = new Set();
     function decode(raw) { try { return raw === null ? defaults() : validate(JSON.parse(raw)); } catch (_) { return defaults(); } }
     let value;
@@ -63,6 +66,7 @@
       reset() { return api.set(defaults()); },
       subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
       showTouchControls(environment) {
+        if (root.CubbyDeviceProfile === 'rg353v') return false;
         environment = environment || root;
         const nav = environment.navigator || {};
         return Number(nav.maxTouchPoints) > 0 || !!(environment.matchMedia && environment.matchMedia('(any-pointer: coarse)').matches);

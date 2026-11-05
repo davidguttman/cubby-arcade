@@ -1,7 +1,15 @@
 # Cubby Arcade
 
 An independent home for Linux/OS integration, a picture-first launcher, and the
-ARM64 development VM. Not a flashable RG353V OS; do not flash its QEMU disk.
+ARM64 development VM. The dedicated RG353V image is separate from the QEMU disk;
+never flash the QEMU disk to a handheld.
+
+For a physical **Anbernic RG353V**, use the separate
+[all-in-one SD-card image and adult setup guide](docs/rg353v-install.md): flash
+one image, insert the card, and power on. ROCKNIX, WPE, Cubby startup, and offline
+Trail Mix are preinstalled, with a stock-launcher recovery path. The image is
+not publicly published or hardware-certified yet; VM results do not certify
+the handheld.
 
 Repository: https://github.com/davidguttman/cubby-arcade . Local checkout:
 `/mnt/data/play/native/cubby-arcade`. See `MIGRATION.md` for preserved profile,
@@ -742,7 +750,10 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.10.1**, fixing Back navigation in Library and Store: the selected
+**0.11.0**, adding the RG353V runtime, required adult Wi-Fi onboarding, USB
+diagnostics, and signed app updates with rollback. Physical handheld profiles
+suppress the touchscreen deck; ordinary browsers retain automatic touch detection.
+The 0.10.1 release fixed Back navigation in Library and Store: the selected
 game's preview, actions, and playing trailer stay visible while focus returns to
 the game shelf, then the current section tab. The 0.10.0 release added a portable
 Windows x64 build, versionless platform download links, and automatic dual-platform GitHub Releases after native
