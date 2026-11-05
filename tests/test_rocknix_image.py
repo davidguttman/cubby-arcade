@@ -173,6 +173,9 @@ class ImageTests(unittest.TestCase):
             (root / 'flash/cubby-usb-diagnostics').mkdir(parents=True)
             (root / 'flash/cubby-usb-diagnostics/service').write_text(
                 (image.ROOT / 'rocknix/device/cubby-usb-diagnostics.service').read_text())
+            (root / 'flash/cubby-wifi-recovery').mkdir()
+            (root / 'flash/cubby-wifi-recovery/service').write_text(
+                (image.ROOT / 'rocknix/device/cubby-wifi-recovery.service').read_text())
             model = root / 'model'
             hook = image.BOOT_HOOK.replace('/proc/device-tree/model', str(model)).replace('/run/systemd/system', str(root / 'run')).replace('/flash/', str(root / 'flash') + '/')
             override = root / 'run/essway.service.d/90-cubby.conf'
@@ -185,6 +188,11 @@ class ImageTests(unittest.TestCase):
             subprocess.run(['sh', '-c', hook], check=True)
             self.assertFalse(override.exists())
             self.assertTrue((root / 'run/multi-user.target.wants/cubby-usb-diagnostics.service').is_symlink())
+            self.assertTrue((root / 'run/multi-user.target.wants/cubby-wifi-recovery.service').is_symlink())
+            dependencies = (root / 'run/essway.service.d/10-cubby-wifi.conf').read_text()
+            self.assertIn('Wants=cubby-wifi-recovery.service', dependencies)
+            self.assertIn('After=cubby-wifi-recovery.service', dependencies)
+            self.assertNotIn('Requires=', dependencies)
             disabled.unlink()
             subprocess.run(['sh', '-c', hook], check=True)
             self.assertIn('ExecStart=/storage/cubby/current/device/launch.sh', override.read_text())

@@ -74,6 +74,35 @@ through their existing recursive `rocknix`/`device` packaging.
 
 ## Verification without changing the host network
 
+### Bounded early-driver recovery
+
+The image includes a separate host-side `cubby-wifi-recovery.service`, ordered
+before the frontend but not required for it to start. It is outside replaceable
+Cubby app releases. For the exact `Anbernic RG353V` model and Realtek SDIO
+`024c:c821` only, it can perform one driver-stack reload after this boot's kernel
+journal confirms Bluetooth firmware initialization. An existing target wireless
+interface—even disconnected—is never reloaded. Absent SDIO enumeration, missing
+Bluetooth evidence, or another wireless/rtw88 consumer means no reload.
+It allows six seconds for normal SDIO discovery before declaring it absent.
+
+The helper has a 45-second service limit and bounded command/wait phases; failed
+removal still attempts driver restoration. It neither changes Wi-Fi credentials
+nor unloads USB/Bluetooth. Create `/flash/CUBBY-WIFI-RECOVERY-DISABLED` to skip it.
+Its latest result is journaled and saved best-effort in
+`/storage/cubby/diagnostics/wifi-recovery.txt`, also exposed by USB diagnostics.
+
+**Hardware limitation:** the observed late reload created an interface and scan
+results only with the tested 25 MHz/non-UHS device-tree candidate. The original
+DTB failed before SDIO enumeration; this helper alone cannot fix that condition.
+This change does not modify device trees. Cold boot, authentication, HTTPS,
+reconnection and sleep/wake still need hardware acceptance.
+
+Session startup now waits up to 30 seconds for a real Wayland socket, respecting
+an explicit display instead of silently choosing another. Small rotated event
+logs live at `state/session.log` and `state/session.previous.log`; writing them is
+best-effort. The update trial budget includes these readiness phases, and USB
+diagnostics includes both logs to distinguish frontend startup failures.
+
 ```sh
 uv run --python 3.12 python -m unittest discover -s tests -p test_rocknix_network.py
 uv run tests/browser_device_network.py --cdp http://127.0.0.1:18800 --screenshots .cache/wifi-ui-evidence

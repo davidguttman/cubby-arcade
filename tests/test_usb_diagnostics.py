@@ -97,6 +97,16 @@ class DiagnosticsTests(unittest.TestCase):
         result = module.capture(['/bin/sleep', '2'], timeout=.01)
         self.assertIn('timeout', result['error'])
 
+    def test_snapshot_includes_bounded_session_and_wifi_evidence(self):
+        module = self.module()
+        with mock.patch.object(module, 'capture', return_value={}), \
+             mock.patch.object(module, 'read', return_value='fixture'), \
+             mock.patch.object(module, 'tail', side_effect=lambda path: path):
+            result = module.snapshot()
+        self.assertEqual(result['session_log'], '/storage/cubby/state/session.log')
+        self.assertEqual(result['previous_session_log'], '/storage/cubby/state/session.previous.log')
+        self.assertEqual(result['wifi_recovery'], '/storage/cubby/diagnostics/wifi-recovery.txt')
+
     def test_persistence_failure_keeps_serving_and_throttles_retries(self):
         for operation, code in (('mkdir', errno.ENOSPC),
                                 ('write_text', errno.EROFS),

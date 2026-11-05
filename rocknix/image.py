@@ -38,6 +38,14 @@ if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ]; then
   mkdir -p /run/systemd/system/multi-user.target.wants
   cp /flash/cubby-usb-diagnostics/service /run/systemd/system/cubby-usb-diagnostics.service
   ln -sf ../cubby-usb-diagnostics.service /run/systemd/system/multi-user.target.wants/cubby-usb-diagnostics.service
+  cp /flash/cubby-wifi-recovery/service /run/systemd/system/cubby-wifi-recovery.service
+  ln -sf ../cubby-wifi-recovery.service /run/systemd/system/multi-user.target.wants/cubby-wifi-recovery.service
+  mkdir -p /run/systemd/system/essway.service.d
+  cat > /run/systemd/system/essway.service.d/10-cubby-wifi.conf <<'UNIT'
+[Unit]
+Wants=cubby-wifi-recovery.service
+After=cubby-wifi-recovery.service
+UNIT
 fi
 if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ] &&
    [ ! -e /flash/CUBBY-DISABLED ]; then
@@ -280,6 +288,13 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
                 ('cubby-usb-diagnostics.service', 'service'),
             ):
                 flash.writebytes('/cubby-usb-diagnostics/' + destination,
+                                 (source_root / 'rocknix/device' / source).read_bytes())
+            flash.makedir('/cubby-wifi-recovery')
+            for source, destination in (
+                ('wifi-recovery.py', 'recover.py'),
+                ('cubby-wifi-recovery.service', 'service'),
+            ):
+                flash.writebytes('/cubby-wifi-recovery/' + destination,
                                  (source_root / 'rocknix/device' / source).read_bytes())
             flash.writetext('/CUBBY-RECOVERY.txt', 'Create an empty file named CUBBY-DISABLED (no extension) beside this file to boot stock ROCKNIX. Power off before editing the card.\n')
         release_id = 'image-' + ROOTFS_SHA256[:12]

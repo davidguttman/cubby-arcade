@@ -487,7 +487,12 @@ def server_alive():
     except OSError: return False
 
 
-def watch_trial(manager,process,timeout=45,stable=10,health=server_alive,interval=.5):
+# Covers compositor readiness (30s), HTTP startup (30s), confirmation (10s),
+# and mount/helper scheduling slack. Trial state remains durable across reboot.
+TRIAL_STARTUP_TIMEOUT = 120
+
+
+def watch_trial(manager,process,timeout=TRIAL_STARTUP_TIMEOUT,stable=10,health=server_alive,interval=.5):
     """Neither a live HTTP server nor a readiness token alone proves health."""
     started=time.monotonic(); healthy_since=None
     while process.poll() is None:
