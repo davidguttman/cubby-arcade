@@ -36,7 +36,10 @@ async function run(win,installer,library,registry,options={}){
  await setCatalog(options.cloud,installer,[...registry,entry]);
  async function wait(check,label){const deadline=Date.now()+10000;while(Date.now()<deadline){if(await check())return;await new Promise(r=>setTimeout(r,30));}throw Error('Smoke timed out: '+label);}
  async function evaluate(fn){return win.webContents.executeJavaScript(fn);}
- async function settleUpdates(){if(installer.checking)await installer.checking;if(installer.jobs.has('demo'))await installer.jobs.get('demo');}
+ // The real hub is running and checks on every entry: wait until it has gone quiet.
+ async function settleUpdates(){for(let quiet=0;quiet<10;quiet++){if(installer.jobs.has('demo')){quiet=0;await installer.jobs.get('demo').catch(()=>{});}await new Promise(r=>setTimeout(r,50));}}
+ // The hub's own timer is minutes away, so the smoke asks directly for what a check does here.
+ async function checkUpdates(){await installer.activatePending();await installer.install('demo').catch(()=>{});}
  async function capture(name){if(!options.output)return;await fs.mkdir(options.output,{recursive:true});await new Promise(r=>setTimeout(r,300));await fs.writeFile(path.join(options.output,name+'.png'),(await win.webContents.capturePage()).toPNG());}
  // A pristine profile has an empty Library. Wait for navigation readiness,
  // never for an installed game, before opening the Store.
@@ -59,10 +62,10 @@ async function run(win,installer,library,registry,options={}){
  await wait(()=>win.webContents.getURL().includes('/games/demo/'),'launch');
  if(!await evaluate('!!document.querySelector("canvas")'))throw Error('Installed game not playable');
  if(!await evaluate('HandheldPlatformOptions.bridge.install("demo").then(()=>false,()=>true)'))throw Error('Game allowed install IPC');
- await settleUpdates();current=fileRelease('2','<canvas id="screen" width="100" height="100"></canvas>');await installer.checkUpdates();
+ await settleUpdates();current=fileRelease('2','<canvas id="screen" width="100" height="100"></canvas>');await checkUpdates();
  if(library.entries().find(e=>e.id==='demo').version!=='1'||installer.status().demo.phase!=='pending')throw Error('Update not deferred: '+JSON.stringify({game:library.entries().find(e=>e.id==='demo'),state:installer.status().demo}));
  await win.loadURL('hub://app/');await wait(()=>library.entries().find(e=>e.id==='demo').version==='2','idle activation');
- await settleUpdates();fileRequests.length=0;current=fileRelease('3','<canvas id="screen" width="120" height="100"></canvas>');await installer.checkUpdates();
+ await settleUpdates();fileRequests.length=0;current=fileRelease('3','<canvas id="screen" width="120" height="100"></canvas>');await checkUpdates();
  if(library.entries().find(e=>e.id==='demo').version!=='3'||fileRequests.length!==1||!fileRequests[0].endsWith('/index.html'))throw Error('File update failed to reuse unchanged bytes');
  await win.loadURL('hub://app/');await wait(()=>evaluate('!!document.querySelector("[data-game-id=demo]")'),'updated demo card');
  await evaluate(`document.querySelector('[data-game-id=demo]').click()`);
@@ -70,9 +73,9 @@ async function run(win,installer,library,registry,options={}){
  await evaluate(`document.querySelector('.play-game').click()`);await wait(()=>win.webContents.getURL().includes('/games/demo/'),'file game launch');
  if(!await evaluate('document.querySelector("canvas").width===120'))throw Error('File-installed game not playable');
  await win.loadURL('hub://app/');
- await settleUpdates();current=fileRelease('4','corrupt expected');current.files['index.html'].sha256='0'.repeat(64);await installer.checkUpdates();
+ await settleUpdates();current=fileRelease('4','corrupt expected');current.files['index.html'].sha256='0'.repeat(64);await checkUpdates();
  if(library.entries().find(e=>e.id==='demo').version!=='3')throw Error('Corrupt update replaced current');
- installer.fetch=async()=>{throw Error('Smoke offline');};await installer.checkUpdates();
+ installer.fetch=async()=>{throw Error('Smoke offline');};await checkUpdates();
  if(library.entries().find(e=>e.id==='demo').version!=='3')throw Error('Offline removed installed game');
  await capture('updated-library');
  const report={nativeInstall:true,retry:true,progress:true,play:true,fileManifest:true,unchangedFilesReused:true,fileGamePlayable:true,deferredUpdate:true,corruptPreserved:true,offlinePlayable:true,versions:library.entries().map(e=>({id:e.id,version:e.version}))};

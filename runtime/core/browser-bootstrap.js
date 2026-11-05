@@ -15,10 +15,10 @@
   })(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Worker unavailable')),20000);})]);
   const bridge=win.HandheldBrowserStore.createBridge();await bridge.ready();
   win.HandheldPlatformOptions={kind:'web',bridge};
-  let hub,stopUpdates;
-  function mount(){hub?.dispose();stopUpdates?.();hub=win.HandheldHub.mount(host);stopUpdates=win.HandheldBrowserStore.startUpdateChecks(win,bridge);win.CubbyUIReady?.();}
+  let hub;
+  function mount(){hub?.dispose();hub=win.HandheldHub.mount(host);win.CubbyUIReady?.();}
   mount();
-  // pagehide disposes the hub and cancels update work. A BFCache restoration
+  // pagehide disposes the hub, which cancels update work. A BFCache restoration
   // needs fresh UI subscriptions and timers, not a second worker registration.
   win.addEventListener('pageshow',event=>{if(event.persisted)mount();});
  }catch(error){

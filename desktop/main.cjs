@@ -108,7 +108,7 @@ app.whenReady().then(async()=>{
   win.webContents.on('did-navigate',(_event,url)=>{
     try{hubActive=['/','/index.html'].includes(assetName(url));}catch{hubActive=false;}
     if(hubActive)launcher.home();
-    if(hubActive)refreshRegistry().then(()=>installer.checkUpdates()).catch(error=>console.error('Game update check:',error.message));
+    if(hubActive)installer.activatePending().catch(error=>console.error('Game update activation:',error.message));
   });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));

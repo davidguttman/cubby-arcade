@@ -24,7 +24,8 @@
       await request('/api/install', {id});
       for (;;) {
         const states = await status();
-        if (states[id]?.phase === 'installed') return;
+        // Pending is verified and waiting for the hub: it switches on the next hub entry.
+        if (['installed', 'pending'].includes(states[id]?.phase)) return;
         if (states[id]?.phase === 'error') throw Error('Install failed');
         await new Promise(resolve => setTimeout(resolve, 400));
       }

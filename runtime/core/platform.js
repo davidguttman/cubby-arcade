@@ -113,6 +113,9 @@
       quit: typeof native.quit === 'function' ? native.quit.bind(native) : undefined,
       power: typeof native.power === 'function' ? native.power.bind(native) : undefined,
       install: native.install && native.install.bind(native),
+      // Installing fetches the current release, so it is also how a game updates. A host
+      // overrides this only to add safeguards; it can't opt out by forgetting it.
+      update: native.install && (native.update ? native.update.bind(native) : id => native.install(id)),
       uninstall: typeof native.uninstall === 'function' ? native.uninstall.bind(native) : undefined,
       installStatus: native.installStatus && native.installStatus.bind(native),
       onInstallState: native.onInstallState && native.onInstallState.bind(native),

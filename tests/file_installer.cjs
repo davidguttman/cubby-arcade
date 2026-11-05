@@ -2,6 +2,9 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
 const {GameLibrary}=require('../desktop/host.cjs');
 const {GameInstaller,validateRelease}=require('../desktop/installer.cjs');
+const {sweepGameUpdates}=require('../runtime/core/hub.js');
+// What a hub entry does: the host switches pending versions, then the shared core checks.
+async function sweep(f){await f.installer.activatePending();await sweepGameUpdates({library:async()=>f.installer.library.entries(),catalog:async()=>f.installer.catalog,update:id=>f.installer.install(id)});}
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 function fixture(t){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'cubby-file-install-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
@@ -19,7 +22,7 @@ test('file release installs without ZIP; normalized inventory survives restart a
  const f=fixture(t);offer(f);await f.installer.install('demo');assert.equal(f.lib.entries()[0].version,'1');
  const installed=f.lib.release('demo');assert.equal(installed.manifest.schema_version,1);assert.equal(installed.manifest.files['index.html'],hash('<canvas/>'));
  fs.writeFileSync(path.join(f.root,'save.json'),'keep');f.requests.length=0;
- offer(f,'2',{'index.html':'<canvas>new</canvas>','art.svg':'<svg/>','empty.txt':''});await f.installer.checkUpdates();
+ offer(f,'2',{'index.html':'<canvas>new</canvas>','art.svg':'<svg/>','empty.txt':''});await sweep(f);
  assert.equal(f.lib.entries()[0].version,'2');assert(!f.requests.some(u=>u.endsWith('/2/art.svg')));assert(!f.requests.some(u=>u.endsWith('/2/empty.txt')));
  assert.equal(fs.readFileSync(path.join(f.root,'save.json'),'utf8'),'keep');assert(fs.existsSync(path.join(f.lib.games,'demo/releases/1/index.html')));
  assert.equal(new GameLibrary(f.lib.site,f.lib.games).entries()[0].version,'2');
@@ -32,7 +35,7 @@ test('corrupt local bytes are not reused; partial/bad downloads and offline pres
  offer(f,'2',{'index.html':'new','art.svg':'<svg/>','empty.txt':''});f.hub(false);await f.installer.install('demo');assert.equal(f.lib.entries()[0].version,'1');assert.equal(f.installer.status().demo.phase,'pending');
  assert(f.requests.includes(m.files['art.svg'].url));f.hub(true);await f.installer.activatePending();assert.equal(f.lib.entries()[0].version,'2');
  const bad=offer(f,'3',{'index.html':'newer','art.svg':'<svg>3</svg>'});f.docs.set(bad.files['art.svg'].url,'oops');await assert.rejects(f.installer.install('demo'));assert.equal(f.lib.entries()[0].version,'2');
- f.docs.clear();await f.installer.checkUpdates();assert.equal(f.lib.entries()[0].version,'2');
+ f.docs.clear();await sweep(f);assert.equal(f.lib.entries()[0].version,'2');
 });
 test('ZIP release can migrate to same-version file manifest without downloads or save/profile changes',async t=>{
  const f=fixture(t),payload={'index.html':'<canvas/>','art.svg':'<svg/>'},m=offer(f,'1',payload);
@@ -128,10 +131,9 @@ test('uninstall removes all release bytes, survives restart and preserves saves 
  assert.deepEqual(saves.get('demo','run'),{level:7});assert.equal(fs.readFileSync(path.join(other,'keep'),'utf8'),'yes');
  await f.installer.install('demo');assert.equal(f.lib.entries()[0].version,'2');assert.deepEqual(saves.get('demo','run'),{level:7});
 });
-test('uninstall refuses playing, busy update, active job, pending release and unsafe paths',async t=>{
+test('uninstall refuses playing, active job, pending release and unsafe paths',async t=>{
  const f=fixture(t);offer(f);await f.installer.install('demo');
  f.hub(false);await assert.rejects(f.installer.uninstall('demo'),/hub|playing/i);f.hub(true);
- f.installer.checking=Promise.resolve();await assert.rejects(f.installer.uninstall('demo'),/busy/i);f.installer.checking=null;
  f.installer.jobs.set('demo',Promise.resolve());await assert.rejects(f.installer.uninstall('demo'),/busy/i);f.installer.jobs.delete('demo');
  f.installer.pending.set('demo',{});await assert.rejects(f.installer.uninstall('demo'),/busy/i);f.installer.pending.delete('demo');
  for(const id of ['../demo','/demo','demo/../other','',null,{},'unknown'])await assert.rejects(f.installer.uninstall(id));
@@ -161,7 +163,7 @@ test('portable inventory comparison rejects Unicode uppercase aliases before dow
 test('uninstall rejects an actual in-flight auto-update and refuses escaped release directories',async t=>{
  const f=fixture(t);offer(f);await f.installer.install('demo');offer(f,'2');
  let release;const fetching=f.installer.fetch;f.installer.fetch=async(...args)=>{await new Promise(resolve=>release=resolve);return fetching(...args);};
- const check=f.installer.checkUpdates();await new Promise(r=>setImmediate(r));
+ const check=sweep(f);await new Promise(r=>setImmediate(r));
  await assert.rejects(f.installer.uninstall('demo'),/busy/);assert.equal(f.lib.entries()[0].version,'1');
  f.installer.fetch=fetching;release();await check;assert.equal(f.lib.entries()[0].version,'2');
  const releases=path.join(f.lib.games,'demo/releases');fs.renameSync(releases,releases+'-original');fs.symlinkSync(f.root,releases);

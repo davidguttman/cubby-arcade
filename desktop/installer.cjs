@@ -128,7 +128,7 @@ class GameInstaller{
  async uninstall(id){
   if(typeof id!=='string'||!idPattern.test(id))throw Error('Invalid game id');
   if(!this.canActivate())throw Error('Return to hub before uninstalling');
-  if(this.checking||this.jobs.has(id)||this.pending.has(id))throw Error('Game installer busy');
+  if(this.jobs.has(id)||this.pending.has(id))throw Error('Game installer busy');
   const root=this.library.games,game=path.join(root,id);
   if(fs.lstatSync(root).isSymbolicLink())throw Error('Symlinked games root');
   noSymlinks(root,path.join(game,'releases'));
@@ -143,8 +143,10 @@ class GameInstaller{
  async run(entry){
   const id=entry.id;this.state(id,'checking');const signal=AbortSignal.timeout(120000);
   const release=validateRelease(JSON.parse((await download(this.fetch,entry.manifest_url,MAX_MANIFEST,signal)).toString('utf8')),id,entry.manifest_url);
-  if(release.schema_version===2)return this.stageFiles(release,signal);
   const installed=this.library.entries().find(e=>e.id===id);
+  // A check runs every few minutes in the hub: an unchanged release costs one manifest.
+  if(release.schema_version===2&&installed?.version===release.version&&sameInventory(this.library.release(id).manifest,fileInventory(release))){this.state(id,'installed',{version:release.version});return installed;}
+  if(release.schema_version===2)return this.stageFiles(release,signal);
   if(installed?.version===release.version){this.state(id,'installed',{version:release.version});return installed;}
   this.state(id,'downloading',{received:0,total:release.package.size});
   const bytes=await download(this.fetch,release.package.url,release.package.size,signal,received=>this.state(id,'downloading',{received,total:release.package.size}));
@@ -208,10 +210,6 @@ class GameInstaller{
    try{fs.writeFileSync(pointer,JSON.stringify({version:release.version})+'\n',{flag:'wx',mode:0o600});fs.renameSync(pointer,path.join(game,'current.json'));this.pending.delete(id);this.state(id,'installed',{version:release.version});}
    finally{fs.rmSync(pointer,{force:true});}
   }
- }
- checkUpdates(){
-  if(this.checking)return this.checking;
-  this.checking=(async()=>{await this.activatePending();const ids=new Set(this.library.entries().map(e=>e.id));for(const entry of this.catalog)if(ids.has(entry.id)&&entry.manifest_url){try{await this.install(entry.id);}catch{/* Installed release remains playable; next hub entry retries. */}}})().finally(()=>this.checking=null);return this.checking;
  }
 }
 module.exports={GameInstaller,validateRelease,extract,download,MAX_BYTES};

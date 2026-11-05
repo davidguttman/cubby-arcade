@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import tempfile
 import time
@@ -216,6 +217,44 @@ def comparable_inventory(document):
 
 def install_files(release, root, developer=False):
     """Adult CLI installation; callers must not update a running game."""
+    manifest = stage_files(release, root, developer)
+    activate_release(root, release['id'], release['version'])
+    return manifest
+
+
+def stage_entry(entry, root, developer=False):
+    """Download and verify a game's current file release without activating it.
+
+    Returns its inventory, or None for a legacy ZIP release, which has no separate
+    stage. An unchanged current release costs one manifest and no file reads.
+    """
+    release = resolve_entry(entry, developer)
+    if release.get('schema_version') != 2:
+        return None
+    root = Path(root).absolute()
+    manifest = file_manifest.inventory(release)
+    try:
+        current = root / release['id'] / 'releases' / release['version']
+        if ((root / release['id'] / 'current').resolve(strict=True) == current.resolve(strict=True)
+                and comparable_inventory(read_inventory(root, current)) == comparable_inventory(manifest)):
+            return manifest
+    except (ValueError, OSError):
+        pass
+    return stage_files(release, root, developer)
+
+
+def activate_release(root, game_id, version):
+    """Atomically point a game at a staged release."""
+    game = Path(root).absolute() / game_id
+    selector = game / ('.current-' + secrets.token_hex(8))
+    try:
+        selector.symlink_to('releases/' + version)
+        os.replace(selector, game / 'current')
+    finally:
+        selector.unlink(missing_ok=True)
+
+
+def stage_files(release, root, developer=False):
     file_manifest.validate(release, release['id'], developer)
     root = Path(root).absolute()
     file_manifest.no_symlinks(root, root)
@@ -278,12 +317,6 @@ def install_files(release, root, developer=False):
                     raise ValueError('Existing release checksum mismatch')
         else:
             stage.rename(target)
-        selector = game / ('.current-' + Path(temporary).name)
-        try:
-            selector.symlink_to('releases/' + release['version'])
-            os.replace(selector, game / 'current')
-        finally:
-            selector.unlink(missing_ok=True)
     return manifest
 
 

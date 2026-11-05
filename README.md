@@ -595,7 +595,7 @@ uv run python -m runtime.catalog --root path/to/games install https://cubby.davi
 ```
 
 Installation/update resolves the stable manifest at the time of the operation.
-Game launch accounting, native automatic update scheduling, and child-facing
+Game launch accounting, automatic update scheduling, and child-facing
 install controls are separate from this publication protocol; publication and
 installation themselves never spend tokens.
 
@@ -667,8 +667,9 @@ There is no binary self-updater, update menu, mid-game reload, or restart loop.
 The internal `hub://app` origin remains stable, preserving browser preferences,
 favorites, and legacy localStorage. `/library`, `/games/`, and native SDK saves
 remain local. Shell refreshes do not download or update game packages. Independently,
-the native installer checks installed games' stable manifests on hub entry,
-downloads updates in the background, and activates them only while in the hub.
+the shared hub checks installed games' stable manifests on hub entry and every five
+minutes in the hub; the host downloads updates in the background and activates them
+only while in the hub.
 Installed-game previews work offline; store media for uninstalled games requires
 connectivity. A failed or incompatible refresh retains the last verified cached
 shell; first-run offline falls back to the bundled shell. Startup network work
@@ -714,9 +715,11 @@ It requires no system Python. A pristine desktop starts with an empty Library.
 Only an explicit Store install adds a game; launchers never import bundled games.
 Existing disk installs and separate saves remain authoritative and are not deleted.
 
-Every return to the hub checks installed games' stable manifest URLs in the
-background. Downloads may finish during gameplay, but activation waits until the
-native window has returned to the hub. Previous releases and separate saves are
+Every hub entry, and every five minutes in the hub, the shared hub
+(`runtime/core/hub.js`) checks installed games' stable manifest URLs in the
+background. This is the same code on desktop, browser and handheld; a host only has
+to be able to install. Downloads may finish during gameplay, but activation waits
+until the host has returned to the hub. Previous releases and separate saves are
 retained; failed or offline checks leave the current game playable. Downloads
 and updates do not charge tokens. Native capabilities are optional, so the shared
 shell remains compatible with bridge-version-1 hosts that lack installation.
@@ -775,7 +778,7 @@ For family testing:
    uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby.david.app/
    ```
 
-   Existing installed games check their stable manifest on hub entry, download
+   Existing installed games, on every host, check their stable manifest on hub entry, download
    updates in the background, and activate only outside gameplay. Publishing
    updates is independent of rebuilding the desktop. This command writes the
    selected local served directory; it is not a remote uploader. An explicit

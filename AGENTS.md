@@ -19,6 +19,11 @@
 - OSD layout, visibility, lifecycle and key-binding policy live in the host/input layer, never in a game package. Games consume standard controller input.
 - Do not vendor OSD changes into games or release games to update the controller. Preserve immutable game bytes; legacy bundled overlays are suppressed at host delivery.
 
+## One core — invariant
+
+- Every host (desktop, browser, handheld) mounts the same hub in `runtime/core`. Behavior belongs there. A host only does what its platform forces it to: file or cache access, and when a version may safely switch. Never give one host its own copy of a behavior.
+- Game updates are the worked example. `runtime/core/hub.js` alone decides when games update and which ones; hosts never schedule. A host supplies `install`, and that alone gets it updates (`platform.update` falls back to it). `tests/game_updates.cjs` runs each host's real bridge through the shared code, so add any new host there.
+
 ## Adult settings and notices
 
 - The hub's gear tab is the only settings screen, on every host, and it shows the math question until answered. Leaving the tab locks it again; returning from a worded page does not. On the device, add a page by listing it in `settings` in `rocknix/bridge.js`. Never add a second entry point or skip the question.

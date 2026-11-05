@@ -69,7 +69,9 @@ class State:
         self.lock = threading.RLock()
         self.active_game = None
         self.busy = False
+        self.unpacking = False
         self.network_busy = False
+        self.pending = {}
         self.status = {}
         self.system_events = SystemEvents()
         self.developer = False
@@ -105,13 +107,19 @@ class State:
             return False
 
     def install(self, entry):
+        """Download and verify now; switch versions only outside gameplay."""
         game_id = entry['id']
         try:
             with self.lock:
                 self.status[game_id] = {'phase': 'downloading'}
-            result = catalog.install_entry(entry, self.games, developer=self.developer)
+            manifest = catalog.stage_entry(entry, self.games, developer=self.developer)
+            if manifest is None:
+                self.install_legacy(entry)
+                return
             with self.lock:
-                self.status[game_id] = {'phase': 'installed', 'version': result['version']}
+                self.pending[game_id] = manifest['version']
+                self.status[game_id] = {'phase': 'pending', 'version': manifest['version']}
+                self.activate_pending()
         except Exception:
             # Details belong to adult logs, never the wordless child UI.
             import traceback
@@ -121,6 +129,35 @@ class State:
         finally:
             with self.lock:
                 self.busy = False
+
+    def install_legacy(self, entry):
+        """A ZIP release unpacks straight into place, so no game may run meanwhile."""
+        with self.lock:
+            if self.active_game:
+                raise ValueError('Game running; the next check retries')
+            self.unpacking = True
+        try:
+            result = catalog.install_entry(entry, self.games, developer=self.developer)
+        finally:
+            with self.lock:
+                self.unpacking = False
+        with self.lock:
+            self.status[entry['id']] = {'phase': 'installed', 'version': result['version']}
+
+    def activate_pending(self):
+        """Caller holds the lock. Launching takes it too, so a game can't start mid-switch."""
+        if self.active_game:
+            return
+        for game_id, version in self.pending.items():
+            try:
+                catalog.activate_release(self.games, game_id, version)
+                self.status[game_id] = {'phase': 'installed', 'version': version}
+            except OSError:
+                # The hub still has to open. The stage is kept, so the next check retries.
+                import traceback
+                traceback.print_exc()
+                self.status[game_id] = {'phase': 'error'}
+        self.pending.clear()
 
 
 class Handler(assets.Handler):
@@ -215,6 +252,7 @@ class Handler(assets.Handler):
             if self.command == 'GET':
                 with self.state.lock:
                     self.state.active_game = None
+                    self.state.activate_pending()
             content = (self.state.app / 'runtime/index.html').read_bytes().replace(
                 b'</head>', ('<script>window.CubbyDeviceToken=' + json.dumps(self.state.token)
                             + ';</script><script src="/rocknix/bridge.js"></script></head>').encode(), 1)
@@ -230,7 +268,9 @@ class Handler(assets.Handler):
                 entry = next((item for item in packages.library(self.state.games)
                               if item['entrypoint'] == path), None)
                 if entry:
-                    if self.state.busy or self.state.network_busy:
+                    # A background download doesn't touch what's running: only unpacking
+                    # a legacy ZIP and network changes hold a launch back.
+                    if self.state.unpacking or self.state.network_busy:
                         self.send_error(409, 'Package operation in progress')
                         return None
                     self.state.active_game = entry['id']

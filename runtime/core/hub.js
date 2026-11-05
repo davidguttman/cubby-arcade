@@ -10,6 +10,36 @@ const paths={trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M
 function icon(name){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+paths[name]+'"/></svg>';}
 // Picture-only brand mark: a smiling cubby house.
 const brand='<svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><path class="brand-roof" d="M24 3.5 44 18.5V39a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V18.5Z"/><rect class="brand-door" x="11" y="20" width="26" height="18" rx="6"/><g class="brand-face"><circle cx="19" cy="27.5" r="2.4"/><circle cx="29" cy="27.5" r="2.4"/><path d="M19.5 32.5q4.5 3.4 9 0"/></g></svg>';
+// Game updates live here, in the one hub every host mounts: a host that can install
+// a game gets updates with nothing to wire up, so no host can be left without them.
+// Hosts own only the mechanics: downloading, verifying, and when a version may
+// switch (never under a running game). Failed or offline checks leave the current
+// release playable and retry on the next check.
+async function sweepGameUpdates(platform,{signal}={}){
+ const [games,offers]=await Promise.all([platform.library(),platform.catalog()]);
+ const offered=new Set(offers.filter(offer=>offer.manifest_url).map(offer=>offer.id));
+ for(const {id} of games){
+  signal?.throwIfAborted();
+  if(offered.has(id))try{await platform.update(id,{signal});}catch{/* Current release stays playable. */}
+ }
+}
+// Hub entry, every five minutes in the hub, and on coming back or back online. These
+// deliberately don't consult document.hidden or navigator.onLine: a wrong answer from
+// a kiosk browser would silently stop updates, and a needless check costs one manifest.
+function startGameUpdates(win,platform){
+ if(!platform.update)return {stop(){},idle:()=>Promise.resolve()};
+ const controller=new win.AbortController();let running=null,stopped=false;
+ function check(){if(!stopped&&!running)running=sweepGameUpdates(platform,{signal:controller.signal}).catch(()=>{}).finally(()=>{running=null;});}
+ function visible(){if(!win.document.hidden)check();}
+ const timer=win.setInterval(check,5*60*1000);
+ win.addEventListener('online',check);win.document.addEventListener('visibilitychange',visible);
+ check();
+ return {
+  // Installing or removing a game waits for its turn; hosts run one package job at a time.
+  idle:()=>running||Promise.resolve(),
+  stop(){if(stopped)return;stopped=true;controller.abort();win.clearInterval(timer);win.removeEventListener('online',check);win.document.removeEventListener('visibilitychange',visible);}
+ };
+}
 // This sensor belongs to the device host, not browser games or their packages.
 function startBattery(indicator,win){
  indicator.hidden=true;
@@ -116,7 +146,7 @@ function mount(host){
   const id=uninstallTarget.id;uninstallBusy=true;uninstallDialog.classList.add('busy');uninstallDialog.querySelector('.uninstall-error')?.remove();
   for(const b of uninstallDialog.querySelectorAll('button'))b.disabled=true;
   try{
-   await platform.uninstall(id);hideDetail();library=library.filter(game=>game.id!==id);if(state.view==='library')renderGrid();await refreshLibrary();
+   await gameUpdates.idle();await platform.uninstall(id);hideDetail();library=library.filter(game=>game.id!==id);if(state.view==='library')renderGrid();await refreshLibrary();
    try{catalog=await platform.catalog();failed.store=false;}catch{catalog=[];failed.store=true;}
    if(disposed)return;if(state.view==='store')renderGrid();uninstallBusy=false;closeUninstall();
    (shelf.querySelector('.game-card')||tabs[state.view]).focus();
@@ -269,9 +299,10 @@ function mount(host){
   })().finally(()=>catalogChecking=null);return catalogChecking;
  }
  const stopCatalog=startCatalogChecks(win,refreshCatalog);
- async function installGame(id){if(disposed)return;requested=id;installStates[id]={phase:'checking'};refreshOwnership();try{await platform.install(id);await refreshLibrary();}catch{installStates[id]={phase:'error'};refreshOwnership();}}
+ async function installGame(id){if(disposed)return;requested=id;installStates[id]={phase:'checking'};refreshOwnership();try{await gameUpdates.idle();await platform.install(id);await refreshLibrary();}catch{installStates[id]={phase:'error'};refreshOwnership();}}
  const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(installedChanged)refreshLibrary();});
  platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
+ const gameUpdates=startGameUpdates(win,platform);
  function hideDetail(){pausePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
  // Back changes focus, not selection: a populated shelf always has usable actions.
  function returnToGames(toTab=false){const card=shelf.querySelector('[data-game-id="'+state.detail?.id+'"]');(toTab?tabs[state.view]:card||tabs[state.view]).focus();}
@@ -312,7 +343,7 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;stopCatalog();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
@@ -324,5 +355,5 @@ function mount(host){
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose,refreshCatalog};
 }
-return {createState,mount,challenge,startBattery,startCatalogChecks};
+return {createState,mount,challenge,startBattery,startCatalogChecks,startGameUpdates,sweepGameUpdates};
 });

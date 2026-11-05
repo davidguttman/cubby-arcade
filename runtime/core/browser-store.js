@@ -121,7 +121,7 @@
   function createBridge(options={}){
     const ctx=context(options),listeners=new Set(),jobs=new Map(),states={};
     const state=(id,phase,details={})=>{states[id]={phase,...details};for(const listener of listeners)try{listener(structuredClone(states));}catch{/* Observer failures cannot change an install. */}};
-    let catalog=[],checking=null;
+    let catalog=[];
     const bridge={
       async ready(){await ctx.metadata.list();if(!ctx.caches||!ctx.crypto?.subtle)throw Error('Browser game storage unavailable');},
       async library(){return (await ctx.metadata.list()).filter(record=>record.active).map(libraryEntry);},
@@ -140,19 +140,11 @@
         if(typeof id!=='string'||!ID.test(id))return Promise.reject(Error('Invalid game id'));
         return startJob(id);
       },
-      checkUpdates({signal}={}){
-        if(checking)return checking;
-        checking=(async()=>{
-          // Refresh discovery, but never turn an uninstalled Store offer into an install.
-          const offers=await bridge.catalog({signal});
-          const installed=new Map((await ctx.metadata.list()).filter(record=>record.active).map(record=>[record.id,record.generation]));
-          for(const offer of offers){
-            signal?.throwIfAborted();
-            if(!installed.has(offer.id))continue;
-            try{await startJob(offer.id,{signal,generation:installed.get(offer.id)});}catch{/* Current bytes stay playable; a later check retries. */}
-          }
-        })().catch(()=>{/* Offline/disposed checks are best effort. */}).finally(()=>checking=null);
-        return checking;
+      // An uninstall or reinstall, here or in another tab, invalidates a queued update.
+      async update(id,{signal}={}){
+        if(typeof id!=='string'||!ID.test(id))throw Error('Invalid game id');
+        const record=await ctx.metadata.get(id);
+        if(record.active)return startJob(id,{signal,generation:record.generation});
       },
       async uninstall(id){
         if(typeof id!=='string'||!ID.test(id))throw Error('Invalid game id');
@@ -222,23 +214,6 @@
     }
     return bridge;
   }
-  // This runs only in a browser hub document, not in a game or service worker.
-  // Browsers throttle background timers; visibility/online events catch up later.
-  function startUpdateChecks(win,bridge){
-    const controller=new AbortController();let stopped=false,running=false;
-    async function check(){
-      if(stopped||running||win.document.hidden||win.navigator.onLine===false)return;
-      running=true;
-      try{await bridge.checkUpdates({signal:controller.signal});}catch{/* Never block hub/play on an update. */}finally{running=false;}
-    }
-    const timer=win.setInterval(check,5*60*1000);
-    function stop(){
-      if(stopped)return;stopped=true;controller.abort();win.clearInterval(timer);
-      win.document.removeEventListener('visibilitychange',check);win.removeEventListener('online',check);win.removeEventListener('pagehide',stop);
-    }
-    win.document.addEventListener('visibilitychange',check);win.addEventListener('online',check);win.addEventListener('pagehide',stop);check();
-    return stop;
-  }
   async function installedResponse(request,options={}){
     const ctx=context(options),url=new URL(request.url);
     if(url.origin!==ctx.origin||!url.pathname.startsWith(PREFIX))return null;
@@ -299,5 +274,5 @@
       })());
     });
   }
-  return {createBridge,createMetadataStore,validateRelease,validateCatalog,installedResponse,attachWorker,startUpdateChecks,PREFIX};
+  return {createBridge,createMetadataStore,validateRelease,validateCatalog,installedResponse,attachWorker,PREFIX};
 });
