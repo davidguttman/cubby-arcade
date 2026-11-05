@@ -18,6 +18,15 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 @media(max-width:420px){.uninstall-confirm{padding:20px}.uninstall-actions{gap:24px}.detail-actions .uninstall-game{width:48px;height:48px}}
 .browser-storage-error{min-height:80vh;display:grid;place-items:center;font-size:64px;color:#ffc94d;}
 
+/* Non-interactive, picture-only status; no fake charge in non-device hosts. */
+.hud{align-items:center;gap:10px}
+.brand{gap:8px}
+.battery-indicator{flex:none;display:flex;align-items:center;justify-content:center;width:42px;height:34px;color:#86ecc4}
+.battery-indicator[hidden]{display:none}
+.hub .battery-indicator svg{width:38px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.battery-fill{fill:currentColor;stroke:none}
+.battery-indicator[data-low=true]{color:#ff8f7f}
+.hub .battery-indicator .battery-bolt{fill:#ffd770;stroke:#291e40;stroke-width:1.5}
 /* Device settings: picture tiles that open the worded adult pages. */
 .settings-tiles{display:flex;gap:24px}
 .hub .settings-tile{width:150px;height:130px;border-radius:30px;background:rgba(255,255,255,.1);box-shadow:0 6px 0 rgba(0,0,0,.28),inset 0 2px 0 rgba(255,255,255,.08)}

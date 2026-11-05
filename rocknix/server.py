@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlsplit
 
 import yaml
 
-from runtime import catalog, packages, server as assets
+from runtime import battery, catalog, packages, server as assets
 from rocknix import network, updates
 
 UPDATE_CHECK_SECONDS = 6 * 60 * 60
@@ -221,6 +221,9 @@ class Handler(assets.Handler):
             if path == '/api/status':
                 self.json_response(self.state.status)
                 return
+        if path == '/api/battery':
+            self.json_response(battery.read_battery())
+            return
         if path == '/api/update-attention':
             self.json_response({'attention': update_attention(self.state)})
             return
