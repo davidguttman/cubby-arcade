@@ -294,10 +294,11 @@ class Handler(assets.Handler):
                     self.state.network_busy = True
                 try:
                     result = self.state.network.dispatch(request)
-                    self.json_response(result)
                 finally:
                     with self.state.lock:
                         self.state.network_busy = False
+                # Reply only once free: the Wi-Fi page sends its next request immediately.
+                self.json_response(result)
             except network.NetworkError as error:
                 self.json_response({'error': str(error) if str(error) in network.ERRORS else 'unavailable'}, 400)
             except (ValueError, TypeError, OSError):
