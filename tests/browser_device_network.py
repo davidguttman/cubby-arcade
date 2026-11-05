@@ -13,6 +13,7 @@ fixture are created/closed. Screenshots can be saved with --screenshots DIR.
 import argparse
 import asyncio
 from pathlib import Path
+import re
 import sys
 import tempfile
 import threading
@@ -89,7 +90,36 @@ async def exercise(cdp, origin, manager, screenshots):
             await button(14)
             assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Wi-Fi settings'
             await screenshot('settings-tab-focused')
+            await button(0)  # A tile asks the math question before anything opens.
+            gate = page.locator('dialog.settings-gate')
+            await gate.wait_for()
+            assert page.url == origin + '/'
+            await screenshot('settings-gate')
+            await button(1)  # B backs out to the tile.
+            await gate.wait_for(state='hidden')
+            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Wi-Fi settings'
             await button(0)
+            await gate.wait_for()
+            async def question_answer():
+                match = re.fullmatch(r"What's (\d+) ([+−×]) (\d+)\?", await page.locator('.gate-question').inner_text())
+                a, op, b = int(match[1]), match[2], int(match[3])
+                return a + b if op == '+' else a - b if op == '−' else a * b
+            async def answer(value):
+                for digit in str(value):
+                    await gate.get_by_role('button', name=digit, exact=True).click()
+                await gate.get_by_role('button', name='Submit answer').click()
+            await answer(await question_answer() + 1)  # A wrong sum asks a new one.
+            await page.get_by_text('Try again.').wait_for()
+            assert page.url == origin + '/'
+            assert await page.locator('.gate-entry').inner_text() == ''
+            await gate.get_by_role('button', name='1', exact=True).focus()
+            await button(13)  # D-pad moves through the keypad: 1, then down to 4.
+            await button(15)  # Right to 5.
+            assert await page.evaluate('document.activeElement.textContent') == '5'
+            await button(0)
+            assert await page.locator('.gate-entry').inner_text() == '5'
+            await gate.get_by_role('button', name='Backspace').click()
+            await answer(await question_answer())
             await page.wait_for_url(origin + '/adult/network')
             await page.get_by_text('You are offline.', exact=False).wait_for()
             await page.locator('.network').first.wait_for()
@@ -107,9 +137,10 @@ async def exercise(cdp, origin, manager, screenshots):
             await page.goto(origin + '/')
             manager.adapter.online = False
             await page.evaluate('''() => { for (const i of [4,5,9]) window.fixturePad.buttons[i].pressed=true; }''')
-            await page.wait_for_url(origin + '/adult/network', timeout=6000)
-            await page.get_by_text('You are offline.', exact=False).wait_for()
-            await screenshot('wifi-offline-after-onboarding')
+            # The shortcut reaches the gear tab; it must not skip the math question.
+            await page.wait_for_function("document.activeElement?.classList.contains('settings-tile')", timeout=6000)
+            assert page.url == origin + '/'
+            await page.evaluate('''() => { for (const i of [4,5,9]) window.fixturePad.buttons[i].pressed=false; }''')
             assert not errors, errors
             print('Wi-Fi UI: required setup, controller selection/typing/case, wrong-password retry, internet completion, offline reboot and adult shortcut verified at 640x480.')
         finally:

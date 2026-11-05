@@ -22,7 +22,8 @@ On first launch the local device server opens a distinct **Connect Cubby** page:
 Completion is stored in `/storage/cubby/state/network-onboarded.json`. On later
 boots the local hub and installed games remain usable offline; this marker does
 not mean current internet access is guaranteed. Return to adult Wi-Fi settings
-from the Wi-Fi tile on the hub's gear tab, or hold **L + R + Start for two seconds** from the hub.
+from the Wi-Fi tile on the hub's gear tab, which asks a random math question first.
+Holding **L + R + Start for two seconds** jumps to that tab.
 Adult settings can change networks and recheck internet without erasing games,
 saves, browser state or previous networking configuration.
 
