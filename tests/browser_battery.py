@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["playwright", "pyyaml==6.0.3"]
 # ///
-"""Real device bridge regression: battery must not overlap the settings gear/nav."""
+"""Real device bridge regression: top-right battery stays clear of settings/nav."""
 import argparse
 import asyncio
 from pathlib import Path
@@ -37,6 +37,11 @@ async def exercise(cdp, origin, screenshots):
                 gear = page.get_by_role('button', name='options', exact=True)
                 nav = page.locator('.view-nav')
                 battery_box, gear_box, nav_box = [await el.bounding_box() for el in (battery, gear, nav)]
+                header_box = await page.locator('.topbar').bounding_box()
+                assert abs(battery_box['x'] + battery_box['width']
+                           - header_box['x'] - header_box['width']) <= 1, (battery_box, header_box)
+                assert header_box['y'] <= battery_box['y']
+                assert battery_box['y'] + battery_box['height'] <= header_box['y'] + header_box['height']
                 assert not overlaps(battery_box, gear_box), (battery_box, gear_box)
                 assert not overlaps(battery_box, nav_box), (battery_box, nav_box)
                 assert 0 <= battery_box['x'] < battery_box['x'] + battery_box['width'] <= width
@@ -50,7 +55,7 @@ async def exercise(cdp, origin, screenshots):
                 gate = page.get_by_role('dialog', name='Adult check', exact=True)
                 await gate.wait_for(state='visible')
                 assert '/adult/network' not in page.url
-                print(f'{width}x{height}: battery visible, no gear/nav overlap; adult settings remain math-gated')
+                print(f'{width}x{height}: battery top-right, no gear/nav overlap; adult settings remain math-gated')
             finally:
                 await context.close()
 
