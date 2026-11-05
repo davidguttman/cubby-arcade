@@ -148,6 +148,7 @@ class NetworkHttpTests(unittest.TestCase):
         return result
 
     def test_network_reply_is_sent_only_after_the_busy_flag_clears(self):
+        from rocknix.server import Handler
         seen = []
         original = Handler.json_response
         def spy(handler, value, status=200):
