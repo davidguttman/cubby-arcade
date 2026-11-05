@@ -73,6 +73,12 @@ class UnifiedPublicationTests(unittest.TestCase):
         self.assertEqual(json.loads(gh.download(update_publish.CHANNEL,'manifest.json'))['version'],'0.11.1')
         uploads=len(gh.uploads);advance_feed(self.output,self.public,'a'*40,gh)
         self.assertEqual(uploads,len(gh.uploads))
+    def test_device_archive_carries_a_signed_version_stamp(self):
+        import zipfile
+        manifest=verify_device(self.output,self.public,'0.11.1')
+        body=zipfile.ZipFile(self.output/'app.zip').read('runtime/version.json')
+        self.assertEqual(json.loads(body),{'version':'0.11.1'})
+        self.assertEqual(manifest['files']['runtime/version.json']['sha256'],hashlib.sha256(body).hexdigest())
     def test_absent_or_corrupt_unified_artifacts_never_advance_feed(self):
         for change in ['missing','corrupt','signature']:
             gh=self.feed()

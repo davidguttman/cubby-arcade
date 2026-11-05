@@ -56,6 +56,17 @@ async def exercise(cdp,origin,adapter,directory):
             await page.get_by_role('button',name='Back').click()
             await page.locator('.settings-tile').first.wait_for()
             assert page.url==origin+'/'  # Hub consumed the return marker.
+            # The version sits quietly on the settings tab only.
+            await page.route('**/api/version',lambda route:route.fulfill(json={'version':'1.2.3'}))
+            await page.goto(origin+'/')
+            await page.get_by_role('button',name='options',exact=True).click()
+            await page.locator('.app-version').wait_for()
+            assert await page.locator('.app-version').inner_text()=='1.2.3'
+            await page.wait_for_timeout(400)
+            await page.screenshot(path=str(directory/'settings-version.png'))
+            await page.get_by_role('button',name='library',exact=True).click()
+            assert await page.locator('.app-version').is_hidden()
+            await page.unroute('**/api/version')
             # Badge: gear tab and Updates tile, quiet once nothing needs doing.
             adapter.phase='available'
             await page.goto(origin+'/')

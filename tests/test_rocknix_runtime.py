@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 from rocknix.network import Onboarding, Simulation
-from rocknix.server import State, check_for_update, make_server, update_attention
+from rocknix.server import State, app_version, check_for_update, make_server, update_attention
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +56,18 @@ class SessionTests(unittest.TestCase):
                 settings.read(ROOT / config_path)
                 self.assertFalse(settings.getboolean('websettings',
                                                      'media-playback-requires-user-gesture'))
+
+
+class VersionTests(unittest.TestCase):
+    def test_reads_the_release_stamp_and_tolerates_unreleased_builds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            class Holder: app = Path(directory)
+            self.assertIsNone(app_version(Holder))
+            (Holder.app / 'runtime').mkdir()
+            (Holder.app / 'runtime/version.json').write_text('not json')
+            self.assertIsNone(app_version(Holder))
+            (Holder.app / 'runtime/version.json').write_text('{"version": "1.2.3"}')
+            self.assertEqual(app_version(Holder), '1.2.3')
 
 
 class UpdateWatchTests(unittest.TestCase):

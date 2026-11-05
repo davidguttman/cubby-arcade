@@ -31,6 +31,7 @@
     },
     uninstall: id => request('/api/uninstall', {id}),
     updateAttention: () => request('/api/update-attention'),
+    version: () => request('/api/version'),
     onInstallState(fn) {
       listeners.add(fn);
       if (!timer) timer = setInterval(() => status().catch(() => {}), 800);

@@ -224,6 +224,9 @@ class Handler(assets.Handler):
         if path == '/api/battery':
             self.json_response(battery.read_battery())
             return
+        if path == '/api/version':
+            self.json_response({'version': app_version(self.state)})
+            return
         if path == '/api/update-attention':
             self.json_response({'attention': update_attention(self.state)})
             return
@@ -355,6 +358,14 @@ def make_server(state, port=8080):
     instance = http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler)
     instance.state = state
     return instance
+
+
+def app_version(state):
+    """The release's version stamp; None for a build that wasn't released."""
+    try:
+        return json.loads((state.app / 'runtime/version.json').read_text())['version']
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
 
 def update_attention(state):

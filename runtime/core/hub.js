@@ -187,7 +187,7 @@ function mount(host){
  if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
- if(platform.settings?.length){const tiles=element(options,'div','settings-tiles');for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openGate(entry.href,tile),'settings-tile');if(entry.notice)tile.dataset.notice='';}showNotice();return;}
+ if(platform.settings?.length){const tiles=element(options,'div','settings-tiles');for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openGate(entry.href,tile),'settings-tile');if(entry.notice)tile.dataset.notice='';}showNotice();showVersion();return;}
  const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
  }
  // A quiet badge for adults: gear tab, then the tile that needs attention.
@@ -195,6 +195,9 @@ function mount(host){
  function showNotice(){for(const target of [tabs.options,options.querySelector('[data-notice]')]){target?.classList.toggle('has-notice',notice);if(notice)target?.setAttribute('aria-description','Update available');else target?.removeAttribute('aria-description');}}
  async function refreshNotice(){try{notice=!!(await platform.updateAttention()).attention;}catch{notice=false;}if(!disposed)showNotice();}
  if(platform.updateAttention){refreshNotice();noticeTimer=win.setInterval(refreshNotice,60000);}
+ let appVersion='';
+ function showVersion(){if(!appVersion||options.querySelector('.app-version'))return;element(options,'span','app-version').textContent=appVersion;}
+ platform.version?.().then(value=>{appVersion=value?.version||'';if(!disposed)showVersion();}).catch(()=>{});
  function stopCapture(){if(cancelCapture){cancelCapture();cancelCapture=null;}}
  function closeAdult(apply){stopCapture();if(draft){if(apply)draft.apply();else draft.cancel();}draft=null;adult=false;dialog.close();tabs.options.focus();}
  function openAdult(){if(adult)return;adult=true;draft=prefs.editKeyboard();dialog.replaceChildren();const heading=element(dialog,'h1');heading.textContent='Adult setup';const instruction=element(dialog,'p','adult-lead');instruction.textContent='Choose a control, then press a key. Changes apply only when saved.';

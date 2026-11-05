@@ -13,6 +13,8 @@ import subprocess
 import zipfile
 from rocknix.updates import app_path, validate_manifest, RUNTIME
 
+VERSION_FILE='runtime/version.json'
+
 
 def build(source,output,version,sequence,url,key):
     source,output,key=Path(source),Path(output),Path(key)
@@ -32,9 +34,12 @@ def build(source,output,version,sequence,url,key):
             try:app_path(name)
             except ValueError:continue
             paths.append((name,p))
+    # The device only sees its app directory, so the version has to travel inside it.
+    stamp=json.dumps({'version':version}).encode()
+    entries=[(name,p.read_bytes(),0o755 if p.stat().st_mode&0o111 else 0o644) for name,p in paths]
+    entries.append((VERSION_FILE,stamp,0o644))
     with zipfile.ZipFile(archive,'x',zipfile.ZIP_DEFLATED) as z:
-        for name,p in paths:
-            body=p.read_bytes(); mode=0o755 if p.stat().st_mode&0o111 else 0o644
+        for name,body,mode in entries:
             info=zipfile.ZipInfo(name); info.create_system=3; info.external_attr=(stat.S_IFREG|mode)<<16
             info.compress_type=zipfile.ZIP_DEFLATED
             z.writestr(info,body)

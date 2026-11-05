@@ -80,6 +80,7 @@
       installStatus: native.installStatus && native.installStatus.bind(native),
       onInstallState: native.onInstallState && native.onInstallState.bind(native),
       updateAttention: native.updateAttention && native.updateAttention.bind(native),
+      version: native.version && native.version.bind(native),
       setVolume: native.setVolume && native.setVolume.bind(native),
       sleep: native.sleep && native.sleep.bind(native)
     };
