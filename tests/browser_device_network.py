@@ -13,6 +13,7 @@ fixture are created/closed. Screenshots can be saved with --screenshots DIR.
 import argparse
 import asyncio
 from pathlib import Path
+import re
 import sys
 import tempfile
 import threading
@@ -31,7 +32,7 @@ async def exercise(cdp, origin, manager, screenshots):
             await page.set_viewport_size({'width': 640, 'height': 480})
             await page.add_init_script('''
               window.fixturePad = {connected:true, axes:[0,0], buttons:Array.from({length:16},()=>({pressed:false}))};
-              Object.defineProperty(navigator,'getGamepads',{value:()=>[window.fixturePad]});
+              Object.defineProperty(navigator,'getGamepads',{configurable:true,value:()=>[window.fixturePad]});
             ''')
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
@@ -74,10 +75,72 @@ async def exercise(cdp, origin, manager, screenshots):
             manager.adapter.online = False
             await page.reload()
             assert page.url == origin + '/'  # Installed library is usable offline.
-            await page.evaluate('''() => { for (const i of [4,5,9]) window.fixturePad.buttons[i].pressed=true; }''')
-            await page.wait_for_url(origin + '/adult/network', timeout=6000)
+            # The hub's gear tab is the single route to settings.
+            await page.get_by_role('button', name='options', exact=True).click()
+            tiles = page.locator('.settings-tile')
+            assert await tiles.count() == 2
+            assert await page.get_by_role('button', name='Adult keyboard setup').count() == 0
+            assert await page.get_by_role('button', name='Adult Wi-Fi settings').count() == 0
+            await page.wait_for_timeout(400)  # Let the tab pill finish sliding.
+            await screenshot('settings-tab')
+            await page.evaluate("window.dispatchEvent(new Event('focus'))")  # CDP tabs lack window focus.
+            await page.wait_for_timeout(120)
+            await button(13)  # D-pad drops from the gear tab to the tile beneath it.
+            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Cubby updates'
+            await button(14)
+            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Wi-Fi settings'
+            await screenshot('settings-tab-focused')
+            await button(0)  # A tile asks the math question before anything opens.
+            gate = page.locator('dialog.settings-gate')
+            await gate.wait_for()
+            assert page.url == origin + '/'
+            await screenshot('settings-gate')
+            await button(1)  # B backs out to the tile.
+            await gate.wait_for(state='hidden')
+            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Wi-Fi settings'
+            await button(0)
+            await gate.wait_for()
+            async def question_answer():
+                match = re.fullmatch(r"What's (\d+) ([+−×]) (\d+)\?", await page.locator('.gate-question').inner_text())
+                a, op, b = int(match[1]), match[2], int(match[3])
+                return a + b if op == '+' else a - b if op == '−' else a * b
+            async def answer(value):
+                for digit in str(value):
+                    await gate.get_by_role('button', name=digit, exact=True).click()
+                await gate.get_by_role('button', name='Submit answer').click()
+            await answer(await question_answer() + 1)  # A wrong sum asks a new one.
+            await page.get_by_text('Try again.').wait_for()
+            assert page.url == origin + '/'
+            assert await page.locator('.gate-entry').inner_text() == ''
+            await gate.get_by_role('button', name='1', exact=True).focus()
+            await button(13)  # D-pad moves through the keypad: 1, then down to 4.
+            await button(15)  # Right to 5.
+            assert await page.evaluate('document.activeElement.textContent') == '5'
+            await button(0)
+            assert await page.locator('.gate-entry').inner_text() == '5'
+            await gate.get_by_role('button', name='Backspace').click()
+            await answer(await question_answer())
+            await page.wait_for_url(origin + '/adult/network')
             await page.get_by_text('You are offline.', exact=False).wait_for()
-            await screenshot('wifi-offline-after-onboarding')
+            await page.locator('.network').first.wait_for()
+            await screenshot('wifi-settings-offline')
+            await button(1)  # B returns to the settings tab, not the library.
+            await page.locator('.settings-tile').first.wait_for()
+            assert page.url == origin + '/'
+            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Wi-Fi settings'
+            manager.adapter.online = True
+            await page.goto(origin + '/adult/network')
+            await page.get_by_text('Internet is working.', exact=False).wait_for()
+            await page.locator('.network.connected').wait_for()
+            assert await page.get_by_role('button', name='Continue to Cubby').is_hidden()
+            await screenshot('wifi-settings-online')
+            await page.goto(origin + '/')
+            manager.adapter.online = False
+            await page.evaluate('''() => { for (const i of [4,5,9]) window.fixturePad.buttons[i].pressed=true; }''')
+            # The shortcut reaches the gear tab; it must not skip the math question.
+            await page.wait_for_function("document.activeElement?.classList.contains('settings-tile')", timeout=6000)
+            assert page.url == origin + '/'
+            await page.evaluate('''() => { for (const i of [4,5,9]) window.fixturePad.buttons[i].pressed=false; }''')
             assert not errors, errors
             print('Wi-Fi UI: required setup, controller selection/typing/case, wrong-password retry, internet completion, offline reboot and adult shortcut verified at 640x480.')
         finally:

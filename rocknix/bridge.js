@@ -30,29 +30,29 @@
       }
     },
     uninstall: id => request('/api/uninstall', {id}),
+    updateAttention: () => request('/api/update-attention'),
     onInstallState(fn) {
       listeners.add(fn);
       if (!timer) timer = setInterval(() => status().catch(() => {}), 800);
       return () => {listeners.delete(fn); if (!listeners.size) {clearInterval(timer); timer = null;}};
     }
   };
-  win.HandheldPlatformOptions = {kind: 'kiosk', bridge};
-  // Adult management remains separate from the wordless child hub. The gear
-  // is also reachable without a pointer: hold L+R+Start for two seconds.
+  // The hub's gear tab is the only settings screen. Its picture tiles ask an adult
+  // math question, then open the worded pages kept out of the wordless child hub.
+  win.HandheldPlatformOptions = {kind: 'kiosk', bridge, settings: [
+    {icon: 'wifi', label: 'Wi-Fi settings', href: '/adult/network'},
+    {icon: 'update', label: 'Cubby updates', href: '/adult/updates', notice: true}
+  ]};
+  // Controller shortcut to the gear tab, where the tiles still ask the question:
+  // hold L+R+Start for two seconds.
   win.addEventListener('DOMContentLoaded', () => {
-    const settings = document.createElement('button');
-    settings.textContent = '⚙';
-    settings.setAttribute('aria-label', 'Adult Wi-Fi settings');
-    settings.style.cssText = 'position:fixed;right:8px;top:8px;z-index:1000;width:38px;height:38px;border-radius:50%;border:1px solid #708090;background:#172639;color:#fff;font-size:24px';
-    settings.onclick = () => { win.location.href = '/adult/network'; };
-    document.body.append(settings);
-    let held = 0;
+    let held = 0, fired = false;
     function adultShortcut(now) {
       const pad = [...(navigator.getGamepads?.() || [])].find(p => p?.connected);
       if (pad?.buttons[4]?.pressed && pad?.buttons[5]?.pressed && pad?.buttons[9]?.pressed) {
         if (!held) held = now;
-        if (now-held > 2000) win.location.href = '/adult/network';
-      } else held = 0;
+        if (now-held > 2000 && !fired) { fired = true; win.location.hash = 'options'; }
+      } else { held = 0; fired = false; }
       requestAnimationFrame(adultShortcut);
     }
     requestAnimationFrame(adultShortcut);

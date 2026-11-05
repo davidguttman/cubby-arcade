@@ -1,3 +1,71 @@
-:root{color-scheme:dark;font:16px system-ui,sans-serif;background:#101927;color:#f8f5e8}*{box-sizing:border-box}body{margin:0}main{max-width:760px;margin:auto;padding:14px 18px}header{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}.adult{font-size:11px;font-weight:800;letter-spacing:.15em;color:#80dcce}h1{font-size:25px;margin:0}header p{flex-basis:100%;font-size:14px;margin:5px 0}#status{padding:9px 12px;border-radius:10px;background:#223249;margin:8px 0;min-height:38px}button,input{font:inherit}button{border:2px solid transparent;border-radius:10px;background:#283b54;color:#fff;padding:9px 12px;cursor:pointer;min-height:40px}button:focus,input:focus{outline:3px solid #ffdc86;outline-offset:1px}button:disabled{opacity:.5}button.primary{background:#165f58}#networks{display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:190px;overflow:auto}#networks button{text-align:left;overflow-wrap:anywhere}small{font-size:12px;color:#c4cfdf}#password-panel h2{font-size:17px;margin:8px 0}label{font-size:13px}input{display:block;width:100%;background:#0c1421;border:1px solid #68809f;border-radius:8px;padding:8px;margin:4px 0 8px}#keyboard{display:grid;grid-template-columns:repeat(11,1fr);gap:5px}#keyboard button{padding:4px;min-height:32px}footer{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.controls{font-size:11px;color:#b9c9dc;margin:10px 0 0}#simulation{font-size:12px;color:#ffdc86;margin:4px 0}[hidden]{display:none!important}body.entering header #intro{display:none}body.entering .controls{font-size:10px;margin:6px 0 0}body.entering main{padding-top:8px}body.entering h1{font-size:21px}body.entering #status{padding:6px;margin:5px 0;min-height:30px}body.entering #networks{display:none}body.entering #password-panel h2{margin:4px 0}body.entering footer button{padding:7px 10px;min-height:34px}
+/* Shared by the adult pages; palette and controls match the hub. */
+:root{color-scheme:dark;font:15px system-ui,sans-serif;color:#fff4e6}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(110% 70% at 8% -12%,#6a3d5d 0,rgba(106,61,93,0) 60%),radial-gradient(90% 70% at 105% 115%,#283a6a 0,rgba(40,58,106,0) 62%),linear-gradient(180deg,#2a1f3d,#150f22)}
+main{height:100%;max-width:720px;margin:auto;padding:12px 16px 8px;display:flex;flex-direction:column;gap:8px}
+[hidden]{display:none!important}
+svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round;pointer-events:none}
+header{display:flex;align-items:center;gap:12px;min-height:44px;flex:none}
+h1{margin:0;font-size:24px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+p{margin:0}
+#intro{color:#cdbfe6;font-size:14px}
+#simulation{color:#ffd770;font-size:12px}
 
-body.entering #updates{display:none}
+button,input{font:inherit;color:inherit}
+button{appearance:none;border:0;border-radius:14px;background:#3b2d57;min-height:44px;padding:8px 16px;cursor:pointer;box-shadow:0 3px 0 rgba(0,0,0,.28)}
+button:hover{background:#4a3a6c}
+button:focus,input:focus{outline:3px solid #ffc94d;outline-offset:2px}
+button:disabled{opacity:.55;cursor:default}
+button.primary{background:linear-gradient(#ffd770,#ffb22e);color:#3a2410;font-weight:700;box-shadow:0 3px 0 #c27312}
+button.primary:focus{outline-color:#fff4e6}
+button.round{display:grid;place-items:center;flex:none;width:44px;padding:0;border-radius:50%;background:#2e2248;box-shadow:0 3px 0 rgba(8,4,16,.5),inset 0 0 0 2px rgba(255,255,255,.16)}
+
+#status{display:flex;align-items:center;gap:10px;flex:none;font-size:14px;line-height:1.3;color:#e6dcf4}
+#status::before{content:"";flex:none;width:10px;height:10px;border-radius:50%;background:#8d7fa8}
+#status[data-tone=ok]::before{background:#5fd6a4}
+#status[data-tone=warn]::before{background:#ffc94d}
+#status[data-tone=bad]::before{background:#ff8f7f}
+body.busy #status::before{background:#ffc94d;animation:pulse .9s ease-in-out infinite alternate}
+@keyframes pulse{to{opacity:.25}}
+
+#networks{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:6px;margin:0 -6px}
+.network{display:flex;align-items:center;gap:12px;flex:none;width:100%;min-height:52px;padding:6px 14px;text-align:left;background:rgba(255,255,255,.08);box-shadow:none}
+.network:hover{background:rgba(255,255,255,.14)}
+.network .name{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.network small{flex:none;color:#cdbfe6;font-size:12px}
+.network .tick{flex:none;color:#5fd6a4}
+.network.connected small{color:#5fd6a4}
+.bars rect{fill:currentColor;stroke:none;opacity:.25}
+.bars[data-level="1"] rect:nth-child(-n+1),.bars[data-level="2"] rect:nth-child(-n+2),.bars[data-level="3"] rect:nth-child(-n+3),.bars[data-level="4"] rect:nth-child(-n+4){opacity:1}
+
+footer{display:flex;flex-wrap:wrap;gap:8px;flex:none}
+.controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px;flex:none;font-size:12px;color:#cdbfe6}
+.back-hint{display:none;align-items:center;gap:6px;margin-left:6px}
+body.can-leave .back-hint{display:inline-flex}
+kbd{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:6px;background:#3b2d57;color:#fff4e6;font:700 11px system-ui,sans-serif}
+.controls kbd:not(:first-child){margin-left:6px}
+.controls kbd+kbd{margin-left:0}
+.entry-hints{display:none}
+
+/* Password entry replaces the list, so the whole keyboard fits at 640x480. */
+body.entering #networks,body.entering #actions,body.entering .list-hints{display:none}
+body.entering .entry-hints{display:flex}
+#password-panel{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
+.entry{display:flex;align-items:center;gap:10px}
+.entry label{font-size:13px;color:#cdbfe6}
+input{flex:1;min-width:0;height:44px;padding:0 12px;border:0;border-radius:12px;background:rgba(16,9,28,.65);box-shadow:inset 0 2px 6px rgba(0,0,0,.4)}
+#keyboard{flex:1;min-height:0;display:grid;grid-template-columns:repeat(11,1fr);grid-auto-rows:1fr;gap:4px}
+#keyboard button{display:grid;place-items:center;min-height:0;padding:0;border-radius:9px;font-size:15px;box-shadow:0 2px 0 rgba(0,0,0,.28)}
+#keyboard button:focus{background:#ffc94d;color:#3a2410;outline-offset:0;outline-width:2px}
+#keyboard svg{width:20px;height:20px}
+#keyboard .case{grid-column:span 2;font-size:13px}
+#keyboard .space{grid-column:span 5;font-size:13px}
+
+.update-card{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 8px 24px;text-align:center}
+#version{font-size:30px;font-weight:750}
+.update-card #status{font-size:15px}
+#action{min-width:240px;min-height:60px;font-size:17px;border-radius:20px}
+#action[aria-disabled=true]{background:#3b2d57;color:#cdbfe6;box-shadow:0 3px 0 rgba(0,0,0,.28);cursor:default}
+.note{font-size:13px;color:#cdbfe6}
+@media (prefers-reduced-motion:reduce){body.busy #status::before{animation:none}}

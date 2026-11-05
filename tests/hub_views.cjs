@@ -9,6 +9,22 @@ test('library is the initial view and state tracks explicit selections',()=>{
  s.show('options');assert.equal(s.detail,null);assert.throws(()=>s.show('unknown'));
 });
 
+test('host-supplied settings replace keyboard setup and every icon resolves',()=>{
+ const source=require('node:fs').readFileSync(require.resolve('../runtime/core/hub.js'),'utf8');
+ assert.match(source,/platform\.settings\?\.length/);
+ const paths=source.slice(source.indexOf('const paths={'),source.indexOf('function icon('));
+ for(const [,name] of source.matchAll(/(?:icon\(|\?)'([a-z]+)'/g))if(/^(retry|play|down|loading)$/.test(name))assert.match(paths,new RegExp('[{,]'+name+":'"));
+ const bridge=require('node:fs').readFileSync(require.resolve('../rocknix/bridge.js'),'utf8');
+ assert.doesNotMatch(bridge,/⚙/);assert.match(bridge,/\/adult\/network/);assert.match(bridge,/\/adult\/updates/);
+});
+test('settings math question is random, whole-number and matches its answer',()=>{
+ const {challenge}=require('../runtime/core/hub.js');const ops=new Set();
+ for(let i=0;i<2000;i++){
+  const {text,answer}=challenge(),[,a,op,b]=text.match(/^What's (\d+) ([+−×]) (\d+)\?$/);ops.add(op);
+  const value=op==='+'?+a + +b:op==='−'?a-b:a*b;assert.equal(answer,String(value));assert.ok(value>=0&&answer.length<=3);
+ }
+ assert.deepEqual([...ops].sort(),['+','×','−'].sort());
+});
 test('options contain adult setup but no manual touch controls',()=>{
  const source=require('node:fs').readFileSync('runtime/core/hub.js','utf8');
  assert.match(source,/Adult keyboard setup/);assert.doesNotMatch(source,/touch-settings|data-mode|Automatic touch controls|Show touch controls|Hide touch controls/);
@@ -98,7 +114,7 @@ test('empty Library remains an empty pictorial state',async()=>{
 test('mounted hub disposal removes its window lifecycle listeners and is idempotent',async()=>{
  const {host,hub}=mountedHub(games);await settle();
  const win=host.ownerDocument.defaultView;
- assert.equal(win.listenerCount(),3);
+ assert.equal(win.listenerCount(),4);
  assert.doesNotThrow(()=>hub.dispose());assert.equal(win.listenerCount(),0);
  hub.dispose();assert.equal(win.listenerCount(),0);
 });

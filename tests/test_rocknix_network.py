@@ -147,6 +147,17 @@ class NetworkHttpTests(unittest.TestCase):
         client.close()
         return result
 
+    def test_network_reply_is_sent_only_after_the_busy_flag_clears(self):
+        from rocknix.server import Handler
+        seen = []
+        original = Handler.json_response
+        def spy(handler, value, status=200):
+            seen.append(self.state.network_busy)
+            original(handler, value, status)
+        with patch.object(Handler, 'json_response', spy):
+            self.assertEqual(self.request('POST', '/api/network', {'action': 'status'})[0], 200)
+        self.assertEqual(seen, [False])
+
     def test_first_run_cannot_bypass_with_play_or_game_url_and_offline_reboot_allowed(self):
         for path in ['/', '/play', '/runtime/index.html', '/games/demo/0.1/index.html']:
             status, headers, _ = self.request('GET', path)

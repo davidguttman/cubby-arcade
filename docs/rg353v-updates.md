@@ -6,8 +6,9 @@ release surfaces. Games and saves remain under `/storage/cubby/state`.
 
 ## Adult experience
 
-After required Wi-Fi setup, open adult Wi-Fi settings (gear or hold L+R+Start),
-then **Cubby updates**. Check, download, and verify an update; install outside
+After required Wi-Fi setup, open the updates tile on the hub's gear tab and answer its math question. Cubby
+checks the feed about a minute after starting and every six hours while online,
+and marks the gear tab and updates tile with a badge when an update is ready. Check, download, and verify an update; install outside
 active gameplay. Download failure leaves the running app unchanged. An offline
 installed app keeps working. Failed staging can be retried by checking again;
 partial downloads are discarded rather than activated.
@@ -54,12 +55,23 @@ app releases cannot replace the coordinator, public key, or configured feed.
 
 ## Maintainer release
 
-Device app versions have their own `cubby-device-vX.Y.Z` namespace; they do not
-move the repository's general `vX.Y.Z` releases or GitHub's latest release.
+**Normal releases are now automated by GitHub Actions.** Use the shared Cubby
+version in `package.json`; see [release workflow](releases.md). New desktop and
+handheld artifacts share `vX.Y.Z`. The existing stable feed URL and trust key do
+not change. Handheld 0.2.0 upgrades normally to the shared version.
+
+The commands below document the **legacy device-only publisher and recovery
+history**, not the normal release process. Do not create another independent
+device version counter. New immutable handheld assets are on `vX.Y.Z`, not
+`cubby-device-vX.Y.Z`.
+
+
+Historically, device app versions used a separate `cubby-device-vX.Y.Z` namespace.
+That namespace is retained only for historical releases.
 Version 0.1.1 / sequence 3 is the first accepted production device release.
 The initial 0.1.0 candidate exposed a missing controller asset during acceptance;
 UI health rejected it and restored the previous working installation. Its
-immutable release is marked superseded; the stable feed points to 0.1.1.
+immutable release is marked superseded. The stable feed has since advanced.
 Sequences strictly increase; gaps are permitted. Never publish a deliberately
 broken rollback probe.
 
@@ -97,7 +109,8 @@ that restoration itself fails, or the publisher is killed/power fails between
 uploads, repair explicitly from the intended immutable release:
 
 1. Download its metadata and archive into a new empty directory using
-   `gh release download cubby-device-vX.Y.Z --repo davidguttman/cubby-arcade`.
+   `gh release download vX.Y.Z --repo davidguttman/cubby-arcade`
+   (use `cubby-device-vX.Y.Z` only for historical device-only releases).
 2. Verify the manifest with the tracked public key and compare the downloaded
    archive's size/hash with the signed inventory. Confirm its sequence is the
    intended latest (do not downgrade to work around a failed publication).

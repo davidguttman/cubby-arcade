@@ -3,26 +3,31 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="cubby-session" content="__ADULT_SESSION__">
-<title>Cubby · Adult Wi-Fi setup</title>
+<title>Cubby · Wi-Fi</title>
 <link rel="stylesheet" href="/adult/network.css"><script src="/adult/network.js" defer></script>
 </head>
 <body>
 <main>
-<header><span class="adult">ADULT SETUP</span><h1>Connect Cubby</h1><p id="intro">Internet is required to finish setup and get games and updates.</p></header>
-<p id="simulation" hidden>SIMULATION · No real Wi-Fi changes. Test password: cubby-test</p>
+<header>
+<button id="back" class="round" aria-label="Back" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 4-8 8 8 8M6 12h16"/></svg></button>
+<h1 id="title">Wi-Fi</h1>
+</header>
+<p id="intro" hidden>Cubby needs internet to finish setup and get games and updates.</p>
+<p id="simulation" hidden>Simulation: no real Wi-Fi changes. Test password: cubby-test</p>
 <p id="status" role="status" aria-live="polite">Checking the connection…</p>
 <section id="networks" aria-label="Available Wi-Fi networks"></section>
 <section id="password-panel" hidden>
-<h2 id="selected"></h2>
-<label for="password">Wi-Fi password</label>
+<div class="entry">
+<label for="password">Password</label>
 <input id="password" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64">
+<button id="connect" class="primary">Connect</button>
+</div>
 <div id="keyboard" aria-label="Controller keyboard"></div>
 </section>
 <footer id="actions">
-<button id="rescan">Find networks</button><button id="verify">Check internet</button>
-<button id="connect" hidden>Connect</button><button id="back" hidden>Back to networks</button><button id="continue" hidden>Continue to Cubby</button>
-<button id="cancel" hidden>Cancel</button><button id="updates" hidden>Cubby updates</button>
+<button id="rescan">Find networks</button><button id="verify">Check internet</button><button id="continue" class="primary" hidden>Continue to Cubby</button>
 </footer>
-<p class="controls">D-pad: move · A: choose · B: back · L/R: keyboard case · Start: connect</p>
+<p class="controls list-hints"><kbd>A</kbd> choose <span class="back-hint"><kbd>B</kbd> back</span></p>
+<p class="controls entry-hints"><kbd>A</kbd> type <kbd>B</kbd> back <kbd>L</kbd><kbd>R</kbd> shift <kbd>Start</kbd> connect</p>
 </main>
 </body></html>
