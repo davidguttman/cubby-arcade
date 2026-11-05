@@ -16,22 +16,28 @@ The browser and server share the package-operation lock for activation. If the
 activation reply is lost, gameplay stays blocked until restart because activation
 may already be underway; an explicit rejection releases the lock. The
 candidate must paint a page, acknowledge its unique trial token, and keep both
-browser/session and HTTP server alive for ten seconds. A 45-second timeout or
+browser/session and HTTP server alive for ten seconds. A 120-second startup timeout or
 process failure rolls back. Reboot with an unfinished trial also restores the
 previous release. Rejected releases are not retried automatically.
 
 ## Trust and configuration
 
-Updates are intentionally **unconfigured** until a production public key and
-HTTPS feed are provisioned. There is no unsigned fallback or built-in test key.
-The private signing key must stay outside the repository, device, and installer.
+The production stable feed is:
+
+<https://github.com/davidguttman/cubby-arcade/releases/download/cubby-device-stable/manifest.json>
+
+New baseline images provision this feed and the production Ed25519 public key
+tracked at `rocknix/device/release-key.pem` by default. `--disable-updates` builds
+an explicitly unconfigured image; a complete `--update-feed` / `--update-key`
+pair overrides the production trust. There is no unsigned fallback or test key.
+The private signing key stays outside the repository, device, and installer.
 
 A baseline image can be composed with:
 
 ```sh
 unshare --map-auto --map-root-user uv run rocknix/image.py \
   --rocknix official.img.gz --rootfs rootfs.tar.xz --output cubby.img.gz \
-  --update-feed https://YOUR-PUBLISHER/manifest.json \
+  --update-feed https://github.com/davidguttman/cubby-arcade/releases/download/cubby-device-stable/manifest.json \
   --update-key /path/to/public-release-key.pem
 ```
 
@@ -39,32 +45,69 @@ The public key must be Ed25519 SubjectPublicKeyInfo PEM. On existing installatio
 provision root-owned `/storage/cubby/updater/release-key.pem` and `config.json`:
 
 ```json
-{"feed":"https://YOUR-PUBLISHER/manifest.json","public_key":"release-key.pem"}
+{"feed":"https://github.com/davidguttman/cubby-arcade/releases/download/cubby-device-stable/manifest.json","public_key":"release-key.pem"}
 ```
 
 This is an explicit baseline trust operation, not a caller-supplied URL in the UI.
-Publishing/key provisioning is separate from implementation; example URLs are
-placeholders and not a live update service.
+Existing devices require this one-time baseline trust provisioning. Subsequent
+app releases cannot replace the coordinator, public key, or configured feed.
 
 ## Maintainer release
 
+Device app versions have their own `cubby-device-vX.Y.Z` namespace; they do not
+move the repository's general `vX.Y.Z` releases or GitHub's latest release.
+Version 0.1.0 / sequence 1 was the initial production device release. Sequences
+strictly increase; gaps are permitted (for example, sequence 2 may be reserved
+for a private rollback test). Never publish a deliberately broken rollback probe.
+
+Build from a clean, verified source checkout. Protect the private key with mode
+0600 and keep its protected backup separate from this checkout. The default
+local key directory is `/home/dguttman/.local/share/cubby-release/`; only
+`release-key.pem` is public. Do not pass private key contents on the command line
+or copy them into output artifacts.
+
 ```sh
 uv run --python 3.12 python -m rocknix.update_release \
-  --source . --output /outside/release-1 --version 1.0.0 --sequence 1 \
-  --archive-url https://YOUR-PUBLISHER/releases/1/app.zip \
-  --key /private/signing-key.pem
+  --source . --output .cache/device-release-0.1.1 --version 0.1.1 --sequence 3 \
+  --archive-url https://github.com/davidguttman/cubby-arcade/releases/download/cubby-device-v0.1.1/app.zip \
+  --key /home/dguttman/.local/share/cubby-release/private-key.pem
+
+uv run --python 3.12 python -m rocknix.update_publish \
+  --output .cache/device-release-0.1.1 \
+  --public-key rocknix/device/release-key.pem \
+  --commit FULL_VERIFIED_SOURCE_COMMIT_SHA
 ```
 
-Publish the immutable `app.zip` at its signed URL and `manifest.json` plus
-`manifest.json.sig` at the configured feed. The signature covers exact manifest
-bytes; do not pretty-print the manifest after signing. Never reuse a sequence or
-replace an existing release. The builder refuses existing output files.
+The publisher verifies the local signature, archive hash/size and exact immutable
+URL; authenticates an existing stable feed; and refuses replay or sequence reuse.
+It uploads `app.zip`, `manifest.json`, and `manifest.json.sig` to the immutable
+release, then downloads each and compares bytes before touching the stable feed.
+It can resume a partial immutable upload only if every existing asset already
+matches; it never clobbers an immutable asset. An identical release is idempotent.
 
-The feed is HTTPS-only, including redirects. Exact signature size, compatibility,
-monotonic sequence, archive size/hash, every file size/hash/mode and archive
-structure are checked. OpenSSL verification runs in the known pinned runtime,
-not in the candidate app. All filesystem and trust decisions are made by a
-baseline coordinator outside the replaceable app.
+Only one maintainer/publishing host may publish this channel at a time. The CLI
+uses a local advisory lock; it is **not a distributed lock**. GitHub cannot replace
+manifest/signature assets atomically. During the brief replacement interval,
+devices reject a mismatched pair without changing the current app; retry the
+check. An observed publication failure restores and verifies the old pair. If
+that restoration itself fails, or the publisher is killed/power fails between
+uploads, repair explicitly from the intended immutable release:
+
+1. Download its metadata and archive into a new empty directory using
+   `gh release download cubby-device-vX.Y.Z --repo davidguttman/cubby-arcade`.
+2. Verify the manifest with the tracked public key and compare the downloaded
+   archive's size/hash with the signed inventory. Confirm its sequence is the
+   intended latest (do not downgrade to work around a failed publication).
+3. Upload only its `manifest.json` and `manifest.json.sig` to
+   `cubby-device-stable` using `gh release upload ... --clobber`.
+4. Download the public HTTPS feed and signature again, verify them, then check
+   the device. Never edit signed JSON, reserialize it, or overwrite immutable
+   release content to repair the stable alias.
+
+The stable feed carries no private key or ROCKNIX image. Signature verification,
+compatibility, monotonic sequence, archive size/hash and every file's hash/mode
+are checked by the baseline coordinator outside the replaceable app. Games,
+WPE, and ROCKNIX have separate update/release surfaces.
 
 ## Storage and recovery
 

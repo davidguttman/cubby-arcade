@@ -70,6 +70,18 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual((self.base/'current/device/chroot-run.sh').read_text(),'# trusted')
             self.assertEqual((self.base/'state/save').read_bytes(),b'keep')
 
+    def test_current_real_device_tree_wins_over_different_retained_image(self):
+        with self.prepare_stage():
+            historical=self.base/'releases/retained-image/device'
+            historical.mkdir(parents=True)
+            (historical/'chroot-run.sh').write_text('# historical baseline')
+            (historical/'chroot-run.sh').chmod(0o755)
+            self.manager.check();self.manager.stage()
+            self.assertEqual((self.base/'updater/device/chroot-run.sh').read_text(),'# trusted')
+            self.manager.apply()
+            self.assertEqual((self.base/'current/device/chroot-run.sh').read_text(),'# trusted')
+            self.assertEqual((historical/'chroot-run.sh').read_text(),'# historical baseline')
+
     def test_legacy_partial_device_directory_is_preserved_and_replaced(self):
         with self.prepare_stage():
             device=self.base/'updater/device';device.mkdir()
@@ -364,3 +376,48 @@ class UpdateHTTPTests(unittest.TestCase):
         self.assertEqual(self.request({'action':'apply'},Referer=self.origin+'/games/game/index.html'),403)
         self.assertEqual(self.request({'action':'check','url':'https://attacker.example'}),400)
         self.assertEqual(self.adapter.calls,[])
+
+class HostClientReplyTests(unittest.TestCase):
+    def reply(self, body):
+        import socket
+        import threading
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'socket'
+            with socket.socket(socket.AF_UNIX) as listener:
+                listener.bind(str(path));listener.listen(1);listener.settimeout(3)
+                def serve():
+                    connection,_=listener.accept()
+                    with connection:
+                        connection.recv(2048)
+                        connection.sendall(json.dumps(body).encode()+b'\n')
+                thread=threading.Thread(target=serve);thread.start()
+                try:return updates.HostClient(path).dispatch({'action':'status'})
+                finally:thread.join(timeout=3)
+    def test_successful_status_with_null_error_is_not_rejected(self):
+        self.assertEqual(self.reply({'phase':'idle','error':None}),{'phase':'idle','error':None})
+    def test_explicit_error_remains_rejected(self):
+        with self.assertRaises(updates.Rejected):self.reply({'error':'Unavailable'})
+
+class ActualReleaseAssetTests(unittest.TestCase):
+    def test_server_required_gamepad_asset_is_in_signed_actual_checkout_archive(self):
+        source=Path(__file__).resolve().parents[1]
+        self.assertIn('/rocknix/gamepad.js',(source/'rocknix/server.py').read_text())
+        with tempfile.TemporaryDirectory() as temporary:
+            base=Path(temporary);key=base/'key.pem'
+            subprocess.run(['openssl','genpkey','-algorithm','ED25519','-out',str(key)],
+                           check=True,capture_output=True)
+            output=base/'release'
+            manifest=update_release.build(source,output,'0.1.1',3,
+                                           'https://example.com/app.zip',key)
+            name='rocknix/gamepad.js'
+            self.assertIn(name,manifest['files'])
+            expected=(source/name).read_bytes()
+            self.assertEqual(manifest['files'][name]['sha256'],hashlib.sha256(expected).hexdigest())
+            with zipfile.ZipFile(output/'app.zip') as archive:
+                self.assertEqual(archive.read(name),expected)
+            public=base/'public.pem'
+            subprocess.run(['openssl','pkey','-in',str(key),'-pubout','-out',str(public)],
+                           check=True,capture_output=True)
+            subprocess.run(['openssl','pkeyutl','-verify','-pubin','-rawin','-inkey',str(public),
+                            '-in',str(output/'manifest.json'),'-sigfile',str(output/'manifest.json.sig')],
+                           check=True,capture_output=True)

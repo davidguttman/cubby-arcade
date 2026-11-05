@@ -44,7 +44,7 @@ def app_path(name):
         raise ValueError('Invalid app path')
     if not (name.startswith('runtime/') or name.startswith('rocknix/adult/') or
             name in {'hosting/catalog.yaml', 'rocknix/server.py', 'rocknix/session.sh',
-                     'rocknix/cog.ini', 'rocknix/bridge.js', 'rocknix/network.py', 'rocknix/updates.py'}):
+                     'rocknix/cog.ini', 'rocknix/bridge.js', 'rocknix/gamepad.js', 'rocknix/network.py', 'rocknix/updates.py'}):
         raise ValueError('Not an app asset')
     return name
 
@@ -275,14 +275,22 @@ class Manager:
         except ValueError: pass
         # App releases reference the baseline, never supply its replacement.
         # Recover old interrupted copies only from retained real device trees.
-        sources=[]
-        for release in sorted((self.base/'releases').iterdir()):
-            source=release/'device'
-            if release.is_symlink() or source.is_symlink() or not source.is_dir(): continue
-            sources.append((source,self.device_inventory(source)))
-        if not sources or any(inv!=sources[0][1] for _,inv in sources):
-            raise ValueError('Cannot safely recover baseline device copy')
-        source,inventory=sources[0]
+        current=(self.base/'current').resolve(strict=True)
+        if current.parent != (self.base/'releases').resolve():
+            raise ValueError('Invalid current release')
+        active=current/'device'
+        try:
+            inventory=self.device_inventory(active)
+            source=active
+        except ValueError:
+            sources=[]
+            for release in sorted((self.base/'releases').iterdir()):
+                candidate=release/'device'
+                if release.is_symlink() or candidate.is_symlink() or not candidate.is_dir(): continue
+                sources.append((candidate,self.device_inventory(candidate)))
+            if not sources or any(inv!=sources[0][1] for _,inv in sources):
+                raise ValueError('Cannot safely recover baseline device copy')
+            source,inventory=sources[0]
         device.parent.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.device-stage-',dir=device.parent) as name:
             staged=Path(name)/'device'
@@ -452,7 +460,7 @@ class HostClient:
                 if not block:break
                 data+=block
         result=json.loads(data)
-        if 'error' in result: raise Rejected(result['error'])
+        if result.get('error') is not None: raise Rejected(result['error'])
         return result
 
 

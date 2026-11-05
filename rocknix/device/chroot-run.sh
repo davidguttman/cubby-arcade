@@ -2,7 +2,8 @@
 set -euo pipefail
 RELEASE=$1
 BASE=/storage/cubby
-ROOT=$RELEASE/rootfs
+# BusyBox remount looks up canonical mount targets, not release symlink aliases.
+ROOT=$(readlink -f "$RELEASE/rootfs")
 mkdir -p "$BASE/state" "$ROOT/var/lib/handheld" "$ROOT/opt/cubby" \
   "$ROOT/run/host-runtime" "$ROOT/run/udev" "$ROOT/run/cubby-network" "$ROOT/run/cubby-updater"
 # Never unmount another task's mounts. Our service owns this private namespace.

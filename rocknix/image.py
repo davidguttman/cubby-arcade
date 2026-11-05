@@ -275,10 +275,31 @@ def source_provenance(source_root: Path, supplied: dict | None = None) -> dict:
         return {'source_commit': None, 'source_dirty': None}
 
 
+DEFAULT_UPDATE_FEED = 'https://github.com/davidguttman/cubby-arcade/releases/download/cubby-device-stable/manifest.json'
+
+
+def provision_updater(cubby, source_root, feed=None, key=None, disabled=False):
+    """Baseline trust provisioning, not an app-delivered key rotation."""
+    if disabled:
+        if feed or key: raise ValueError('Cannot combine disabled updates with explicit trust')
+        return
+    if bool(feed) != bool(key):
+        raise ValueError('Update feed and public key must be provided together')
+    if feed is None:
+        feed = DEFAULT_UPDATE_FEED
+        key = Path(source_root) / 'rocknix/device/release-key.pem'
+    from rocknix.updates import Manager, atomic
+    destination = Path(cubby) / 'updater'
+    destination.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(key, destination / 'release-key.pem')
+    atomic(destination / 'config.json', {'feed': feed, 'public_key': 'release-key.pem'})
+    Manager(cubby).config()
+
+
 def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
           *, source_root: Path | None = None, source_info: dict | None = None,
           progress=None, update_feed: str | None = None, update_key: Path | None = None,
-          wifi_profile: str = WIFI_PROFILE) -> Path:
+          wifi_profile: str = WIFI_PROFILE, disable_updates: bool = False) -> Path:
     if bool(update_feed) != bool(update_key):
         raise ValueError('Update feed and public key must be provided together')
     if wifi_profile not in (WIFI_PROFILE, 'stock'):
@@ -372,11 +393,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         (cubby / 'current').symlink_to('releases/' + release_id)
         (cubby / 'updater').mkdir()
         shutil.copy2(source_root / 'rocknix/updates.py', cubby / 'updater/coordinator.py')
-        if update_feed:
-            from rocknix.updates import Manager, atomic
-            shutil.copy2(update_key, cubby / 'updater/release-key.pem')
-            atomic(cubby / 'updater/config.json', {'feed': update_feed, 'public_key': 'release-key.pem'})
-            Manager(cubby).config()  # Validate URL and Ed25519 public-key format.
+        provision_updater(cubby, source_root, update_feed, update_key, disable_updates)
         (cubby / 'state').mkdir()
         provenance = cubby / 'image-provenance'
         provenance.mkdir()
@@ -425,8 +442,10 @@ if __name__ == '__main__':
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--storage-gib', type=int, default=6)
     parser.add_argument('--wifi-profile', choices=[WIFI_PROFILE, 'stock'], default=WIFI_PROFILE)
+    parser.add_argument('--disable-updates', action='store_true', help='Build without production update trust')
     parser.add_argument('--update-feed')
     parser.add_argument('--update-key', type=Path, help='Public Ed25519 key only; never the private signing key')
     args = parser.parse_args()
     build(args.rocknix.resolve(), args.rootfs.resolve(), args.output.absolute(), args.storage_gib,
-          update_feed=args.update_feed, update_key=args.update_key, wifi_profile=args.wifi_profile)
+          update_feed=args.update_feed, update_key=args.update_key, wifi_profile=args.wifi_profile,
+          disable_updates=args.disable_updates)
