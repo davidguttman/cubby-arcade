@@ -42,6 +42,7 @@
     knownComplete = result.complete || knownComplete;
     $('continue').hidden = !knownComplete;
     $('cancel').hidden = !knownComplete;
+    $('updates').hidden = !knownComplete;
     message(result.internet ? 'Internet is working. Cubby can get games and updates.' :
       knownComplete ? 'You are offline. Installed games still work; downloads wait for internet.' :
       'Internet is not available. Connect Wi-Fi, then check again.');
@@ -104,6 +105,7 @@
   });
   $('back').onclick = leavePassword;
   $('continue').onclick = () => { $('password').value = ''; location.replace('/'); };
+  $('updates').onclick = () => { location.replace('/adult/updates'); };
   $('cancel').onclick = () => { $('password').value = ''; location.replace('/'); };
   function move(dx, dy) {
     const buttons = visibleButtons(), active = document.activeElement;
@@ -151,5 +153,6 @@
     showResult(result);
     setBusy(false);
     if (!result.internet) await scanNetworks(); else $('verify').focus();
+    window.CubbyUIReady?.();
   });
 })();

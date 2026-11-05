@@ -68,6 +68,11 @@ ln -s "releases/$DIGEST" "$BASE/current.new-$$"
 mv -Tf "$BASE/current.new-$$" "$BASE/current"
 printf '%s\n[Service]\nExecStart=\nExecStart=/storage/cubby/current/device/launch.sh\n' "$MARKER" > "$DROP.tmp-$$"
 mv "$DROP.tmp-$$" "$DROP"
+# Baseline coordinator is deliberately not part of future app replacements.
+mkdir -p "$BASE/updater"
+if [ ! -e "$BASE/updater/coordinator.py" ] && [ -f "$FINAL/app/rocknix/updates.py" ]; then
+  cp "$FINAL/app/rocknix/updates.py" "$BASE/updater/coordinator.py"
+fi
 systemctl daemon-reload
 # Activation happens only after all preflight gates.
 rm -f "$BASE/DISABLED"

@@ -4,7 +4,7 @@ RELEASE=$1
 BASE=/storage/cubby
 ROOT=$RELEASE/rootfs
 mkdir -p "$BASE/state" "$ROOT/var/lib/handheld" "$ROOT/opt/cubby" \
-  "$ROOT/run/host-runtime" "$ROOT/run/udev" "$ROOT/run/cubby-network"
+  "$ROOT/run/host-runtime" "$ROOT/run/udev" "$ROOT/run/cubby-network" "$ROOT/run/cubby-updater"
 # Never unmount another task's mounts. Our service owns this private namespace.
 if [ "${CUBBY_MOUNT_NAMESPACE:-}" != yes ]; then
   exec unshare --mount --propagation private env CUBBY_MOUNT_NAMESPACE=yes "$0" "$RELEASE"
@@ -46,6 +46,9 @@ for ((n=0; n<50; n++)); do
 done
 [ -S "$NETWORK_DIR/socket" ]
 mount --bind "$NETWORK_DIR" "$ROOT/run/cubby-network"
+if [ -S /run/cubby-updater/socket ]; then
+  mount --bind /run/cubby-updater "$ROOT/run/cubby-updater"
+fi
 chroot "$ROOT" /bin/bash /opt/cubby/rocknix/session.sh &
 browser_pid=$!
 wait "$browser_pid"

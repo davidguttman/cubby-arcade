@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlsplit
 import yaml
 
 from runtime import catalog, packages, server as assets
-from rocknix import network
+from rocknix import network, updates
 
 
 class State:
@@ -26,6 +26,7 @@ class State:
         self.token = secrets.token_hex(32)
         self.adult_token = secrets.token_hex(32)
         self.network = network_adapter
+        self.updater = None
         self.lock = threading.RLock()
         self.active_game = None
         self.busy = False
@@ -103,7 +104,7 @@ class Handler(assets.Handler):
 
     def translate_path(self, path):
         path = unquote(urlsplit(path).path)
-        if path in {'/adult/network.js', '/adult/network.css'}:
+        if path in {'/adult/network.js', '/adult/network.css', '/adult/updates.js', '/adult/ready.js'}:
             return str(self.state.app / 'rocknix/adult' / path.rsplit('/', 1)[1])
         if path.startswith('/games/'):
             try:
@@ -129,11 +130,14 @@ class Handler(assets.Handler):
             relative = Path('.missing-runtime-asset')
         return str(self.state.app / relative)
 
+    def ready_script(self, token):
+        return ('<script src="/adult/ready.js" data-token="' + token + '"></script>').encode()
+
     def send_head(self):
         path = unquote(urlsplit(self.path).path)
-        if path == '/adult/network':
-            content = (self.state.app / 'rocknix/adult/network.html').read_bytes().replace(
-                b'__ADULT_SESSION__', self.state.adult_token.encode())
+        if path in {'/adult/network', '/adult/updates'}:
+            content = (self.state.app / ('rocknix/adult/updates.html' if path.endswith('updates') else 'rocknix/adult/network.html')).read_bytes().replace(
+                b'__ADULT_SESSION__', self.state.adult_token.encode()).replace(b'</head>', self.ready_script(self.state.adult_token)+b'</head>')
             self.range_length = None
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -158,6 +162,7 @@ class Handler(assets.Handler):
             content = (self.state.app / 'runtime/index.html').read_bytes().replace(
                 b'</head>', ('<script>window.CubbyDeviceToken=' + json.dumps(self.state.token)
                             + ';</script><script src="/rocknix/bridge.js"></script></head>').encode(), 1)
+            content = content.replace(b'</head>', self.ready_script(self.state.token)+b'</head>', 1)
             self.range_length = None
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -203,6 +208,48 @@ class Handler(assets.Handler):
         http.server.SimpleHTTPRequestHandler.do_GET(self)
 
     def do_POST(self):
+        if self.path in {'/api/update', '/api/ui-ready'}:
+            ready = self.path == '/api/ui-ready'
+            expected_token = self.state.adult_token
+            allowed = {self.origin+'/adult/updates'}
+            if ready:
+                allowed |= {self.origin+'/', self.origin+'/play', self.origin+'/play/',
+                            self.origin+'/runtime/index.html', self.origin+'/adult/network'}
+                expected_token = (self.state.adult_token if self.headers.get('Referer','').startswith(self.origin+'/adult/') else self.state.token)
+            if (not self.valid_host() or self.headers.get('Origin') != self.origin
+                    or self.headers.get('Referer') not in allowed
+                    or self.headers.get('X-Cubby-Session') != expected_token
+                    or self.headers.get('Content-Type') != 'application/json'):
+                self.send_error(403); return
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 128: raise ValueError('Invalid request')
+                body = json.loads(self.rfile.read(size))
+                if ready:
+                    if body != {}: raise ValueError('Invalid readiness')
+                    trial = os.environ.get('CUBBY_UPDATE_TRIAL')
+                    if trial and self.state.updater:
+                        self.state.updater.dispatch({'action':'ready','token':trial})
+                    self.json_response({'accepted':True}); return
+                if not isinstance(body,dict) or set(body)!={'action'} or body['action'] not in {'status','check','download','apply'}:
+                    raise ValueError('Invalid action')
+                if not self.state.updater:
+                    self.json_response({'phase':'unconfigured','configured':False}); return
+                with self.state.lock:
+                    if body['action']=='apply':
+                        if self.state.active_game or self.state.busy or self.state.network_busy:
+                            self.json_response({'error':'busy'},409); return
+                        self.state.busy=True
+                        try: result=self.state.updater.dispatch(body)
+                        except updates.Rejected:
+                            self.state.busy=False; raise
+                        # A dropped connection is ambiguous: the coordinator
+                        # may still activate. Keep gameplay blocked until restart.
+                    else: result=self.state.updater.dispatch(body)
+                self.json_response(result)
+            except (OSError,ValueError,TypeError):
+                self.json_response({'error':'Update operation unavailable. Check update status before retrying.'},400)
+            return
         if self.path == '/api/network':
             if (not self.valid_host() or self.headers.get('Origin') != self.origin
                     or self.headers.get('Referer') != self.origin + '/adult/network'
@@ -287,6 +334,7 @@ if __name__ == '__main__':
     state = State(Path(__file__).resolve().parents[1],
                   Path(os.environ.get('CUBBY_STATE', '/var/lib/handheld')),
                   network_adapter=network.HostClient())
+    state.updater = updates.HostClient()
     if os.environ.get('CUBBY_NETWORK_SIMULATION') == '1':
         state.network = network.Onboarding(network.Simulation(), state.data)
     threading.Thread(target=state.refresh_catalog, daemon=True).start()

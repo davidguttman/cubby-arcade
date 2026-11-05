@@ -230,7 +230,9 @@ def source_provenance(source_root: Path, supplied: dict | None = None) -> dict:
 
 def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
           *, source_root: Path | None = None, source_info: dict | None = None,
-          progress=None) -> Path:
+          progress=None, update_feed: str | None = None, update_key: Path | None = None) -> Path:
+    if bool(update_feed) != bool(update_key):
+        raise ValueError('Update feed and public key must be provided together')
     source_root = ROOT if source_root is None else Path(source_root)
     report = progress or (lambda message: print(message, flush=True))
     if os.geteuid() != 0:
@@ -296,6 +298,13 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         shutil.copy2(source_root / 'hosting/catalog.yaml', release / 'app/hosting/catalog.yaml')
         shutil.copytree(source_root / 'rocknix/device', release / 'device')
         (cubby / 'current').symlink_to('releases/' + release_id)
+        (cubby / 'updater').mkdir()
+        shutil.copy2(source_root / 'rocknix/updates.py', cubby / 'updater/coordinator.py')
+        if update_feed:
+            from rocknix.updates import Manager, atomic
+            shutil.copy2(update_key, cubby / 'updater/release-key.pem')
+            atomic(cubby / 'updater/config.json', {'feed': update_feed, 'public_key': 'release-key.pem'})
+            Manager(cubby).config()  # Validate URL and Ed25519 public-key format.
         (cubby / 'state').mkdir()
         provenance = cubby / 'image-provenance'
         provenance.mkdir()
@@ -342,5 +351,8 @@ if __name__ == '__main__':
     parser.add_argument('--rootfs', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--storage-gib', type=int, default=6)
+    parser.add_argument('--update-feed')
+    parser.add_argument('--update-key', type=Path, help='Public Ed25519 key only; never the private signing key')
     args = parser.parse_args()
-    build(args.rocknix.resolve(), args.rootfs.resolve(), args.output.absolute(), args.storage_gib)
+    build(args.rocknix.resolve(), args.rootfs.resolve(), args.output.absolute(), args.storage_gib,
+          update_feed=args.update_feed, update_key=args.update_key)
