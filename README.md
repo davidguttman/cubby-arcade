@@ -742,8 +742,10 @@ Versioning uses SemVer: new backward-compatible product/distribution capabilitie
 are minor releases; fixes to an existing capability are patches; breaking runtime
 or install contracts require a major release. Game package versions are immutable:
 any changed bundled core or asset requires a distinct game version. This build is
-desktop **0.10.0**, adding a portable Windows x64 build, versionless platform
-download links, and automatic dual-platform GitHub Releases after native
+desktop **0.10.1**, fixing Back navigation in Library and Store: the selected
+game's preview, actions, and playing trailer stay visible while focus returns to
+the game shelf, then the current section tab. The 0.10.0 release added a portable
+Windows x64 build, versionless platform download links, and automatic dual-platform GitHub Releases after native
 Windows and Linux verification. The 0.9.0 release added browser hub checks for
 installed game updates on entry, every five minutes while visible, and when visibility or connectivity
 returns. Unchanged releases fetch metadata only; complete verified releases
@@ -751,8 +753,8 @@ activate atomically while already-running games keep their original isolated
 assets. Offline or failed checks preserve the installed release and saves.
 The 0.8.3 release made nonempty libraries select a game and show its preview and Play
 control by default. Library refreshes preserve a valid selection or select a
-remaining game; closing a preview retains its selected-card highlight. No game
-payloads changed. Touch controls always follow device detection; the manual
+remaining game; Back now retains the selected-card highlight and its
+preview/actions. No game payloads changed. Touch controls always follow device detection; the manual
 selector is removed and legacy on/off preferences normalize to automatic.
 Empty libraries start on Store, Store opens its first game's
 preview and controls automatically, and Trail Mix is first in the catalog.
