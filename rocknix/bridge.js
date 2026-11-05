@@ -30,6 +30,7 @@
       }
     },
     uninstall: id => request('/api/uninstall', {id}),
+    updateAttention: () => request('/api/update-attention'),
     onInstallState(fn) {
       listeners.add(fn);
       if (!timer) timer = setInterval(() => status().catch(() => {}), 800);
@@ -40,7 +41,7 @@
   // math question, then open the worded pages kept out of the wordless child hub.
   win.HandheldPlatformOptions = {kind: 'kiosk', bridge, settings: [
     {icon: 'wifi', label: 'Wi-Fi settings', href: '/adult/network'},
-    {icon: 'update', label: 'Cubby updates', href: '/adult/updates'}
+    {icon: 'update', label: 'Cubby updates', href: '/adult/updates', notice: true}
   ]};
   // Controller shortcut to the gear tab, where the tiles still ask the question:
   // hold L+R+Start for two seconds.

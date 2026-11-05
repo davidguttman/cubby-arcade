@@ -12,7 +12,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from rocknix.server import State, make_server
+from rocknix.network import Onboarding, Simulation
+from rocknix.server import State, check_for_update, make_server, update_attention
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +56,52 @@ class SessionTests(unittest.TestCase):
                 settings.read(ROOT / config_path)
                 self.assertFalse(settings.getboolean('websettings',
                                                      'media-playback-requires-user-gesture'))
+
+
+class UpdateWatchTests(unittest.TestCase):
+    class Updater:
+        def __init__(self, phase): self.phase, self.actions = phase, []
+        def dispatch(self, body):
+            self.actions.append(body['action'])
+            return {'phase': self.phase}
+
+    def state(self, phase='idle', internet=True, busy=False):
+        class Holder: pass
+        holder = Holder()
+        adapter = Simulation(); adapter.online = internet
+        self.directory = tempfile.TemporaryDirectory(); self.addCleanup(self.directory.cleanup)
+        # The real Onboarding interface, so a renamed or missing call fails here.
+        holder.updater, holder.network, holder.network_busy = self.Updater(phase), Onboarding(adapter, self.directory.name), busy
+        return holder
+
+    def test_checks_only_when_online_from_idle_or_past_failure(self):
+        for phase in ('idle', 'error'):
+            state = self.state(phase)
+            self.assertTrue(check_for_update(state))
+            self.assertIn('check', state.updater.actions)
+
+    def test_never_demotes_staged_update_or_overwrites_rollback(self):
+        for phase in ('available', 'staged', 'rolled_back', 'checking', 'downloading', 'trial', 'unconfigured'):
+            state = self.state(phase)
+            self.assertTrue(check_for_update(state))
+            self.assertNotIn('check', state.updater.actions)
+
+    def test_offline_or_connecting_stays_silent_and_retries(self):
+        for state in (self.state(internet=False), self.state(busy=True)):
+            self.assertFalse(check_for_update(state))
+            self.assertEqual(state.updater.actions, [])
+
+    def test_unreachable_updater_means_retry_and_no_badge(self):
+        state = self.state()
+        def fail(_): raise OSError('socket gone')
+        state.updater.dispatch = fail
+        self.assertFalse(check_for_update(state))
+        self.assertFalse(update_attention(state))
+
+    def test_attention_only_for_actionable_phases(self):
+        for phase, expected in (('available', True), ('staged', True), ('idle', False),
+                                ('error', False), ('rolled_back', False), ('trial', False)):
+            self.assertIs(update_attention(self.state(phase)), expected)
 
 
 class RuntimeTests(unittest.TestCase):

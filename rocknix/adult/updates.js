@@ -22,8 +22,9 @@
         rolled_back:'The last update could not start. The previous Cubby was restored.',error:r.error||'Update failed. Please retry.'};
       say(labels[r.phase]||r.phase,TONES[r.phase]||(r.phase==='idle'&&checked?'ok':''));
       document.body.classList.toggle('busy',r.phase in {checking:1,downloading:1,trial:1});
-      const incoming=['available','staged'].includes(r.phase)&&r.version?' → '+r.version:'';
-      $('version').textContent='Cubby'+(r.installed?' '+r.installed:'')+incoming;
+      // Installations from before this field report only the incoming version.
+      const incoming=['available','staged'].includes(r.phase)?r.version:null;
+      $('version').textContent='Cubby'+(incoming?' '+incoming:r.installed?' '+r.installed:'');
       const [action,label]=ACTIONS[r.phase]||[null,''];
       next=action;
       // Busy phases keep focus on this button, so the next step is one press away.

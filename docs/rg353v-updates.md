@@ -6,7 +6,9 @@ release surfaces. Games and saves remain under `/storage/cubby/state`.
 
 ## Adult experience
 
-After required Wi-Fi setup, open the updates tile on the hub's gear tab and answer its math question. Check, download, and verify an update; install outside
+After required Wi-Fi setup, open the updates tile on the hub's gear tab and answer its math question. Cubby
+checks the feed about a minute after starting and every six hours while online,
+and marks the gear tab and updates tile with a badge when an update is ready. Check, download, and verify an update; install outside
 active gameplay. Download failure leaves the running app unchanged. An offline
 installed app keeps working. Failed staging can be retried by checking again;
 partial downloads are discarded rather than activated.

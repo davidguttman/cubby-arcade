@@ -56,6 +56,20 @@ async def exercise(cdp,origin,adapter,directory):
             await page.get_by_role('button',name='Back').click()
             await page.locator('.settings-tile').first.wait_for()
             assert page.url==origin+'/'  # Hub consumed the return marker.
+            # Badge: gear tab and Updates tile, quiet once nothing needs doing.
+            adapter.phase='available'
+            await page.goto(origin+'/')
+            await page.locator('.view-tab.has-notice').wait_for()
+            await page.get_by_role('button',name='options',exact=True).click()
+            await page.locator('.settings-tile[data-notice].has-notice').wait_for()
+            assert await page.locator('.settings-tile.has-notice').count()==1
+            await page.wait_for_timeout(400)
+            await page.screenshot(path=str(directory/'update-badge.png'))
+            adapter.phase='idle'
+            await page.reload()
+            await page.get_by_role('button',name='options',exact=True).wait_for()
+            await page.wait_for_timeout(300)
+            assert await page.locator('.has-notice').count()==0
             assert not errors,errors
             print('SIMULATION: controller check/download/apply UI verified at640x480; no actual update or device write.')
         finally:await page.close()

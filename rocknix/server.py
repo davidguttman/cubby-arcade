@@ -10,12 +10,17 @@ import os
 from pathlib import Path
 import secrets
 import threading
+import time
 from urllib.parse import unquote, urlsplit
 
 import yaml
 
 from runtime import catalog, packages, server as assets
 from rocknix import network, updates
+
+UPDATE_CHECK_SECONDS = 6 * 60 * 60
+UPDATE_RETRY_SECONDS = 5 * 60
+UPDATE_FIRST_CHECK_SECONDS = 60
 
 
 class State:
@@ -216,6 +221,9 @@ class Handler(assets.Handler):
             if path == '/api/status':
                 self.json_response(self.state.status)
                 return
+        if path == '/api/update-attention':
+            self.json_response({'attention': update_attention(self.state)})
+            return
         if path == '/health':
             self.json_response({'ready': True})
             return
@@ -345,6 +353,41 @@ def make_server(state, port=8080):
     return instance
 
 
+def update_attention(state):
+    """Whether an adult has an update to act on. Never fails the hub."""
+    if not state.updater:
+        return False
+    try:
+        return state.updater.dispatch({'action': 'status'}).get('phase') in {'available', 'staged'}
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def check_for_update(state):
+    """Ask the updater to look at the feed; True once it has been consulted.
+
+    Only from idle or a past failure: checking again would demote a staged
+    update and overwrite the record of a rollback. Offline stays silent, so a
+    handheld away from Wi-Fi doesn't report an update failure to the adult.
+    """
+    try:
+        if state.network_busy or not state.network or not state.updater:
+            return False
+        if not state.network.dispatch({'action': 'status'}).get('internet'):
+            return False
+        if state.updater.dispatch({'action': 'status'}).get('phase') in {'idle', 'error'}:
+            state.updater.dispatch({'action': 'check'})
+        return True
+    except (OSError, ValueError, TypeError, network.NetworkError):
+        return False
+
+
+def watch_for_updates(state, wait=time.sleep):
+    wait(UPDATE_FIRST_CHECK_SECONDS)
+    while True:
+        wait(UPDATE_CHECK_SECONDS if check_for_update(state) else UPDATE_RETRY_SECONDS)
+
+
 if __name__ == '__main__':
     state = State(Path(__file__).resolve().parents[1],
                   Path(os.environ.get('CUBBY_STATE', '/var/lib/handheld')),
@@ -353,4 +396,5 @@ if __name__ == '__main__':
     if os.environ.get('CUBBY_NETWORK_SIMULATION') == '1':
         state.network = network.Onboarding(network.Simulation(), state.data)
     threading.Thread(target=state.refresh_catalog, daemon=True).start()
+    threading.Thread(target=watch_for_updates, args=(state,), daemon=True).start()
     make_server(state).serve_forever()

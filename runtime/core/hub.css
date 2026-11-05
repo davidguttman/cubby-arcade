@@ -38,3 +38,8 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .hub .gate-pad .gate-submit{background:linear-gradient(#ffd770,#ffb22e);color:#3a2410}
 .hub .settings-gate button:focus{outline:3px solid #ffc94d;outline-offset:2px}
 .hub .settings-gate .gate-submit:focus{outline-color:#fff4e6}
+
+/* Notice badge: soft coral so an adult spots it without it shouting at kids. */
+.hub .settings-tile{position:relative}
+.hub .has-notice::after{content:"";position:absolute;top:5px;right:calc(50% - 25px);width:12px;height:12px;border-radius:50%;background:#ff8f7f;box-shadow:0 0 0 2px #1d1430}
+.hub .settings-tile.has-notice::after{top:14px;right:14px;width:18px;height:18px;box-shadow:0 0 0 3px #1d1430}
