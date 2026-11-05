@@ -56,9 +56,12 @@ app releases cannot replace the coordinator, public key, or configured feed.
 
 Device app versions have their own `cubby-device-vX.Y.Z` namespace; they do not
 move the repository's general `vX.Y.Z` releases or GitHub's latest release.
-Version 0.1.0 / sequence 1 was the initial production device release. Sequences
-strictly increase; gaps are permitted (for example, sequence 2 may be reserved
-for a private rollback test). Never publish a deliberately broken rollback probe.
+Version 0.1.1 / sequence 3 is the first accepted production device release.
+The initial 0.1.0 candidate exposed a missing controller asset during acceptance;
+UI health rejected it and restored the previous working installation. Its
+immutable release is marked superseded; the stable feed points to 0.1.1.
+Sequences strictly increase; gaps are permitted. Never publish a deliberately
+broken rollback probe.
 
 Build from a clean, verified source checkout. Protect the private key with mode
 0600 and keep its protected backup separate from this checkout. The default
@@ -124,7 +127,17 @@ intentionally not automatic yet.
 
 ## Verification boundary
 
-Tests use ephemeral Ed25519 keys and disposable files. Browser tests are explicit
-simulations at 640×480. Real handheld health/rollback, first-boot operation, and a
-published production feed still require integration acceptance. Passing these
-tests is not evidence of hardware certification or production publication.
+On 2026-11-05 the physical RG353V downloaded the signed production feed and app
+over Wi-Fi, rejected modified signed metadata, staged and activated 0.1.1, and
+confirmed browser readiness plus sustained process/server health. A real failed
+UI candidate timed out and automatically restored the previous working release.
+After a device reboot, version 0.1.1 / sequence 3 remained confirmed, Cubby's
+library rendered, and the adult update API reported configured/idle without error.
+All 34 installed game files were unchanged. Existing browser save progress and
+preferences remained present; ordinary gameplay may still update live save data.
+Evidence is retained locally under `.cache/production-update-acceptance/`.
+
+The Python suite ran 256 tests with one skipped. Unit tests use ephemeral keys
+and disposable files; browser regressions are explicit 640×480 simulations.
+Default trust provisioning is tested, but a newly composed first-boot image and
+abrupt physical power interruption still need separate hardware acceptance.
