@@ -86,7 +86,7 @@ function mount(host){
  feature(keep||entries()[0]);}
  function preview(game){if(state.detail?.id===game.id&&!detail.hidden)return;pausePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
  const stage=element(detail,'div','stage');
- button(stage,'back','Close preview',()=>closePreview(true),'detail-close');
+ button(stage,'back','Return to games',()=>returnToGames(),'detail-close');
  const media=doc.createElement(game.attract?'video':'img');media.className='preview-media';if(game.attract)media.poster=game.artwork;media.src=game.attract||game.artwork;if(game.attract){media.autoplay=true;media.muted=true;media.addEventListener('ended',()=>{media.load();media.play().catch(()=>{});});media.playsInline=true;media.setAttribute('playsinline','');media.addEventListener('error',()=>{const image=doc.createElement('img');image.className='preview-media';image.src=game.artwork;image.alt='';media.replaceWith(image);});}else media.alt='';stage.appendChild(media);if(game.attract)media.play().catch(()=>{});
  const actions=element(detail,'div','detail-actions');
  const star=button(actions,'star','Favorite',()=>{state.favorite(game.id);star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));const badge=shelf.querySelector('[data-game-id="'+game.id+'"] .card-badge');if(badge)setBadge(badge,game.id);},'favorite');star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));
@@ -120,10 +120,8 @@ function mount(host){
  const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(installedChanged)refreshLibrary();});
  platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
  function hideDetail(){pausePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
- function closePreview(focusCard){const id=state.detail?.id;hideDetail();if(focusCard){const card=shelf.querySelector('[data-game-id="'+id+'"]');if(card){suppressPreview=true;card.focus();suppressPreview=false;}}}
- let suppressPreview=false;
- // Closing via back must leave focus on the card without reopening its preview.
- shelf.addEventListener('focusin',()=>{if(suppressPreview)hideDetail();});
+ // Back changes focus, not selection: a populated shelf always has usable actions.
+ function returnToGames(toTab=false){const card=shelf.querySelector('[data-game-id="'+state.detail?.id+'"]');(toTab?tabs[state.view]:card||tabs[state.view]).focus();}
  function renderOptions(){options.replaceChildren();
  if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');
  const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
@@ -139,7 +137,7 @@ function mount(host){
  dialog.showModal();dialog.querySelector('button').focus();}
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeAdult(false);});
  const input=win.HandheldInput.createInput({navigationShoulders:true,onAction:event=>{const a=event.action;if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
- if(a==='exit'||a==='back'){if(!detail.hidden)closePreview(true);else show('library');return;}
+ if(a==='exit'||a==='back'){if(!detail.hidden)returnToGames(doc.activeElement?.classList.contains('game-card')||doc.activeElement===tabs[state.view]);else show('library');return;}
  if(a==='select'||a==='nextView'||a==='previousView'){show(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);tabs[state.view].focus();return;}
  const nodes=Array.from(host.querySelectorAll('button')).filter(b=>!b.closest('[hidden]')&&!b.closest('dialog')&&!b.disabled);if(!nodes.length)return;
  const active=doc.activeElement,index=nodes.indexOf(active);
