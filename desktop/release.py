@@ -33,7 +33,7 @@ def digest(file):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def publish(tag, repository, directory, package, gh=github):
+def publish(tag, repository, directory, package, gh=github, extra_files=()):
     if not TAG.fullmatch(tag) or tag[1:] != json.loads(Path(package).read_text())['version']:
         raise ValueError('Stable release tag must equal package.json version')
     if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
@@ -49,6 +49,14 @@ def publish(tag, repository, directory, package, gh=github):
             raise ValueError('Release checksum mismatch: ' + name)
         for path in (file, checksum):
             expected[path.name] = {'size': path.stat().st_size, 'digest': 'sha256:' + digest(path)}
+
+    for name in extra_files:
+        if name not in ('app.zip', 'manifest.json', 'manifest.json.sig'):
+            raise ValueError('Unexpected additional release asset')
+        path = directory / name
+        if not path.is_file() or path.is_symlink() or not path.stat().st_size:
+            raise ValueError('Missing additional release asset: ' + name)
+        expected[name] = {'size': path.stat().st_size, 'digest': 'sha256:' + digest(path)}
 
     base = 'repos/' + repository
     # Do not let the Releases API implicitly create a missing tag.
@@ -94,7 +102,7 @@ def publish(tag, repository, directory, package, gh=github):
         raise ValueError('Draft release does not contain every verified artifact')
     gh(['api', '--method', 'PATCH', base + '/releases/' + str(release['id'])],
        {'draft': False, 'make_latest': 'true'})
-    print('Published complete desktop release: ' + tag)
+    print('Published complete Cubby release: ' + tag)
 
 
 if __name__ == '__main__':

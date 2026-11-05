@@ -1,42 +1,31 @@
-name: Desktop builds and releases
+name: Cubby builds and releases
 on:
   push:
     branches: [main, windows-desktop]
     tags: ['v*']
-    paths:
-      - 'desktop/**'
-      - 'runtime/**'
-      - 'tests/**'
-      - 'package*.json'
-      - 'web.py'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'hosting/**'
-      - 'website/**'
-      - '.github/workflows/windows-desktop.yml'
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: desktop-${{ github.ref }}
+  group: cubby-stable-release
   cancel-in-progress: false
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Validate release tag and package version
-        run: |
-          node <<'JS'
-          const ref=process.env.GITHUB_REF;
-          if(ref.startsWith('refs/tags/')){
-            const tag=process.env.GITHUB_REF_NAME;
-            if(!/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(tag)||tag.slice(1)!==require('./package.json').version)throw Error('Stable tag must match package.json version');
-          }
-          JS
+      - name: Plan one versioned release from this exact commit
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 release_automation.py plan
   windows:
     needs: validate
     runs-on: windows-latest
@@ -98,6 +87,32 @@ jobs:
       - name: Exercise packaged Linux app
         timeout-minutes: 5
         run: bash desktop/linux-smoke.sh
+      - name: Build signed handheld update with the same product version
+        if: needs.validate.outputs.release == 'true'
+        env:
+          CUBBY_DEVICE_SIGNING_KEY: ${{ secrets.CUBBY_DEVICE_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          keydir=$(mktemp -d "${RUNNER_TEMP}/cubby-signing.XXXXXX")
+          trap 'rm -f "$keydir/private.pem" "$keydir/public.pem"; rmdir "$keydir"' EXIT
+          test -n "$CUBBY_DEVICE_SIGNING_KEY" || { echo 'Missing CUBBY_DEVICE_SIGNING_KEY repository secret'; exit 1; }
+          printf '%s\n' "$CUBBY_DEVICE_SIGNING_KEY" > "$keydir/private.pem"
+          unset CUBBY_DEVICE_SIGNING_KEY
+          openssl pkey -in "$keydir/private.pem" -pubout -out "$keydir/public.pem"
+          cmp "$keydir/public.pem" rocknix/device/release-key.pem
+          python3 release_automation.py device --directory dist/device --key "$keydir/private.pem"
+      - name: Upload signed handheld update
+        if: needs.validate.outputs.release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CubbyArcade-device
+          path: |
+            dist/device/app.zip
+            dist/device/manifest.json
+            dist/device/manifest.json.sig
+          if-no-files-found: error
       - name: Upload portable app
         uses: actions/upload-artifact@v4
         with:
@@ -114,8 +129,8 @@ jobs:
           path: dist/linux-smoke
           if-no-files-found: warn
   publish:
-    needs: [windows, linux]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [validate, windows, linux]
+    if: needs.validate.outputs.release == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -126,7 +141,7 @@ jobs:
           pattern: CubbyArcade-*
           merge-multiple: true
           path: dist/release
-      - name: Publish both verified desktop downloads together
+      - name: Publish all verified platforms, then advance signed handheld feed
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 desktop/release.py
+        run: python3 release_automation.py publish
