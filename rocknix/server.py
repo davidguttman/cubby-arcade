@@ -18,7 +18,7 @@ import yaml
 from runtime import battery, catalog, packages, server as assets
 from rocknix import network, updates
 
-UPDATE_CHECK_SECONDS = 6 * 60 * 60
+UPDATE_CHECK_SECONDS = 15 * 60
 UPDATE_RETRY_SECONDS = 5 * 60
 UPDATE_FIRST_CHECK_SECONDS = 60
 
