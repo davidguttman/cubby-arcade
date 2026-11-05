@@ -33,6 +33,12 @@ BOOT_HOOK = '''#!/bin/sh
 # Managed by Cubby Arcade RG353V image builder.
 # Sourced by ROCKNIX initramfs before /run is moved into the real root.
 # Do not populate /storage/.config: stock first-boot resize must run first.
+if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ]; then
+  # Diagnostics do not depend on Cubby, Sway, or writable /storage setup.
+  mkdir -p /run/systemd/system/multi-user.target.wants
+  cp /flash/cubby-usb-diagnostics/service /run/systemd/system/cubby-usb-diagnostics.service
+  ln -sf ../cubby-usb-diagnostics.service /run/systemd/system/multi-user.target.wants/cubby-usb-diagnostics.service
+fi
 if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ] &&
    [ ! -e /flash/CUBBY-DISABLED ]; then
   mkdir -p /run/systemd/system/essway.service.d
@@ -265,6 +271,14 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             if flash.exists('/post-sysroot.sh'):
                 raise ValueError('Refusing to replace upstream post-sysroot hook')
             flash.writetext('/post-sysroot.sh', BOOT_HOOK)
+            flash.makedir('/cubby-usb-diagnostics')
+            for source, destination in (
+                ('usb-diagnostics-start.sh', 'start.sh'),
+                ('usb-diagnostics.py', 'status.py'),
+                ('cubby-usb-diagnostics.service', 'service'),
+            ):
+                flash.writebytes('/cubby-usb-diagnostics/' + destination,
+                                 (source_root / 'rocknix/device' / source).read_bytes())
             flash.writetext('/CUBBY-RECOVERY.txt', 'Create an empty file named CUBBY-DISABLED (no extension) beside this file to boot stock ROCKNIX. Power off before editing the card.\n')
         release_id = 'image-' + ROOTFS_SHA256[:12]
         cubby = storage / 'cubby'

@@ -74,3 +74,11 @@ and input checksums are recorded under `/storage/cubby/image-provenance`.
 Advanced SSH installation onto an existing supported ROCKNIX card remains
 available in [the maintenance guide](rg353v-maintenance.md). It is **not** the
 normal consumer setup. Neither tool wipes internal Android.
+
+## Automatic USB diagnostics
+
+Newly built images enable a read-only diagnostic link over USB, independent of
+Cubby's browser and display startup. See [USB diagnostics](rg353v-usb-diagnostics.md)
+for the Linux host command, logs available, opt-out, and early-boot limitations.
+Images flashed before this addition need updating; rebuilding does not update
+the connected handheld automatically.

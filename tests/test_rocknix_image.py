@@ -170,7 +170,9 @@ class ImageTests(unittest.TestCase):
     def test_boot_hook_runs_on_supported_model_and_respects_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / 'flash').mkdir()
+            (root / 'flash/cubby-usb-diagnostics').mkdir(parents=True)
+            (root / 'flash/cubby-usb-diagnostics/service').write_text(
+                (image.ROOT / 'rocknix/device/cubby-usb-diagnostics.service').read_text())
             model = root / 'model'
             hook = image.BOOT_HOOK.replace('/proc/device-tree/model', str(model)).replace('/run/systemd/system', str(root / 'run')).replace('/flash/', str(root / 'flash') + '/')
             override = root / 'run/essway.service.d/90-cubby.conf'
@@ -182,6 +184,7 @@ class ImageTests(unittest.TestCase):
             disabled.touch()
             subprocess.run(['sh', '-c', hook], check=True)
             self.assertFalse(override.exists())
+            self.assertTrue((root / 'run/multi-user.target.wants/cubby-usb-diagnostics.service').is_symlink())
             disabled.unlink()
             subprocess.run(['sh', '-c', hook], check=True)
             self.assertIn('ExecStart=/storage/cubby/current/device/launch.sh', override.read_text())
