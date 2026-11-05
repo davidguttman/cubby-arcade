@@ -39,10 +39,11 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .hub .settings-gate button:focus{outline:3px solid #ffc94d;outline-offset:2px}
 .hub .settings-gate .gate-submit:focus{outline-color:#fff4e6}
 
-/* Update notice: the mint gradient already used for Download, not an extra dot.
-   The selected tab keeps its gold pill, since the tile below carries the notice. */
-.hub .view-tab.has-notice:not([aria-current]){background:linear-gradient(180deg,#86ecc4,#3fbf8c);color:#0f3b2a;box-shadow:0 3px 0 #22825b,inset 0 2px 0 rgba(255,255,255,.55)}
-.hub .view-tab.has-notice:not([aria-current]):hover{background:linear-gradient(180deg,#9af2cf,#4cc996)}
-.hub .settings-tile.has-notice{background:linear-gradient(180deg,#86ecc4,#3fbf8c);color:#0f3b2a;box-shadow:0 6px 0 #22825b,0 12px 22px rgba(63,191,140,.28),inset 0 3px 0 rgba(255,255,255,.55)}
-.hub .settings-tile.has-notice:hover{background:linear-gradient(180deg,#9af2cf,#4cc996)}
-.hub .settings-tile.has-notice:focus{background:linear-gradient(180deg,#86ecc4,#3fbf8c);color:#0f3b2a;box-shadow:0 6px 0 #22825b,0 0 0 4px #fff4e6,0 0 28px 6px rgba(95,214,164,.5),inset 0 3px 0 rgba(255,255,255,.55)}
+/* Update notice: things look normal, and a glint of light sweeps across them every
+   few seconds. The selected tab stays plain, since the tile below carries the notice. */
+.hub .settings-tile{position:relative}
+.hub .has-notice:not([aria-current]){overflow:hidden}
+.hub .has-notice:not([aria-current])::after{content:"";position:absolute;top:0;bottom:0;left:0;width:48%;background:linear-gradient(90deg,rgba(255,244,214,0),rgba(255,244,214,.6),rgba(255,244,214,0));pointer-events:none;animation:notice-shimmer 3.6s ease-in-out infinite}
+@keyframes notice-shimmer{0%{transform:translateX(-140%) skewX(-20deg)}30%,100%{transform:translateX(260%) skewX(-20deg)}}
+/* With motion off there is no sweep, so hold the icon in gold instead. */
+@media (prefers-reduced-motion:reduce){.hub .has-notice:not([aria-current]){color:#ffd770}}

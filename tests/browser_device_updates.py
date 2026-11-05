@@ -60,13 +60,13 @@ async def exercise(cdp,origin,adapter,directory):
             adapter.phase='available'
             await page.goto(origin+'/')
             await page.locator('.view-tab.has-notice').wait_for()
-            await page.wait_for_timeout(300)
-            await page.screenshot(path=str(directory/'update-notice-library.png'))
+            shimmer="getComputedStyle(document.querySelector('.view-tab.has-notice'),'::after').animationName"
+            assert await page.evaluate(shimmer)=='notice-shimmer'
             await page.get_by_role('button',name='options',exact=True).click()
             await page.locator('.settings-tile[data-notice].has-notice').wait_for()
             assert await page.locator('.settings-tile.has-notice').count()==1
             await page.wait_for_timeout(400)
-            await page.screenshot(path=str(directory/'update-notice-settings.png'))
+            assert await page.evaluate("getComputedStyle(document.querySelector('.settings-tile.has-notice'),'::after').animationName")=='notice-shimmer'
             adapter.phase='idle'
             await page.reload()
             await page.get_by_role('button',name='options',exact=True).wait_for()
