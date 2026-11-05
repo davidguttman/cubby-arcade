@@ -119,8 +119,8 @@ class Handler(assets.Handler):
                 return str(target)
             except (OSError, ValueError, KeyError, StopIteration, TypeError):
                 return str(self.state.app / '.missing-runtime-asset')
-        if path == '/rocknix/bridge.js':
-            return str(self.state.app / 'rocknix/bridge.js')
+        if path in {'/rocknix/bridge.js', '/rocknix/gamepad.js'}:
+            return str(self.state.app / path.lstrip('/'))
         # Reuse the VM server's explicit shared-core allowlist, never expose
         # arbitrary app files or Python implementation source.
         result = Path(super().translate_path(path))
@@ -140,6 +140,7 @@ class Handler(assets.Handler):
             # the profile ahead of module initialization without modifying any
             # immutable game bytes or changing ordinary browser-host defaults.
             content = (b'window.CubbyDeviceProfile="rg353v";\n'
+                       + (self.state.app / 'rocknix/gamepad.js').read_bytes() + b'\n'
                        + (self.state.app / 'runtime/core/preferences.js').read_bytes())
             self.range_length = None
             self.send_response(200)
@@ -149,7 +150,9 @@ class Handler(assets.Handler):
             return io.BytesIO(content)
         if path in {'/adult/network', '/adult/updates'}:
             content = (self.state.app / ('rocknix/adult/updates.html' if path.endswith('updates') else 'rocknix/adult/network.html')).read_bytes().replace(
-                b'__ADULT_SESSION__', self.state.adult_token.encode()).replace(b'</head>', self.ready_script(self.state.adult_token)+b'</head>')
+                b'__ADULT_SESSION__', self.state.adult_token.encode()).replace(
+                    b'<head>', b'<head><script src="/rocknix/gamepad.js"></script>', 1).replace(
+                    b'</head>', self.ready_script(self.state.adult_token)+b'</head>')
             self.range_length = None
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')

@@ -104,6 +104,8 @@ class RuntimeTests(unittest.TestCase):
         profile = b'window.CubbyDeviceProfile="rg353v"'
         preferences = self.request('GET', '/runtime/core/preferences.js')[1]
         self.assertTrue(preferences.startswith(profile))
+        adapter = (ROOT / 'rocknix/gamepad.js').read_bytes()
+        self.assertIn(adapter, preferences)
         self.assertTrue(preferences.endswith((ROOT / 'runtime/core/preferences.js').read_bytes()))
         connection = http.client.HTTPConnection(*self.httpd.server_address, timeout=5)
         try:
@@ -134,6 +136,14 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.request('POST', '/api/uninstall', {'id': 'line-cutter'})[0], 200)
         self.assertEqual(json.loads(self.request('GET', '/library')[1]), [])
         self.assertEqual(save.read_text(), 'keep')
+
+    def test_adult_pages_install_device_face_mapping_before_controller_scripts(self):
+        adapter = self.request('GET', '/rocknix/gamepad.js')
+        self.assertEqual(adapter, (200, (ROOT / 'rocknix/gamepad.js').read_bytes()))
+        for name in ('network', 'updates'):
+            page = self.request('GET', '/adult/' + name)[1]
+            self.assertLess(page.index(b'/rocknix/gamepad.js'),
+                            page.index(('/adult/' + name + '.js').encode()))
 
     def test_mutations_require_same_origin_hub_and_token_and_reviewed_id(self):
         for headers in [{'Origin': 'https://evil.invalid'}, {'Host': 'evil.invalid'},
