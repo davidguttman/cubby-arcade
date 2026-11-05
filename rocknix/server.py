@@ -14,7 +14,7 @@ from urllib.parse import unquote, urlsplit
 
 import yaml
 
-from runtime import catalog, packages, server as assets
+from runtime import battery, catalog, packages, server as assets
 from rocknix import network, updates
 
 
@@ -216,6 +216,9 @@ class Handler(assets.Handler):
             if path == '/api/status':
                 self.json_response(self.state.status)
                 return
+        if path == '/api/battery':
+            self.json_response(battery.read_battery())
+            return
         if path == '/health':
             self.json_response({'ready': True})
             return

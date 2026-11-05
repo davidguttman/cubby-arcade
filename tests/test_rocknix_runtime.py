@@ -99,6 +99,24 @@ class RuntimeTests(unittest.TestCase):
             time.sleep(.01)
         self.fail('Install did not finish')
 
+    def test_battery_endpoint_is_device_host_read_only_and_uncached(self):
+        value = {'available': True, 'level': 14, 'charging': True}
+        with patch('rocknix.server.battery.read_battery', return_value=value) as reader:
+            connection = http.client.HTTPConnection(*self.httpd.server_address, timeout=5)
+            try:
+                connection.request('GET', '/api/battery')
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.getheader('Cache-Control'), 'no-store')
+                self.assertEqual(json.loads(response.read()), value)
+            finally:
+                connection.close()
+            reader.assert_called_once_with()
+            self.assertEqual(self.request('GET', '/api/battery', headers={'Host': 'evil.example'})[0], 403)
+        with patch('rocknix.server.battery.read_battery', return_value={'available': False}):
+            self.assertEqual(json.loads(self.request('GET', '/api/battery')[1]), {'available': False})
+        self.assertNotEqual(self.request('POST', '/api/battery', {})[0], 200)
+
     def test_shared_hub_and_explicit_local_install_roundtrip_preserves_saves(self):
         page = self.request('GET', '/')[1]
         profile = b'window.CubbyDeviceProfile="rg353v"'
