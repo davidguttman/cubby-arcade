@@ -46,6 +46,7 @@
     }
     return {
       kind: options.kind || 'web',
+      settings: options.settings || [],
       capabilities: Object.freeze({saves:!!storage || nativeSaves, fullscreen:!!(doc && doc.documentElement && doc.documentElement.requestFullscreen),
         tokens:typeof native.account==='function'&&typeof native.launch==='function', quit:typeof native.quit === 'function', install:typeof native.install === 'function', uninstall:typeof native.uninstall === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
       saves,

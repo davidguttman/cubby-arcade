@@ -6,8 +6,7 @@ release surfaces. Games and saves remain under `/storage/cubby/state`.
 
 ## Adult experience
 
-After required Wi-Fi setup, open adult Wi-Fi settings (gear or hold L+R+Start),
-then **Cubby updates**. Check, download, and verify an update; install outside
+After required Wi-Fi setup, open the updates tile on the hub's gear tab. Check, download, and verify an update; install outside
 active gameplay. Download failure leaves the running app unchanged. An offline
 installed app keeps working. Failed staging can be retried by checking again;
 partial downloads are discarded rather than activated.

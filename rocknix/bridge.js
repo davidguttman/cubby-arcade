@@ -36,16 +36,14 @@
       return () => {listeners.delete(fn); if (!listeners.size) {clearInterval(timer); timer = null;}};
     }
   };
-  win.HandheldPlatformOptions = {kind: 'kiosk', bridge};
-  // Adult management remains separate from the wordless child hub. The gear
-  // is also reachable without a pointer: hold L+R+Start for two seconds.
+  // The hub's gear tab is the only settings screen. Its picture tiles open the
+  // worded adult pages, which stay out of the wordless child hub.
+  win.HandheldPlatformOptions = {kind: 'kiosk', bridge, settings: [
+    {icon: 'wifi', label: 'Wi-Fi settings', href: '/adult/network'},
+    {icon: 'update', label: 'Cubby updates', href: '/adult/updates'}
+  ]};
+  // Recovery route to Wi-Fi from anywhere in the hub: hold L+R+Start for two seconds.
   win.addEventListener('DOMContentLoaded', () => {
-    const settings = document.createElement('button');
-    settings.textContent = '⚙';
-    settings.setAttribute('aria-label', 'Adult Wi-Fi settings');
-    settings.style.cssText = 'position:fixed;right:8px;top:8px;z-index:1000;width:38px;height:38px;border-radius:50%;border:1px solid #708090;background:#172639;color:#fff;font-size:24px';
-    settings.onclick = () => { win.location.href = '/adult/network'; };
-    document.body.append(settings);
     let held = 0;
     function adultShortcut(now) {
       const pad = [...(navigator.getGamepads?.() || [])].find(p => p?.connected);

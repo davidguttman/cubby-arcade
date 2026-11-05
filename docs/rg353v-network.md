@@ -7,7 +7,7 @@ required to launch already installed games after setup.
 
 ## Adult flow
 
-On first launch the local device server opens a distinct **Adult setup** page:
+On first launch the local device server opens a distinct **Connect Cubby** page:
 
 1. Find nearby Wi-Fi networks and choose a supported home network.
 2. Enter the password with D-pad + A on the on-screen keyboard. L/R switches
@@ -22,7 +22,7 @@ On first launch the local device server opens a distinct **Adult setup** page:
 Completion is stored in `/storage/cubby/state/network-onboarded.json`. On later
 boots the local hub and installed games remain usable offline; this marker does
 not mean current internet access is guaranteed. Return to adult Wi-Fi settings
-with the hub's gear icon, or hold **L + R + Start for two seconds** from the hub.
+from the Wi-Fi tile on the hub's gear tab, or hold **L + R + Start for two seconds** from the hub.
 Adult settings can change networks and recheck internet without erasing games,
 saves, browser state or previous networking configuration.
 

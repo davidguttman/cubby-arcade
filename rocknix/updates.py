@@ -178,6 +178,7 @@ class Manager:
         return {'phase':self.phase or ('idle' if configured else 'unconfigured'),
                 'error':self.error,'configured':configured,
                 'version':read_json(self.dir/'candidate.json').get('version'),
+                'installed':self.read_record().get('version'),
                 'sequence':self.read_record().get('sequence',0)}
     def verify(self, raw, signature, *, allow_installed=False):
         c=self.config()

@@ -17,3 +17,10 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .uninstall-error{display:flex;justify-content:center;margin-top:20px;color:#ff8f7f;}
 @media(max-width:420px){.uninstall-confirm{padding:20px}.uninstall-actions{gap:24px}.detail-actions .uninstall-game{width:48px;height:48px}}
 .browser-storage-error{min-height:80vh;display:grid;place-items:center;font-size:64px;color:#ffc94d;}
+
+/* Device settings: picture tiles that open the worded adult pages. */
+.settings-tiles{display:flex;gap:24px}
+.hub .settings-tile{width:150px;height:130px;border-radius:30px;background:rgba(255,255,255,.1);box-shadow:0 6px 0 rgba(0,0,0,.28),inset 0 2px 0 rgba(255,255,255,.08)}
+.hub .settings-tile:hover{background:rgba(255,255,255,.16)}
+.hub .settings-tile:focus{outline:none;background:rgba(255,201,77,.18);color:#ffc94d;box-shadow:0 6px 0 rgba(0,0,0,.28),0 0 0 4px #ffc94d,0 0 26px 4px rgba(255,184,56,.45)}
+.hub .settings-tile svg{width:64px;height:64px;stroke-width:1.8}

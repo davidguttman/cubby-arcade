@@ -9,6 +9,14 @@ test('library is the initial view and state tracks explicit selections',()=>{
  s.show('options');assert.equal(s.detail,null);assert.throws(()=>s.show('unknown'));
 });
 
+test('host-supplied settings replace keyboard setup and every icon resolves',()=>{
+ const source=require('node:fs').readFileSync(require.resolve('../runtime/core/hub.js'),'utf8');
+ assert.match(source,/platform\.settings\?\.length/);
+ const paths=source.slice(source.indexOf('const paths={'),source.indexOf('function icon('));
+ for(const [,name] of source.matchAll(/(?:icon\(|\?)'([a-z]+)'/g))if(/^(retry|play|down|loading)$/.test(name))assert.match(paths,new RegExp('[{,]'+name+":'"));
+ const bridge=require('node:fs').readFileSync(require.resolve('../rocknix/bridge.js'),'utf8');
+ assert.doesNotMatch(bridge,/⚙/);assert.match(bridge,/\/adult\/network/);assert.match(bridge,/\/adult\/updates/);
+});
 test('options contain adult setup but no manual touch controls',()=>{
  const source=require('node:fs').readFileSync('runtime/core/hub.js','utf8');
  assert.match(source,/Adult keyboard setup/);assert.doesNotMatch(source,/touch-settings|data-mode|Automatic touch controls|Show touch controls|Hide touch controls/);
