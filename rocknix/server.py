@@ -15,17 +15,21 @@ from urllib.parse import unquote, urlsplit
 import yaml
 
 from runtime import catalog, packages, server as assets
+from rocknix import network
 
 
 class State:
-    def __init__(self, app, data):
+    def __init__(self, app, data, network_adapter=None):
         self.app, self.data = Path(app), Path(data)
         self.data.mkdir(parents=True, exist_ok=True)
         self.games = self.data / 'games'
         self.token = secrets.token_hex(32)
+        self.adult_token = secrets.token_hex(32)
+        self.network = network_adapter
         self.lock = threading.RLock()
         self.active_game = None
         self.busy = False
+        self.network_busy = False
         self.status = {}
         self.developer = False
         self.catalog = catalog.validate_registry(yaml.safe_load(
@@ -34,6 +38,15 @@ class State:
             self.catalog = catalog.validate_registry(json.loads((self.data / 'catalog.json').read_text()))
         except (OSError, ValueError, TypeError):
             pass
+
+    @property
+    def onboarding_required(self):
+        if self.network is None:
+            return False
+        try:
+            return json.loads((self.data / 'network-onboarded.json').read_text()) != {'schema': 1, 'complete': True}
+        except (OSError, ValueError):
+            return True
 
     def refresh_catalog(self):
         try:
@@ -90,6 +103,8 @@ class Handler(assets.Handler):
 
     def translate_path(self, path):
         path = unquote(urlsplit(path).path)
+        if path in {'/adult/network.js', '/adult/network.css'}:
+            return str(self.state.app / 'rocknix/adult' / path.rsplit('/', 1)[1])
         if path.startswith('/games/'):
             try:
                 _, _, game_id, relative = path.split('/', 3)
@@ -116,6 +131,26 @@ class Handler(assets.Handler):
 
     def send_head(self):
         path = unquote(urlsplit(self.path).path)
+        if path == '/adult/network':
+            content = (self.state.app / 'rocknix/adult/network.html').read_bytes().replace(
+                b'__ADULT_SESSION__', self.state.adult_token.encode())
+            self.range_length = None
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(content)))
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Frame-Options', 'DENY')
+            self.send_header('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none'; object-src 'none'")
+            self.end_headers()
+            return io.BytesIO(content)
+        if self.state.onboarding_required and (path in {'/', '/play', '/play/', '/runtime/index.html'}
+                                               or path.startswith('/games/')):
+            self.send_response(303)
+            self.send_header('Location', '/adult/network')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return None
         if path in {'/', '/play', '/play/', '/runtime/index.html'}:
             if self.command == 'GET':
                 with self.state.lock:
@@ -134,7 +169,7 @@ class Handler(assets.Handler):
                 entry = next((item for item in packages.library(self.state.games)
                               if item['entrypoint'] == path), None)
                 if entry:
-                    if self.state.busy:
+                    if self.state.busy or self.state.network_busy:
                         self.send_error(409, 'Package operation in progress')
                         return None
                     self.state.active_game = entry['id']
@@ -168,6 +203,36 @@ class Handler(assets.Handler):
         http.server.SimpleHTTPRequestHandler.do_GET(self)
 
     def do_POST(self):
+        if self.path == '/api/network':
+            if (not self.valid_host() or self.headers.get('Origin') != self.origin
+                    or self.headers.get('Referer') != self.origin + '/adult/network'
+                    or self.headers.get('X-Cubby-Session') != self.state.adult_token
+                    or self.headers.get('Content-Type') != 'application/json'):
+                self.send_error(403)
+                return
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 2048:
+                    raise ValueError('Invalid size')
+                request = json.loads(self.rfile.read(size))
+                if not self.state.network:
+                    raise network.NetworkError('unavailable')
+                with self.state.lock:
+                    if self.state.active_game or self.state.busy or self.state.network_busy:
+                        self.json_response({'error': 'busy'}, 409)
+                        return
+                    self.state.network_busy = True
+                try:
+                    result = self.state.network.dispatch(request)
+                    self.json_response(result)
+                finally:
+                    with self.state.lock:
+                        self.state.network_busy = False
+            except network.NetworkError as error:
+                self.json_response({'error': str(error) if str(error) in network.ERRORS else 'unavailable'}, 400)
+            except (ValueError, TypeError, OSError):
+                self.json_response({'error': 'invalid_request'}, 400)
+            return
         if (not self.valid_host() or self.headers.get('Origin') != self.origin
                 or self.headers.get('Referer') not in {self.origin + '/', self.origin + '/play',
                                                        self.origin + '/play/',
@@ -190,7 +255,10 @@ class Handler(assets.Handler):
             if not isinstance(game_id, str) or not catalog.ID.fullmatch(game_id):
                 raise ValueError('Invalid ID')
             with self.state.lock:
-                if self.state.busy or self.state.active_game:
+                if self.state.onboarding_required:
+                    self.json_response({'error': 'onboarding required'}, 409)
+                    return
+                if self.state.busy or self.state.active_game or self.state.network_busy:
                     self.json_response({'error': 'busy'}, 409)
                     return
                 if self.path == '/api/install':
@@ -217,6 +285,9 @@ def make_server(state, port=8080):
 
 if __name__ == '__main__':
     state = State(Path(__file__).resolve().parents[1],
-                  Path(os.environ.get('CUBBY_STATE', '/var/lib/handheld')))
+                  Path(os.environ.get('CUBBY_STATE', '/var/lib/handheld')),
+                  network_adapter=network.HostClient())
+    if os.environ.get('CUBBY_NETWORK_SIMULATION') == '1':
+        state.network = network.Onboarding(network.Simulation(), state.data)
     threading.Thread(target=state.refresh_catalog, daemon=True).start()
     make_server(state).serve_forever()

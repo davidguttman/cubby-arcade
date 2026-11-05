@@ -3,8 +3,9 @@
 **Download one image. Flash the card. Insert it and power on.**
 
 The image already contains ROCKNIX, WPE, Cubby, and an offline copy of Trail Mix.
-No terminal, Python, SSH, network setup, or second installation is required.
-Wi-Fi is optional for downloading more games later.
+No terminal, Python, SSH, or second installation is required on the handheld.
+First launch opens [adult Wi-Fi onboarding](rg353v-network.md): internet is
+required to finish setup and get new content. Installed games work offline afterward.
 
 ## Adult setup
 
@@ -18,7 +19,8 @@ microSD card (**16 GB minimum; 32 GB recommended**), and a computer/card reader.
    anything on it first. Keep Etcher's verification enabled.
 3. **Insert the card in the handheld's OS slot and power on.** Leave it powered
    while ROCKNIX expands the storage partition and automatically reboots.
-   Cubby is configured to open fullscreen; Trail Mix is already installed.
+   Cubby is configured to open fullscreen into adult Wi-Fi setup; Trail Mix is
+   already installed and becomes playable after initial internet verification.
 
 **Availability/status:** the image builder produces a local artifact; a public
 image download has not yet been published. Physical RG353V cold boot, GPU,
