@@ -135,6 +135,18 @@ class Handler(assets.Handler):
 
     def send_head(self):
         path = unquote(urlsplit(self.path).path)
+        if path == '/runtime/core/preferences.js':
+            # Both the hub and delivered game pages load this host module. Keep
+            # the profile ahead of module initialization without modifying any
+            # immutable game bytes or changing ordinary browser-host defaults.
+            content = (b'window.CubbyDeviceProfile="rg353v";\n'
+                       + (self.state.app / 'runtime/core/preferences.js').read_bytes())
+            self.range_length = None
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/javascript; charset=utf-8')
+            self.send_header('Content-Length', str(len(content)))
+            self.end_headers()
+            return io.BytesIO(content)
         if path in {'/adult/network', '/adult/updates'}:
             content = (self.state.app / ('rocknix/adult/updates.html' if path.endswith('updates') else 'rocknix/adult/network.html')).read_bytes().replace(
                 b'__ADULT_SESSION__', self.state.adult_token.encode()).replace(b'</head>', self.ready_script(self.state.adult_token)+b'</head>')

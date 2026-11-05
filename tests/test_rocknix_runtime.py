@@ -101,6 +101,19 @@ class RuntimeTests(unittest.TestCase):
 
     def test_shared_hub_and_explicit_local_install_roundtrip_preserves_saves(self):
         page = self.request('GET', '/')[1]
+        profile = b'window.CubbyDeviceProfile="rg353v"'
+        preferences = self.request('GET', '/runtime/core/preferences.js')[1]
+        self.assertTrue(preferences.startswith(profile))
+        self.assertTrue(preferences.endswith((ROOT / 'runtime/core/preferences.js').read_bytes()))
+        connection = http.client.HTTPConnection(*self.httpd.server_address, timeout=5)
+        try:
+            connection.request('GET', '/runtime/core/preferences.js')
+            response = connection.getresponse()
+            self.assertEqual(response.getheader('Cache-Control'), 'no-store')
+            response.read()
+        finally:
+            connection.close()
+        self.assertIn(b'/runtime/core/preferences.js', page)
         self.assertIn(b'/rocknix/bridge.js', page)
         self.assertLess(page.index(b'/rocknix/bridge.js'), page.index(b'browser-bootstrap.js'))
         self.assertEqual(json.loads(self.request('GET', '/library')[1]), [])
@@ -111,6 +124,8 @@ class RuntimeTests(unittest.TestCase):
         game = self.request('GET', library[0]['entrypoint'])
         self.assertEqual(game[0], 200)
         self.assertIn(b'data-handheld-system', game[1])
+        self.assertIn(b'/runtime/core/preferences.js', game[1])
+        self.assertTrue(self.request('GET', '/runtime/core/preferences.js')[1].startswith(profile))
         self.assertEqual(self.request('POST', '/api/uninstall', {'id': 'line-cutter'})[0], 409)
         self.request('GET', '/')
         save = self.state.data / 'profile' / 'save'
