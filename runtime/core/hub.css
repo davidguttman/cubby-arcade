@@ -47,3 +47,14 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 @keyframes notice-shimmer{0%{transform:translateX(-140%) skewX(-20deg)}30%,100%{transform:translateX(260%) skewX(-20deg)}}
 /* With motion off there is no sweep, so hold the icon in gold instead. */
 @media (prefers-reduced-motion:reduce){.hub .has-notice:not([aria-current]){color:#ffd770}}
+
+/* Worded save management exists only behind the gear tab's adult math check. */
+.save-management{box-sizing:border-box;width:min(560px,94vw);max-height:90vh;overflow:auto;border:2px solid #79658f;border-radius:26px;padding:24px;background:#291e40;color:#fff4e6;box-shadow:0 24px 80px #0009}
+.save-management::backdrop{background:#10091cde}
+.save-management h1{margin:0 0 12px;font-size:24px}.save-management h2{font-size:20px;overflow-wrap:anywhere}
+.save-management p{line-height:1.5}.save-feedback{min-height:24px;color:#ffd770}
+.save-rows{display:grid;gap:10px;margin:18px 0}.hub .save-management button{padding:12px 18px;white-space:normal;overflow-wrap:anywhere;text-align:center}
+.save-actions{display:flex;flex-wrap:wrap;gap:16px}.hub .save-management .confirm-reset{background:#854b51}
+.hub .save-management .cancel-reset{background:#ffc94d;color:#3a2410}.hub .save-management button:focus{outline:3px solid #ffc94d;outline-offset:3px}
+.hub .save-management button:disabled{opacity:.45}.settings-tiles{flex-wrap:wrap;justify-content:center}
+@media(max-height:540px){.save-management{padding:16px}.save-management h1{font-size:21px}.save-management p{margin:8px 0}}

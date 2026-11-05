@@ -31,7 +31,7 @@ test('options contain adult setup but no manual touch controls',()=>{
 });
 
 // Small DOM adapter for exercising the mounted hub without a browser dependency.
-function mountedHub(games,catalog=[],capabilities={}){
+function mountedHub(games,catalog=[],capabilities={},overrides={}){
  let onInstall,onAction,revision=0;
  class Element{
   constructor(tag='div'){this.tagName=tag;this.children=[];this.attributes={};this.dataset={};this.hidden=false;this.listeners={};this.style={setProperty(){},removeProperty(){}};this.className='';this.ownerDocument=doc;this.classList={contains:n=>this.className.split(' ').includes(n),add:n=>{if(!this.classList.contains(n))this.className+=' '+n;},remove:n=>{this.className=this.className.split(' ').filter(x=>x!==n).join(' ');},toggle:(n,on)=>{on??=!this.classList.contains(n);this.classList[on?'add':'remove'](n);}};}
@@ -47,13 +47,14 @@ function mountedHub(games,catalog=[],capabilities={}){
   querySelectorAll(selector){if(selector==='.hero-rest img')return this.querySelector('.hero-rest')?.querySelectorAll('img')||[];return this.children.flatMap(e=>[...(e.matches(selector)?[e]:[]),...e.querySelectorAll(selector)]);}
   querySelector(s){return this.querySelectorAll(s)[0]||null;}
   focus(){doc.activeElement=this;for(const fn of this.listeners.focus||[])fn();let e=this.parent;while(e){for(const fn of e.listeners.focusin||[])fn();e=e.parent;}}
-  click(){for(const fn of this.listeners.click||[])fn();}
+  showModal(){this.open=true;}close(){this.open=false;}
+  click(){if(this.disabled)return;for(const fn of this.listeners.click||[])fn();}
   insertAdjacentHTML(){}
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
   play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){}
  }
  const doc={createElement:tag=>new Element(tag),activeElement:null};
- const platform={capabilities,library:async()=>games,catalog:async()=>catalog,onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({})};
+ const platform={capabilities,library:async()=>games,catalog:async()=>catalog,onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({}),...overrides};
  const windowListeners=new Map();
  doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:options=>(onAction=options.onAction,{dispose(){}})},
  addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
@@ -126,4 +127,25 @@ test('nonempty Store selects its first offer on load and return',async()=>{
  assert.equal(host.querySelectorAll('.is-selected').length,1);
  hub.show('options');hub.show('store');
  assert.equal(hub.state.detail?.id,'offer');assert.equal(host.querySelectorAll('.is-selected').length,1);
+});
+
+function passGate(host){
+ const q=host.querySelector('.gate-question').textContent.match(/(\d+) ([+−×]) (\d+)/),answer=String(q[2]==='+'?+q[1] + +q[3]:q[2]==='−'?q[1]-q[3]:q[1]*q[3]);
+ const keys=host.querySelector('.gate-pad').querySelectorAll('button');for(const digit of answer)keys.find(b=>b.textContent===digit).click();host.querySelector('.gate-submit').click();
+}
+test('save deletion requires adult gate and explicit confirmation; cancel preserves saves',async()=>{
+ let saves=['one','uninstalled'],resets=[];
+ const {host,hub,action}=mountedHub(games,[],{}, {savedGames:async()=>saves,resetGameSaves:async id=>{resets.push(id);saves=saves.filter(x=>x!==id);}});await settle();hub.show('options');
+ host.querySelector('.manage-saves').click();assert.equal(host.querySelector('.settings-gate').open,true);assert.equal(host.querySelector('.save-management').open,undefined);
+ passGate(host);await settle();assert.equal(host.querySelector('.save-management').open,true);
+ const choice=host.querySelectorAll('.choose-save')[0];choice.click();assert.deepEqual(resets,[]);assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-reset'));
+ host.querySelector('.cancel-reset').click();assert.deepEqual(resets,[]);assert.equal(host.querySelectorAll('.choose-save').length,2);
+ host.querySelectorAll('.choose-save')[1].click();host.querySelector('.confirm-reset').click();host.querySelector('.confirm-reset').click();await settle();
+ assert.deepEqual(resets,['uninstalled']);assert.match(host.querySelector('.save-feedback').textContent,/deleted/);assert.equal(host.querySelectorAll('.choose-save').length,1);
+ action('back');assert.equal(host.querySelector('.save-management').open,false);assert.equal(host.ownerDocument.activeElement.getAttribute('aria-label'),'options');
+});
+test('device save tile uses shared gate; reset errors retain retry and cancel',async()=>{
+ const {host,hub}=mountedHub(games,[],{}, {settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}],savedGames:async()=>['one'],resetGameSaves:async()=>{throw Error('denied');}});await settle();hub.show('options');host.querySelector('.settings-tile').click();passGate(host);await settle();
+ host.querySelector('.choose-save').click();host.querySelector('.confirm-reset').click();await settle();
+ assert.match(host.querySelector('.save-feedback').textContent,/could not/i);assert.equal(host.querySelector('.confirm-reset').disabled,false);assert.equal(host.querySelector('.cancel-reset').disabled,false);
 });

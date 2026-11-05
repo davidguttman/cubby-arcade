@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('HandheldPlatformOptions',{
     refillTokens:()=>ipcRenderer.invoke('hub:refill'),
     launch:id=>ipcRenderer.invoke('hub:launch',id),
     onAccountState:callback=>{const listener=(_event,state)=>callback(state);ipcRenderer.on('hub:account-state',listener);return ()=>ipcRenderer.removeListener('hub:account-state',listener);},
+    savedGames:()=>ipcRenderer.invoke('hub:saved-games'),
+    resetGameSaves:id=>ipcRenderer.invoke('hub:reset-game-saves',id),
     library:()=>ipcRenderer.invoke('hub:library'),
     install:id=>ipcRenderer.invoke('hub:install',id),
     uninstall:id=>ipcRenderer.invoke('hub:uninstall',id),

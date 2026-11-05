@@ -5,6 +5,14 @@
   else root.HandheldPlatform = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
+  // Historical SDK alias used by published Line Cutter releases. Keep this
+  // explicit: prefix guessing could erase unrelated application preferences.
+  const legacySaveKeys = {'line-cutter': ['linecutter_run']};
+  const systemIds = new Set(['favorites', 'preferences', 'account', 'tokens']);
+  function gameSaveId(id) {
+    if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(id) || systemIds.has(id)) throw Error('Invalid game save scope');
+    return id;
+  }
   function createPlatform(options) {
     options = options || {};
     const doc = options.document || globalThis.document;
@@ -44,7 +52,35 @@
         remove(name) { requireStorage().removeItem(key(name)); }
       };
     }
+    function localSaveKeys(id) {
+      gameSaveId(id);
+      if (!storage) { if (!nativeSaves) throw Error('Save storage unavailable'); return []; }
+      const prefix = 'handheld:' + id + ':', aliases = legacySaveKeys[id] || [], keys = [];
+      // Snapshot before removal: Storage indexes shift after each deleted item.
+      for (let i = 0; i < storage.length; i++) {
+        const name = storage.key(i);
+        if (name && (name.startsWith(prefix) || aliases.includes(name))) keys.push(name);
+      }
+      return keys;
+    }
     return {
+      async savedGames() {
+        const ids = new Set(native.savedGames ? await native.savedGames() : []);
+        if (storage) {
+          for (let i = 0; i < storage.length; i++) {
+            const name = storage.key(i), match = /^handheld:([a-z0-9][a-z0-9-]{0,79}):[a-zA-Z0-9_-]+$/.exec(name || '');
+            if (match && !systemIds.has(match[1])) ids.add(match[1]);
+          }
+          for (const [id, aliases] of Object.entries(legacySaveKeys)) if (aliases.some(key => storage.getItem(key) !== null)) ids.add(id);
+        } else if (!native.savedGames) throw Error('Save storage unavailable');
+        return [...ids].filter(id => {try {gameSaveId(id);return true;} catch {return false;}}).sort();
+      },
+      async resetGameSaves(id) {
+        const keys = localSaveKeys(id);
+        if (nativeSaves && !native.resetGameSaves) throw Error('Save reset unavailable');
+        if (native.resetGameSaves) await native.resetGameSaves(id);
+        for (const key of keys) storage.removeItem(key);
+      },
       kind: options.kind || 'web',
       settings: options.settings || [],
       capabilities: Object.freeze({saves:!!storage || nativeSaves, fullscreen:!!(doc && doc.documentElement && doc.documentElement.requestFullscreen),

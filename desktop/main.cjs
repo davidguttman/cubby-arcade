@@ -88,6 +88,8 @@ app.whenReady().then(async()=>{
   ipcMain.handle('hub:account',event=>{authorizeHub(event);return launcher.status();});
   ipcMain.handle('hub:refill',event=>{authorizeHub(event);const state=account.refill();win.webContents.send('hub:account-state',state);return state;});
   ipcMain.handle('hub:launch',(event,id)=>{authorizeHub(event);return launchGame(id);});
+  ipcMain.handle('hub:saved-games',event=>{authorizeHub(event);return store.savedGames();});
+  ipcMain.handle('hub:reset-game-saves',(event,id)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');store.resetGameSaves(id);});
   ipcMain.handle('hub:library',event=>{authorizeHub(event);return library.entries();});
   ipcMain.handle('hub:install',async(event,id)=>{authorizeHub(event);await installer.install(id);return library.entries();});
   ipcMain.handle('hub:uninstall',async(event,id)=>{authorizeHub(event);await installer.uninstall(id);return library.entries();});

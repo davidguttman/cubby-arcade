@@ -62,6 +62,18 @@ class SaveStore{
     const temporary=file+'.tmp';try{fs.writeFileSync(temporary,body,{mode:0o600});fs.renameSync(temporary,file);}finally{fs.rmSync(temporary,{force:true});}
   }
   remove(game,key){fs.rmSync(this.file(game,key),{force:true});}
+  savedGames(){
+    return fs.readdirSync(this.root,{withFileTypes:true}).filter(entry=>entry.isDirectory()&&idPattern.test(entry.name)&&fs.readdirSync(path.join(this.root,entry.name)).some(name=>/^[a-zA-Z0-9_-]{1,80}\.json$/.test(name))).map(entry=>entry.name).sort();
+  }
+  resetGameSaves(game){
+    if(typeof game!=='string'||!idPattern.test(game))throw Error('Invalid save scope');
+    safePackagePath(game);
+    const directory=path.join(this.root,game);
+    let stat;try{stat=fs.lstatSync(directory);}catch(error){if(error.code==='ENOENT')return;throw error;}
+    if(!stat.isDirectory()||stat.isSymbolicLink())throw Error('Invalid save directory');
+    // This directory belongs only to this game's native saves, never installs.
+    fs.rmSync(directory,{recursive:true,force:true});
+  }
 }
 class GameLibrary{
   constructor(site,games){this.site=site;this.games=games;}

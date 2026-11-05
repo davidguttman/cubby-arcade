@@ -67,6 +67,40 @@ function mount(host){
   }finally{uninstallBusy=false;uninstallDialog.classList.remove('busy');for(const b of uninstallDialog.querySelectorAll('button'))b.disabled=false;if(!disposed)refreshOwnership();}
  }
  uninstallDialog.addEventListener('cancel',e=>{e.preventDefault();closeUninstall();});
+ const saveDialog=element(host,'dialog','save-management');saveDialog.setAttribute('aria-label','Game saves');
+ let saveBusy=false,saveIds=[];
+ function closeSaveManagement(){if(saveBusy)return;saveDialog.close();adult=false;tabs.options.focus();}
+ function saveText(parent,tag,text,cls){const node=element(parent,tag,cls);node.textContent=text;return node;}
+ function saveButton(parent,label,fn,cls){const b=saveText(parent,'button',label,cls);b.type='button';b.addEventListener('click',fn);return b;}
+ function saveTitle(id){return [...library,...catalog].find(game=>game.id===id)?.title||id;}
+ function saveHeading(){saveDialog.replaceChildren();saveText(saveDialog,'h1','Game saves');}
+ function renderSaveList(message=''){
+  saveHeading();saveText(saveDialog,'p','Delete a game’s saved progress to start it fresh. The game stays installed.');
+  const feedback=saveText(saveDialog,'p',message,'save-feedback');feedback.setAttribute('role','status');
+  if(!saveIds.length)saveText(saveDialog,'p','No saved games.');
+  const rows=element(saveDialog,'div','save-rows');
+  for(const id of saveIds)saveButton(rows,saveTitle(id),()=>confirmSaveReset(id),'choose-save');
+  saveButton(saveDialog,'Back',closeSaveManagement,'close-saves').focus();
+ }
+ function confirmSaveReset(id){
+  if(saveBusy)return;saveHeading();saveText(saveDialog,'h2',saveTitle(id));
+  saveText(saveDialog,'p','Delete all saved progress for this game? This cannot be undone. Other games and Cubby settings will not change.');
+  const feedback=saveText(saveDialog,'p','','save-feedback');feedback.setAttribute('role','status');
+  const actions=element(saveDialog,'div','save-actions');
+  const cancel=saveButton(actions,'Cancel',()=>renderSaveList(),'cancel-reset');
+  saveButton(actions,'Delete saves',async()=>{
+   if(saveBusy)return;saveBusy=true;feedback.textContent='Deleting…';for(const b of saveDialog.querySelectorAll('button'))b.disabled=true;
+   try{await platform.resetGameSaves(id);if(disposed)return;saveIds=saveIds.filter(saved=>saved!==id);saveBusy=false;renderSaveList('Saves deleted. This game will start fresh.');}
+   catch{if(disposed)return;feedback.textContent='Saves could not be fully deleted. Try again.';for(const b of saveDialog.querySelectorAll('button'))b.disabled=false;cancel.focus();}
+   finally{saveBusy=false;}
+  },'confirm-reset');cancel.focus();
+ }
+ async function openSaveManagement(){
+  if(adult)return;adult=true;saveHeading();saveText(saveDialog,'p','Loading saved games…');saveButton(saveDialog,'Back',closeSaveManagement,'close-saves');saveDialog.showModal();saveDialog.querySelector('button').focus();
+  try{const ids=await platform.savedGames();if(disposed||!saveDialog.open)return;saveIds=ids;renderSaveList();}
+  catch{if(disposed||!saveDialog.open)return;saveHeading();saveText(saveDialog,'p','Saved games could not be loaded. Close this page and try again.','save-feedback').setAttribute('role','status');saveButton(saveDialog,'Back',closeSaveManagement,'close-saves').focus();}
+ }
+ saveDialog.addEventListener('cancel',e=>{e.preventDefault();if(saveBusy)return;if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();});
  const gate=element(host,'dialog','settings-gate');gate.setAttribute('aria-label','Adult check');
  let gateOpener=null,gateSubmit=null;
  function closeGate(){gate.close();gateOpener?.focus();gateOpener=gateSubmit=null;}
@@ -75,7 +109,7 @@ function mount(host){
   const question=element(gate,'h1','gate-question'),entry=element(gate,'output','gate-entry'),note=element(gate,'p','gate-feedback'),pad=element(gate,'div','gate-pad');note.setAttribute('role','status');
   let current,typed='';
   function ask(){current=challenge();question.textContent=current.text;typed='';entry.textContent='';}
-  gateSubmit=()=>{if(!typed)return;if(typed===current.answer){win.location.href=href;return;}note.textContent='Try again.';ask();};
+  gateSubmit=()=>{if(!typed)return;if(typed===current.answer){if(href==='#adult-saves'){closeGate();openSaveManagement();}else win.location.href=href;return;}note.textContent='Try again.';ask();};
   for(const key of ['1','2','3','4','5','6','7','8','9','back','0','ok']){
    if(key==='back')button(pad,'backspace','Backspace',()=>{typed=typed.slice(0,-1);entry.textContent=typed;},'gate-erase');
    else if(key==='ok')button(pad,'check','Submit answer',()=>gateSubmit(),'gate-submit');
@@ -151,6 +185,7 @@ function mount(host){
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
  if(platform.settings?.length){const tiles=element(options,'div','settings-tiles');for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openGate(entry.href,tile),'settings-tile');if(entry.notice)tile.dataset.notice='';}showNotice();return;}
+ const saves=button(options,'trash','Manage game saves',()=>openGate('#adult-saves',saves),'manage-saves settings-tile');
  const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
  }
  // A quiet badge for adults: gear tab, then the tile that needs attention.
@@ -168,7 +203,7 @@ function mount(host){
  for(const [label,fn,cls] of [['Cancel capture',()=>{stopCapture();feedback.textContent='';renderRows();}],['Reset keys',()=>{stopCapture();draft.reset();feedback.textContent='';renderRows();}],['Cancel',()=>closeAdult(false)],['Save',()=>closeAdult(true),'primary']]){const b=element(actions,'button',cls);b.type='button';b.textContent=label;b.addEventListener('click',fn);}
  dialog.showModal();dialog.querySelector('button').focus();}
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeAdult(false);});
- const input=win.HandheldInput.createInput({navigationShoulders:true,onAction:event=>{const a=event.action;if(gate.open){if(a==='back'||a==='exit')closeGate();else if(a==='pause')gateSubmit();else if(a==='confirm')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const keys=Array.from(gate.querySelectorAll('.gate-pad button')),i=keys.indexOf(doc.activeElement),row=i-i%3;keys[a==='left'?row+(i+2)%3:a==='right'?row+(i+1)%3:a==='up'?(i+9)%12:(i+3)%12]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
+ const input=win.HandheldInput.createInput({navigationShoulders:true,onAction:event=>{const a=event.action;if(gate.open){if(a==='back'||a==='exit')closeGate();else if(a==='pause')gateSubmit();else if(a==='confirm')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const keys=Array.from(gate.querySelectorAll('.gate-pad button')),i=keys.indexOf(doc.activeElement),row=i-i%3;keys[a==='left'?row+(i+2)%3:a==='right'?row+(i+1)%3:a==='up'?(i+9)%12:(i+3)%12]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit'){if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();}else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
  if(a==='exit'||a==='back'){if(!detail.hidden)returnToGames(doc.activeElement?.classList.contains('game-card')||doc.activeElement===tabs[state.view]);else show('library');return;}
  if(a==='select'||a==='nextView'||a==='previousView'){show(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);tabs[state.view].focus();return;}
  const nodes=Array.from(host.querySelectorAll('button')).filter(b=>!b.closest('[hidden]')&&!b.closest('dialog')&&!b.disabled);if(!nodes.length)return;
