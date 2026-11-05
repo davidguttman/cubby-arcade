@@ -26,9 +26,9 @@ printf '%s  %s\n' "$COG_SHA" "$source_tar" | sha256sum -c --status
 patch=$project/rocknix/patches/cog-0.18.4-gtk4-kiosk.patch
 printf '%s  %s\n' "$PATCH_SHA" "$patch" | sha256sum -c --status
 stage=$(mktemp -d "$cache/build.XXXXXXXX")
-unshare --map-auto --map-root-user --mount --pid --fork bash -s -- "$stage" "$baseline" "$source_tar" "$patch" "$RELEASE_SHA" "$BASE_SHA" "$COG_SHA" "$PATCH_SHA" <<'BUILD'
+unshare --map-auto --map-root-user --mount --pid --fork bash -s -- "$stage" "$baseline" "$source_tar" "$patch" "$RELEASE_SHA" "$BASE_SHA" "$COG_SHA" "$PATCH_SHA" "$project/rocknix/apt_archives.py" <<'BUILD'
 set -euo pipefail
-stage=$1 baseline=$2 source_tar=$3 patch=$4 release_hash=$5 base_hash=$6 source_hash=$7 patch_hash=$8
+stage=$1 baseline=$2 source_tar=$3 patch=$4 release_hash=$5 base_hash=$6 source_hash=$7 patch_hash=$8 archive_helper=$9
 mount --make-rprivate /
 mkdir "$stage/build" "$stage/runtime"
 tar -xJf "$baseline" -C "$stage/build"
@@ -37,6 +37,7 @@ cp --dereference /etc/resolv.conf "$root/etc/resolv.conf"
 mkdir -p "$root/opt/cog-source"
 tar -xzf "$source_tar" -C "$root/opt/cog-source" --strip-components=1
 cp "$patch" "$root/tmp/cubby-kiosk.patch"
+cp "$archive_helper" "$root/tmp/cubby-apt-archives.py"
 mount --rbind /dev "$root/dev"; mount --make-rslave "$root/dev"; mount -t proc proc "$root/proc"
 trap 'umount "$root/proc" || true; umount --lazy "$root/dev" || true' EXIT
 cat > "$root/etc/apt/sources.list.d/debian.sources" <<'SOURCES'
@@ -68,7 +69,7 @@ release=$(find /var/lib/apt/lists -maxdepth 1 -name '*_dists_trixie_InRelease' -
 [[ -n $release && $(printf '%s\n' "$release" | wc -l) == 1 ]]
 printf '%s  %s\n' "$RELEASE_HASH" "$release" | sha256sum -c
 dpkg-query -W -f='Package: ${binary:Package}\nPin: version ${Version}\nPin-Priority: 1001\n\n' > /etc/apt/preferences.d/cubby-baseline
-apt-get -y --no-install-recommends install build-essential meson ninja-build pkg-config patch libwpewebkit-2.0-dev=2.48.3-1 libwpebackend-fdo-1.0-dev=1.16.0-1 libgtk-4-dev=4.18.6+ds-2 libepoxy-dev libmanette-0.2-dev
+python3 /tmp/cubby-apt-archives.py install build-essential meson ninja-build pkg-config patch libwpewebkit-2.0-dev=2.48.3-1 libwpebackend-fdo-1.0-dev=1.16.0-1 libgtk-4-dev=4.18.6+ds-2 libepoxy-dev libmanette-0.2-dev
 cd /opt/cog-source
 patch -p1 < /tmp/cubby-kiosk.patch
 meson setup build --prefix=/opt/cubby-cog-gtk4-kiosk -Dplatforms=gtk4 -Dwpe_api=2.0 -Ddocumentation=false -Dmanpages=false
@@ -82,10 +83,11 @@ cp --dereference /etc/resolv.conf "$target/etc/resolv.conf"
 cp "$root/etc/apt/sources.list.d/debian.sources" "$target/etc/apt/sources.list.d/debian.sources"
 cp "$root/etc/apt/preferences.d/cubby-baseline" "$target/etc/apt/preferences.d/cubby-baseline"
 cp -a "$root/var/lib/apt/lists/." "$target/var/lib/apt/lists/"
+cp "$archive_helper" "$target/tmp/cubby-apt-archives.py"
 root=$target
 mount --rbind /dev "$root/dev"; mount --make-rslave "$root/dev"; mount -t proc proc "$root/proc"
 trap 'umount "$root/proc" || true; umount --lazy "$root/dev" || true' EXIT
-chroot "$root" /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends install libgtk-4-1=4.18.6+ds-2 libepoxy0=1.5.10-2 libgles2=1.7.0-1+b2
+chroot "$root" /usr/bin/env DEBIAN_FRONTEND=noninteractive python3 /tmp/cubby-apt-archives.py install libgtk-4-1=4.18.6+ds-2 libepoxy0=1.5.10-2 libgles2=1.7.0-1+b2
 cp -a "$stage/build/opt/cubby-cog-gtk4-kiosk" "$root/opt/"
 mkdir -p "$root/usr/share/cubby-kiosk-build"
 cp "$stage/build/opt/cog-source/COPYING" "$root/usr/share/cubby-kiosk-build/COPYING.cog"
@@ -107,6 +109,7 @@ after=inventory('/usr/share/cubby-kiosk-build/packages.tsv')
 assert all(after.get(name)==version for name,version in before.items()), 'Baseline package versions changed'
 PY
 apt-get clean
+rm -f /tmp/cubby-apt-archives.py
 rm -f /var/lib/apt/lists/* 2>/dev/null || true
 CHROOT
 : > "$root/etc/resolv.conf"

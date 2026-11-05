@@ -68,6 +68,20 @@ Cog COPYING, the patch, package inventory and provenance. Like the baseline,
 this fixes inputs but not generated timestamps: every rebuilt archive needs an
 independent audit and reviewed digest change, not automatic acceptance.
 
+Archive downloads use `apt_archives.py` in both build and runtime phases.
+It resolves apt's selected versions without downloading, requires each archive's
+size and SHA256 from the authenticated package indexes, then fetches boundedly
+from the pinned snapshot or the corresponding official Debian mirror. Mirror
+fallback never refreshes indexes or changes package selection. Only verified,
+atomically cached archives reach `apt-get --no-download`; missing historical
+packages or different bytes fail the build. Download planning has 90-second
+subprocess limits, fetches have a 15-minute total budget and 15-second socket
+timeouts. Blocking DNS, header, and body operations run in a disposable Python
+process; the caller enforces the wall deadline, kills/reaps that process before
+cleaning partial files, and never publishes a timed-out attempt. This does not
+replace caller signal handlers and works from worker threads too. Installation
+is bounded to ten minutes per phase.
+
 The reviewed live-tested archive currently has SHA256
 `e1859403acf7593e5b2ad9b932092258302f415a093959de24fd402b7475ee92`.
 Both image composition and the updater require that exact runtime. The Linux
