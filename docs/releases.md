@@ -17,7 +17,7 @@ immutable WPE runtime, and ROCKNIX retain their own independent versions.
 4. Only then does it verify the published handheld bytes and advance
    `cubby-device-stable/manifest.json` and its detached signature. Existing
    handhelds keep using their configured feed and trust key, and update through
-   Adult settings → Cubby updates. No reinstall, reflash, or save reset.
+   the gear tab → updates tile. No reinstall, reflash, or save reset.
 
 No second device version or manually incremented device counter is needed.
 The anti-replay sequence is derived from SemVer: `(major*10000+minor)*10000+patch+1`;
