@@ -46,6 +46,8 @@ function mountedHub(games,catalog=[],capabilities={}){
   matches(selector){return selector.split(',').some(s=>{s=s.trim();const data=s.match(/\[data-game-id="([^"]+)"\]/);if(data)return this.dataset.gameId===data[1];const cls=s.match(/\.([\w-]+)/);return (!cls||this.classList.contains(cls[1]))&&(!s.startsWith('dialog')||this.tagName==='dialog')&&(!s.startsWith('button')||this.tagName==='button')&&(!s.startsWith('video')||this.tagName==='video')&&(!s.startsWith('img')||this.tagName==='img')&&(!s.includes(':not(:disabled)')||!this.disabled);});}
   querySelectorAll(selector){if(selector==='.hero-rest img')return this.querySelector('.hero-rest')?.querySelectorAll('img')||[];return this.children.flatMap(e=>[...(e.matches(selector)?[e]:[]),...e.querySelectorAll(selector)]);}
   querySelector(s){return this.querySelectorAll(s)[0]||null;}
+  getBoundingClientRect(){return {left:0,top:0,width:0,height:0};}
+  closest(s){for(let e=this;e;e=e.parent)if(s==='[hidden]'?e.hidden:s==='dialog'?e.tagName==='dialog':e.matches(s))return e;return null;}
   focus(){doc.activeElement=this;for(const fn of this.listeners.focus||[])fn();let e=this.parent;while(e){for(const fn of e.listeners.focusin||[])fn();e=e.parent;}}
   click(){for(const fn of this.listeners.click||[])fn();}
   insertAdjacentHTML(){}
@@ -53,7 +55,7 @@ function mountedHub(games,catalog=[],capabilities={}){
   play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){}
  }
  const doc={createElement:tag=>new Element(tag),activeElement:null};
- const platform={capabilities,library:async()=>games,catalog:async()=>catalog,onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({})};
+ const platform={capabilities,library:async()=>games,catalog:async()=>catalog,install:async()=>{},onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({})};
  const windowListeners=new Map();
  doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:options=>(onAction=options.onAction,{dispose(){}})},
  addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
@@ -79,7 +81,8 @@ test('Library refresh preserves a selection and falls back when it disappears',a
 });
 for(const view of ['library','store'])test(view+' Back preserves actionable selection and returns focus through shelf to tab',async()=>{
  const offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
- const {host,hub,action}=mountedHub(offers,offers);await settle();hub.show(view);
+ const control=view==='store'?'.download-game':'.play-game';
+ const {host,hub,action}=mountedHub(view==='store'?[]:offers,offers,{install:true});await settle();hub.show(view);
  const card=host.querySelector('[data-game-id="two"]');card.click();
  const media=host.querySelector('.preview-media'),actions=host.querySelector('.detail-actions');
  const pauseCount=media.pauseCount||0,playCount=media.playCount;
@@ -87,7 +90,7 @@ for(const view of ['library','store'])test(view+' Back preserves actionable sele
   assert.equal(hub.state.view,view);assert.equal(hub.state.detail?.id,'two');
   assert.equal(host.querySelector('.detail').hidden,false);
   assert.equal(host.querySelector('.preview-media'),media);assert.equal(host.querySelector('.detail-actions'),actions);
-  assert.ok(host.querySelector('.play-game'));assert.equal(host.querySelector('.is-selected'),card);
+  assert.ok(host.querySelector(control));assert.equal(host.querySelector('.is-selected'),card);
   assert.equal(media.pauseCount||0,pauseCount);assert.equal(media.playCount,playCount);
  };
  host.querySelector('.detail-close').click();assertSelection();assert.equal(host.ownerDocument.activeElement,card);
@@ -126,4 +129,50 @@ test('nonempty Store selects its first offer on load and return',async()=>{
  assert.equal(host.querySelectorAll('.is-selected').length,1);
  hub.show('options');hub.show('store');
  assert.equal(hub.state.detail?.id,'offer');assert.equal(host.querySelectorAll('.is-selected').length,1);
+});
+const shelfIds=host=>host.querySelectorAll('.game-card').map(card=>card.dataset.gameId);
+const offers=games.map(game=>({...game,manifest_url:'/manifest'}));
+test('Store shows Library games as inert checked pictures after its offers',async()=>{
+ const {host,hub}=mountedHub([games[0]],[games[0],games[1]],{install:true,uninstall:true});await settle();
+ hub.show('library');host.querySelector('.favorite').click();hub.show('store');
+ assert.deepEqual(shelfIds(host),['two','one']);assert.equal(hub.state.detail.id,'two');
+ const owned=host.querySelector('[data-game-id="one"]'),offer=host.querySelector('[data-game-id="two"]');
+ assert.equal(owned.disabled,true);assert.ok(owned.classList.contains('is-owned'));assert.equal(owned.getAttribute('aria-label'),'In library');
+ assert.equal(owned.querySelector('.card-badge').dataset.kind,'installed');
+ assert.equal(offer.disabled,false);assert.ok(!offer.classList.contains('is-owned'));
+ hub.show('library');const card=host.querySelector('[data-game-id="one"]');
+ assert.equal(card.disabled,false);assert.equal(card.querySelector('.card-badge').dataset.kind,'favorite');
+});
+test('Store with every game owned rests with nothing to activate',async()=>{
+ const {host,hub,action}=mountedHub(games,games,{install:true,uninstall:true});await settle();
+ hub.show('store');const doc=host.ownerDocument;
+ assert.equal(hub.state.detail,null);assert.equal(host.querySelector('.detail').hidden,true);
+ assert.ok(host.querySelector('.view-body').classList.contains('all-owned'));
+ assert.equal(host.querySelectorAll('.game-card').every(card=>card.disabled),true);
+ for(const name of ['.play-game','.uninstall-game','.favorite','.download-game'])assert.equal(host.querySelector(name),null);
+ const tab=host.querySelectorAll('.view-tab').find(x=>x.getAttribute('aria-current'));tab.focus();
+ action('down');action('up');assert.equal(doc.activeElement,tab);
+ doc.activeElement=null;action('confirm');assert.ok(doc.activeElement.classList.contains('view-tab'));
+ hub.show('library');assert.ok(!host.querySelector('.view-body').classList.contains('all-owned'));assert.ok(host.querySelector('.play-game'));
+});
+test('finished Store download hands off to Library Play',async()=>{
+ const {host,hub,refresh}=mountedHub([],offers,{install:true});await settle();
+ host.querySelector('[data-game-id="two"]').click();host.querySelector('.download-game').click();
+ refresh([games[1]]);await settle();
+ assert.equal(hub.state.view,'library');assert.equal(hub.state.detail.id,'two');
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('.play-game'));
+});
+test('download finishing behind another Store preview stays in the Store',async()=>{
+ const {host,hub,refresh}=mountedHub([],offers,{install:true});await settle();
+ host.querySelector('[data-game-id="one"]').click();host.querySelector('.download-game').click();
+ const other=host.querySelector('[data-game-id="two"]');other.click();const media=host.querySelector('.preview-media');
+ refresh([games[0]]);await settle();
+ assert.equal(hub.state.view,'store');assert.equal(hub.state.detail.id,'two');assert.equal(host.querySelector('.preview-media'),media);
+ assert.equal(host.querySelector('[data-game-id="one"]').disabled,true);assert.equal(other.disabled,false);
+});
+test('late Library discovery moves Store off a game it turns out to own',async()=>{
+ let resolve;const {host,hub}=mountedHub(new Promise(r=>{resolve=r;}),games,{install:true});
+ await settle();hub.show('store');await settle();assert.equal(hub.state.detail.id,'one');
+ resolve([games[0]]);await settle();
+ assert.equal(hub.state.view,'store');assert.equal(hub.state.detail.id,'two');assert.deepEqual(shelfIds(host),['two','one']);
 });

@@ -102,7 +102,7 @@ same complete-package contract; the launcher contains no game-specific code.
 
 ### Controls and saves
 
-Library: arrows/D-pad choose; A/Enter opens the selected game's detail preview. Play launches the game directly, without another trailer screen. Gameplay: Z/Space=A, X=B,
+Library: arrows/D-pad choose; A/Enter opens the selected game's detail preview. Play launches the game directly, without another trailer screen. Store: only games not yet in the Library can be selected. Owned games stay on the shelf as dimmed pictures with a check, and a finished download goes straight to its Library Play button. Gameplay: Z/Space=A, X=B,
 arrows=D-pad, Enter/P=Start, M/right Shift=Select. Escape, Select+Start, or L1+R1 opens the
 wordless system menu to resume or return to the library. Standard Gamepad API support still needs real-device mapping tests.
 

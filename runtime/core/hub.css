@@ -56,3 +56,15 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 @keyframes notice-shimmer{0%{transform:translateX(-140%) skewX(-20deg)}30%,100%{transform:translateX(260%) skewX(-20deg)}}
 /* With motion off there is no sweep, so hold the icon in gold instead. */
 @media (prefers-reduced-motion:reduce){.hub .has-notice:not([aria-current]){color:#ffd770}}
+
+/* Store: a game already in the Library is a dimmed picture with a check, not a control. */
+.hub .game-card.is-owned{pointer-events:none;cursor:default;box-shadow:0 3px 0 rgba(10,4,20,.35)}
+.game-card.is-owned img{filter:grayscale(1) brightness(.6)}
+.rest-done{display:none}
+.all-owned .rest-hint{display:none}
+.all-owned .rest-done{flex:none;width:var(--aw);align-self:stretch;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#5fd6a4}
+.hub .rest-done svg{width:44px;height:44px}
+.hub .rest-done svg:first-child{width:76px;height:76px;padding:16px;border-radius:50%;background:#5fd6a4;color:#0f3b2a;stroke-width:3.4}
+.all-owned .hero-rest .stage img{filter:grayscale(1) brightness(.6)}
+@media (max-width:600px){.all-owned .rest-done{width:100%;height:84px;align-self:auto;flex-direction:row}}
+@media (max-height:520px){.hub .rest-done svg:first-child{width:60px;height:60px;padding:12px}.hub .rest-done svg{width:34px;height:34px}}
