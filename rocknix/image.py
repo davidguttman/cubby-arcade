@@ -23,12 +23,15 @@ import subprocess
 import sys
 import zlib
 import tempfile
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from rocknix.device_profile import (media_identities, rewrite_boot_labels,
+    rg353v_wifi_profile, fdt_properties, WIFI_PROFILE)
 ROCKNIX_SHA256 = 'b573c9656d85bca5fa1aba038aac6cfabd92345d28a55cd74725cc98c618c775'
-ROOTFS_SHA256 = 'a0976631e2be72ba9d20334609771fab39048d10b2228c9b60942cee60d566bb'
-TRAIL_MIX_SHA256 = 'ef805a6f55c518a071b0501fc63a8cdb9dd664095ba6f0405c7f2782693755cd'
+ROOTFS_SHA256 = 'e1859403acf7593e5b2ad9b932092258302f415a093959de24fd402b7475ee92'
+TRAIL_MIX_SHA256 = '0f58736c83f3be504071425310d9a86e5425fc78b5de41ce08e6a1bf47a5da76'
 BOOT_HOOK = '''#!/bin/sh
 # Managed by Cubby Arcade RG353V image builder.
 # Sourced by ROCKNIX initramfs before /run is moved into the real root.
@@ -69,6 +72,38 @@ def verify(path: Path, expected: str) -> None:
         raise ValueError(f'Input checksum mismatch: {path.name}')
 
 
+def replace_fat_file(flash, path: str, contents: bytes) -> None:
+    """Replace a regular boot file without pyfatfs 1.1.0's broken truncation.
+
+    Truncating an existing multi-cluster file frees its tail but leaves the
+    first cluster linked to that freed chain. Remove/recreate instead; this
+    image is disposable until the complete build is atomically published.
+    FAT has no Unix modes. Preserve the existing FAT flags and timestamps
+    through the pinned library's directory-entry API.
+    """
+    entry = flash._get_dir_entry(path)
+    metadata = {name: getattr(entry, name) for name in (
+        'attr', 'crttimetenth', 'crttime', 'crtdate', 'lstaccessdate',
+        'wrttime', 'wrtdate')}
+    flash.remove(path)
+    flash.writebytes(path, contents)
+    entry = flash._get_dir_entry(path)
+    for name, value in metadata.items():
+        setattr(entry, name, value)
+    flash.fs.update_directory_entry(entry.get_parent_dir())
+
+
+def finalize_fat(path: Path) -> None:
+    """Refresh pyfatfs's stale free-space accounting, then require clean FAT."""
+    # pyfatfs 1.1.0 does not maintain FAT32's FSInfo free-cluster summary.
+    # This is a disposable regular image, never a physical device. Exit 1
+    # means fsck made corrections; all other nonzero results abort the build.
+    checked = subprocess.run(['fsck.fat', '-a', str(path)], check=False)
+    if checked.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(checked.returncode, checked.args)
+    run('fsck.fat', '-n', str(path))
+
+
 def gpt_layout(source):
     """Validate both primary GPT checksums before trusting image offsets."""
     source.seek(0)
@@ -105,13 +140,17 @@ def gpt_layout(source):
     return mbr, header, entries, result
 
 
-def grow_gpt(destination, layout, storage_sectors):
-    """Preserve disk/partition GUIDs, bootloader and partition starts; relocate backup GPT."""
+def grow_gpt(destination, layout, storage_sectors, *, identities=None):
+    """Keep bootloader/partition starts, assign build-unique IDs, relocate backup GPT."""
     mbr, header, entries, parts = layout
     if storage_sectors < parts[1][1] or storage_sectors > 64 * 1024 ** 3 // 512:
         raise ValueError('Invalid STORAGE extent')
     entries = bytearray(entries)
     header = bytearray(header)
+    identities = identities or media_identities()
+    header[56:72] = uuid.UUID(identities['disk_guid']).bytes_le
+    for index, guid in enumerate(identities['partition_guids']):
+        entries[index*128+16:index*128+32] = uuid.UUID(guid).bytes_le
     end = parts[1][0] + storage_sectors - 1
     table_sectors = (len(entries) + 511) // 512
     backup_lba = end + table_sectors + 1
@@ -200,7 +239,7 @@ def publish_image(compressed: Path, output: Path, digest: str) -> None:
 
 def seed_game(state: Path, provenance: Path) -> None:
     from runtime import catalog
-    url = 'https://trailmix.david.app/arcade/manifest.json'
+    url = 'https://trailmix.david.app/releases/0.9.0/manifest.json'
     manifest = provenance / 'trail-mix-release.json'
     final = catalog.download(url, manifest, catalog.MAX_RELEASE)
     verify(manifest, TRAIL_MIX_SHA256)
@@ -238,9 +277,12 @@ def source_provenance(source_root: Path, supplied: dict | None = None) -> dict:
 
 def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
           *, source_root: Path | None = None, source_info: dict | None = None,
-          progress=None, update_feed: str | None = None, update_key: Path | None = None) -> Path:
+          progress=None, update_feed: str | None = None, update_key: Path | None = None,
+          wifi_profile: str = WIFI_PROFILE) -> Path:
     if bool(update_feed) != bool(update_key):
         raise ValueError('Update feed and public key must be provided together')
+    if wifi_profile not in (WIFI_PROFILE, 'stock'):
+        raise ValueError('Unknown Wi-Fi compatibility profile')
     source_root = ROOT if source_root is None else Path(source_root)
     report = progress or (lambda message: print(message, flush=True))
     if os.geteuid() != 0:
@@ -270,14 +312,26 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         copy_range(raw, fat, first[0] * 512, first[1] * 512)
         copy_range(raw, original_storage, second[0] * 512, second[1] * 512)
         stats = run('dumpe2fs', '-h', str(original_storage))
-        uuid = re.search(r'^Filesystem UUID:\s+(\S+)', stats, re.MULTILINE).group(1)
         label = re.search(r'^Filesystem volume name:\s+(\S+)', stats, re.MULTILINE).group(1)
         if label != 'STORAGE':
             raise ValueError('Unexpected stock storage label')
+        identities = media_identities()
+        wifi_provenance = {'profile': wifi_profile, 'association_verified': False}
         storage = temporary / 'storage'
         storage.mkdir()
         extract_storage(original_storage, storage)
         with PyFatFS(str(fat)) as flash:
+            replace_fat_file(flash, '/EXTLINUX/extlinux.conf', rewrite_boot_labels(
+                flash.readtext('/EXTLINUX/extlinux.conf'), identities).encode('utf-8'))
+            if wifi_profile == WIFI_PROFILE:
+                dtpath = '/device_trees/rk3566-anbernic-rg353v.dtb'
+                original = flash.readbytes(dtpath)
+                patched = rg353v_wifi_profile(original)
+                flash.makedir('/cubby-recovery')
+                flash.writebytes('/cubby-recovery/rk3566-anbernic-rg353v.original.dtb', original)
+                replace_fat_file(flash, dtpath, patched)
+                wifi_provenance.update(original_sha256=hashlib.sha256(original).hexdigest(),
+                                       applied_sha256=hashlib.sha256(patched).hexdigest())
             if flash.exists('/post-sysroot.sh'):
                 raise ValueError('Refusing to replace upstream post-sysroot hook')
             flash.writetext('/post-sysroot.sh', BOOT_HOOK)
@@ -297,6 +351,9 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
                 flash.writebytes('/cubby-wifi-recovery/' + destination,
                                  (source_root / 'rocknix/device' / source).read_bytes())
             flash.writetext('/CUBBY-RECOVERY.txt', 'Create an empty file named CUBBY-DISABLED (no extension) beside this file to boot stock ROCKNIX. Power off before editing the card.\n')
+        run('fatlabel', str(fat), identities['boot_label'])
+        run('fatlabel', '--volume-id', str(fat), identities['fat_serial'])
+        finalize_fat(fat)
         release_id = 'image-' + ROOTFS_SHA256[:12]
         cubby = storage / 'cubby'
         release = cubby / 'releases' / release_id
@@ -329,19 +386,20 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             'wpe_rootfs_sha256': ROOTFS_SHA256,
             **source_provenance(source_root, source_info),
             'hardware_validated': False,
+            'media_identities': identities, 'wifi_compatibility': wifi_provenance,
         }, indent=2) + '\n')
         validate_storage_seed(storage)
         storage_image = temporary / 'storage.ext4'
         size = storage_gib * 1024 ** 3
         with storage_image.open('wb') as destination:
             destination.truncate(size)
-        run('mkfs.ext4', '-q', '-F', '-m', '0', '-L', label, '-U', uuid, '-d', str(storage), str(storage_image))
+        run('mkfs.ext4', '-q', '-F', '-m', '0', '-L', identities['storage_label'], '-U', identities['storage_uuid'], '-d', str(storage), str(storage_image))
         run('e2fsck', '-f', '-n', str(storage_image))
         # Preserve prefix including stock bootloader and FAT partition start.
         final_raw = temporary / 'cubby.img'
         copy_range(raw, final_raw, 0, second[0] * 512)
         with final_raw.open('r+b') as destination:
-            grow_gpt(destination, layout, size // 512)
+            grow_gpt(destination, layout, size // 512, identities=identities)
             destination.seek(first[0] * 512)
             with fat.open('rb') as source:
                 shutil.copyfileobj(source, destination, 8 * 1024 * 1024)
@@ -366,8 +424,9 @@ if __name__ == '__main__':
     parser.add_argument('--rootfs', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--storage-gib', type=int, default=6)
+    parser.add_argument('--wifi-profile', choices=[WIFI_PROFILE, 'stock'], default=WIFI_PROFILE)
     parser.add_argument('--update-feed')
     parser.add_argument('--update-key', type=Path, help='Public Ed25519 key only; never the private signing key')
     args = parser.parse_args()
     build(args.rocknix.resolve(), args.rootfs.resolve(), args.output.absolute(), args.storage_gib,
-          update_feed=args.update_feed, update_key=args.update_key)
+          update_feed=args.update_feed, update_key=args.update_key, wifi_profile=args.wifi_profile)

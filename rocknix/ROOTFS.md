@@ -42,3 +42,43 @@ and headless Cog modules and Bubblewrap are required. It does not start a
 compositor, force software rendering, or certify RG353V graphics/audio/input.
 Actual device boot, accelerated rendering, controls, sound, saves and sleep/wake
 still require the hardware acceptance checks in the installation guide.
+
+## RG353V production GTK4 kiosk runtime
+
+The original `build-rootfs.sh` output remains the pinned **baseline**, not the
+RG353V production runtime. This unit's kernel uses Mali kbase, and its EGL
+implementation lacks the Wayland extension required by Cog's stock `wl` plugin.
+The hardware-proven integration uses WPE 2.48.3 and Cog 0.18.4's upstream GTK4
+backend with the small opt-in patch in `patches/cog-0.18.4-gtk4-kiosk.patch`.
+`COG_PLATFORM_GTK4_KIOSK=1` hides browser chrome and requests fullscreen; it does
+not replace rendering/input code. `GSK_RENDERER=opengl` is a supported GTK4
+setting, unlike the deprecated `gl` alias.
+
+```sh
+rocknix/build-kiosk-rootfs.sh \
+  .cache/rg353v-bundle/rootfs.tar.xz \
+  .cache/rg353v-kiosk-runtime
+```
+
+This recipe checks the baseline, Cog source, patch, signed Debian metadata and
+all baseline package versions. Snapshot is `20261027T000000Z`; mirror fallback
+is accepted only while its signed InRelease digest is identical to the pinned
+snapshot. The runtime excludes the build toolchain and retains package licenses,
+Cog COPYING, the patch, package inventory and provenance. Like the baseline,
+this fixes inputs but not generated timestamps: every rebuilt archive needs an
+independent audit and reviewed digest change, not automatic acceptance.
+
+The reviewed live-tested archive currently has SHA256
+`e1859403acf7593e5b2ad9b932092258302f415a093959de24fd402b7475ee92`.
+Both image composition and the updater require that exact runtime. The Linux
+payload packager follows the same pin; the old baseline is rejected.
+
+At launch the private chroot namespace self-binds its root and preserves the
+host runtime-directory alias used by accessibility D-Bus. Only the matching
+five stock ROCKNIX GPU library files are checksum-checked and read-only bound;
+no host libc, broad `/usr`, or additional system bus is exposed. Their hashes
+are tied to the pinned ROCKNIX release. A Bubblewrap wrapper preserves every
+argument and adds only `/dev/dma_heap/system`; WebKit's sandbox stays enabled.
+Actual device screenshots, Mali-G52 EGL/GLES identity, WebProcess seccomp,
+NoNewPrivs and PID namespace were verified in the isolated kiosk probe.
+Physical controller operation and audible audio remain separate acceptance gates.

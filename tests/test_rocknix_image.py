@@ -110,7 +110,7 @@ class ImageTests(unittest.TestCase):
         struct.pack_into('<I', header, 16, zlib.crc32(header[:92]))
         return bytes(mbr + header + entries)
 
-    def test_grow_preserves_boot_ids_and_relocates_backup(self):
+    def test_grow_assigns_unique_ids_and_relocates_backup(self):
         original = self.gpt()
         layout = image.gpt_layout(io.BytesIO(original))
         with tempfile.TemporaryFile() as target:
@@ -124,11 +124,15 @@ class ImageTests(unittest.TestCase):
             checksum = struct.unpack_from('<I', header, 16)[0]
             struct.pack_into('<I', header, 16, 0)
             self.assertEqual(checksum, zlib.crc32(header[:92]))
-            self.assertEqual(primary[56:72], original[568:584])
+            self.assertNotEqual(primary[56:72], original[568:584])
             target.seek(1024)
             entries = target.read(16384)
-            self.assertEqual(entries[:128], original[1024:1152])
-            self.assertEqual(entries[128:168], original[1152:1192])
+            self.assertEqual(entries[:16], original[1024:1040])
+            self.assertNotEqual(entries[16:32], original[1040:1056])
+            self.assertEqual(entries[32:128], original[1056:1152])
+            self.assertEqual(entries[128:144], original[1152:1168])
+            self.assertNotEqual(entries[144:160], original[1168:1184])
+            self.assertEqual(entries[160:168], original[1184:1192])
             self.assertEqual(entries[176:], original[1200:])
             backup_lba = struct.unpack_from('<Q', primary, 32)[0]
             target.seek(backup_lba * 512)

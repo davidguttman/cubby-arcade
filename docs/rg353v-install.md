@@ -48,29 +48,44 @@ If Cubby repeatedly fails to start, its launcher falls back to stock ROCKNIX.
 ## For maintainers only
 
 The image starts with the checksum-pinned official **ROCKNIX 20261101 Generic**
-release and keeps its bootloader, kernel, device trees, immutable `SYSTEM`, disk
-GUID, partition GUIDs, and partition starts. It adds a tiny boot hook and recovery
-note to FAT, then prepopulates an enlarged `STORAGE` filesystem with the verified
+release and keeps its bootloader, kernel, immutable `SYSTEM`, partition types
+and partition starts. Each build receives unique GPT disk/partition identities,
+FAT serial, ext4 UUID and filesystem labels; all Extlinux boot/disk label references
+are updated together. This avoids ambiguity with the older internal installation.
+First-boot resize randomizes UUIDs, so fixed UUID boot references are not used.
+An identical image cloned onto two attached disks can still collide: do not
+use the same generated image on SD and internal storage simultaneously.
+
+The explicit RG353V `rg353v-sdio-hs25` Wi-Fi compatibility profile removes only
+`sd-uhs-sdr50` and caps `/mmc@fe000000` at 25 MHz in the exact checksum-pinned
+RG353V DTB. The original DTB is retained on FAT under `cubby-recovery/`; all other
+device trees stay unchanged. `--wifi-profile stock` disables that timing change.
+The profile plus late-driver recovery has demonstrated chip enumeration and
+SSID scanning, not association, internet access, reconnect or sleep/wake. Its
+profile/hash and media identities are recorded in image provenance.
+
+The builder adds a tiny boot hook and recovery note to FAT, then prepopulates
+an enlarged data filesystem with the verified
 ARM64 WPE runtime and Cubby. The hook creates only a volatile systemd override;
 it does not prepopulate `.config`/`.cache`, which would prevent stock first-boot
 resize. Upstream's RK3566 resize expands the existing filesystem without
 formatting it, preserving the preinstalled runtime and game.
 
-On the Linux build host, after building the WPE rootfs:
+On the Linux build host, after building the [GTK4 kiosk runtime](../rocknix/ROOTFS.md):
 
 ```sh
 unshare --map-auto --map-root-user uv run rocknix/image.py \
   --rocknix .cache/rg353v-image-input/ROCKNIX-RK3566.aarch64-20261101-Generic.img.gz \
-  --rootfs .cache/rg353v-bundle/rootfs.tar.xz \
+  --rootfs .cache/rg353v-kiosk-runtime/rootfs.tar.xz \
   --output .cache/Cubby-Arcade-RG353V-20261101.img.gz
 ```
 
 The namespace preserves numeric ownership without sudo. Build tools are `uv`,
-`unshare`, `tar`, `dumpe2fs`, `debugfs`, `mkfs.ext4`, and `e2fsck`; Python build
+`unshare`, `tar`, `fatlabel`, `dumpe2fs`, `debugfs`, `mkfs.ext4`, and `e2fsck`; Python build
 dependencies are pinned in the script. The image builder writes only regular
 files, never physical disks. It validates upstream and rootfs checksums, GPT
 checksums/layout, and the created filesystem; it generates an image SHA-256
-sidecar. Trail Mix's release manifest and verified file inventory, source commit,
+sidecar. Trail Mix's immutable version-0.9.0 release manifest and verified file inventory, source commit,
 and input checksums are recorded under `/storage/cubby/image-provenance`.
 
 Advanced SSH installation onto an existing supported ROCKNIX card remains

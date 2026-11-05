@@ -7,8 +7,11 @@ export XDG_DATA_HOME=/var/lib/handheld/profile
 export XDG_CACHE_HOME=/var/lib/handheld/cache
 export HOME=/var/lib/handheld
 export PULSE_SERVER=unix:/run/host-runtime/pulse/native
-export COG_PLATFORM_NAME=wl
-export COG_PLATFORM_WL_VIEW_FULLSCREEN=1
+export COG_PLATFORM_NAME=gtk4
+export COG_PLATFORM_GTK4_KIOSK=1
+export GDK_BACKEND=wayland
+export GSK_RENDERER=opengl
+export PATH=/opt/cubby-cog-gtk4-kiosk/bin:$PATH
 mkdir -p "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 server_pid=
 session_log() {
@@ -73,4 +76,4 @@ session_log 'HTTP ready'
 # to the ROCKNIX launcher through the outer bounded restart/fallback wrapper.
 # This bundle uses WPE WebKit's 2.0 API, where sandboxing is always enabled;
 # Cog's --enable-sandbox option exists only for the older 1.x API.
-cog --config rocknix/cog.ini --platform=wl --gamepad=manette --webprocess-failure=exit http://127.0.0.1:8080/
+cog --config rocknix/cog.ini --platform=gtk4 --gamepad=manette --webprocess-failure=exit http://127.0.0.1:8080/
