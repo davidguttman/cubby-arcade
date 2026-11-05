@@ -29,7 +29,7 @@ mkdir -p "$ROOT/usr/lib/rocknix-gpu"
 while read -r expected library; do
   source=$(readlink -f "/usr/lib/$library")
   [ -f "$source" ] || { echo "Cubby: missing ROCKNIX GPU library $library" >&2; exit 1; }
-  printf '%s  %s\n' "$expected" "$source" | sha256sum --check --status
+  printf '%s  %s\n' "$expected" "$source" | sha256sum -c -s
   target="$ROOT/usr/lib/rocknix-gpu/$library"
   [ ! -L "$target" ]
   [ -e "$target" ] || touch "$target"

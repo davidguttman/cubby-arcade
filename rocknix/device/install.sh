@@ -60,8 +60,18 @@ if [ ! -d "$FINAL" ]; then
 fi
 [ -x "$FINAL/rootfs/usr/bin/cog" ] && [ -x "$FINAL/rootfs/usr/bin/python3" ]
 [ -f "$FINAL/app/rocknix/session.sh" ] && [ -x "$FINAL/device/launch.sh" ]
-chroot "$FINAL/rootfs" /usr/bin/python3 --version
-chroot "$FINAL/rootfs" /usr/bin/cog --version
+# Even Cog's version query initializes GLib and needs the normal device/proc
+# environment. Keep probe mounts private and let namespace teardown remove them;
+# no probe failure can leave mounts behind or alter the active release.
+unshare --mount --propagation private bash -s -- "$FINAL/rootfs" <<'RUNTIME_PROBE'
+set -euo pipefail
+ROOT=$1
+mount --rbind /dev "$ROOT/dev"
+mount --make-rslave "$ROOT/dev"
+mount -t proc proc "$ROOT/proc"
+chroot "$ROOT" /usr/bin/python3 --version
+chroot "$ROOT" /usr/bin/cog --version
+RUNTIME_PROBE
 [ ! -e "$DROP" ] || cp "$DROP" "$BACKUP"
 TRANSACTION=yes
 ln -s "releases/$DIGEST" "$BASE/current.new-$$"

@@ -142,7 +142,7 @@ class DeviceBehaviorTests(unittest.TestCase):
         self.write_executable(release / 'device/launch.sh', '#!/bin/sh\nexit 0\n')
         (release / 'app/rocknix').mkdir(parents=True)
         (release / 'app/rocknix/session.sh').touch()
-        self.write_executable(self.bin / 'chroot', '#!/bin/sh\nexit 0\n')
+        self.prepare_probe_namespace()
         drop = self.storage / '.config/system.d/essway.service.d/90-cubby.conf'
         drop.parent.mkdir(parents=True)
         drop.write_text('# Managed by Cubby Arcade RG353V installer\nOLD CONTENT\n')
@@ -182,6 +182,92 @@ class DeviceBehaviorTests(unittest.TestCase):
         result = self.run_script('uninstall.sh', check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(drop.read_text(), 'somebody else owns this\n')
+
+    def prepare_probe_namespace(self):
+        mounts = self.root / 'probe-mounts'
+        namespace = self.root / 'probe-namespace'
+        self.write_executable(self.bin / 'unshare',
+            '#!/bin/sh\n[ "$1 $2 $3" = "--mount --propagation private" ] || exit 21\n'
+            'shift 3\nprintf private > "' + str(namespace) + '"\nexec "$@"\n')
+        self.write_executable(self.bin / 'mount',
+            '#!/bin/sh\nprintf "%s\\n" "$*" >> "' + str(mounts) + '"\n')
+        self.write_executable(self.bin / 'chroot',
+            '#!/bin/sh\n[ -f "' + str(namespace) + '" ] || exit 22\n'
+            'grep -q -- "--rbind /dev " "' + str(mounts) + '" || exit 23\n'
+            'grep -q -- "--make-rslave " "' + str(mounts) + '" || exit 24\n'
+            'grep -q -- "-t proc proc " "' + str(mounts) + '" || exit 25\n'
+            'echo "$*" >> "' + str(self.root / 'probe-calls') + '"\n')
+
+    def test_runtime_probes_have_private_device_and_proc_mounts(self):
+        digest, _ = self.setup_existing_release()
+        self.prepare_probe_namespace()
+        self.write_executable(self.bin / 'systemctl', '#!/bin/sh\nexit 0\n')
+        result = self.run_script('install.sh', digest, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        probes = (self.root / 'probe-calls').read_text().splitlines()
+        self.assertEqual(len(probes), 2)
+        self.assertTrue(probes[0].endswith('/usr/bin/python3 --version'))
+        self.assertTrue(probes[1].endswith('/usr/bin/cog --version'))
+
+    def test_failed_runtime_probe_preserves_previous_activation(self):
+        digest, drop = self.setup_existing_release()
+        before = drop.read_text()
+        self.prepare_probe_namespace()
+        self.write_executable(self.bin / 'chroot', '#!/bin/sh\nexit 17\n')
+        self.write_executable(self.bin / 'systemctl',
+                              '#!/bin/sh\necho touched > "' + str(self.root / 'systemctl-called') + '"\n')
+        result = self.run_script('install.sh', digest, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.base / 'current').readlink(), Path('releases/old-release'))
+        self.assertEqual(drop.read_text(), before)
+        self.assertFalse((self.root / 'systemctl-called').exists())
+
+
+class PreflightTests(unittest.TestCase):
+    def run_preflight(self, os_release, *, model='Anbernic RG353V', uid='0', arch='aarch64'):
+        import os
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'os-release').write_text(os_release)
+            (root / 'model').write_bytes(model.encode() + b'\0')
+            (root / 'storage/.config/system.d').mkdir(parents=True)
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            for name, output in [('id', uid), ('uname', arch),
+                                 ('systemctl', '/usr/bin/start_es.sh')]:
+                path = bin_dir / name
+                path.write_text('#!/bin/sh\nprintf "%s\\n" "' + output + '"\n')
+                path.chmod(0o755)
+            source = (installer.HERE / 'device/preflight.sh').read_text()
+            for old, new in [('/etc/os-release', root / 'os-release'),
+                             ('/proc/device-tree/model', root / 'model'),
+                             ('/storage', root / 'storage')]:
+                source = source.replace(old, str(new))
+            return subprocess.run(['bash', '-c', source], text=True, capture_output=True,
+                                  env=dict(os.environ, PATH=str(bin_dir) + ':' + os.environ['PATH']))
+
+    def test_pinned_actual_rocknix_metadata(self):
+        result = self.run_preflight('OS_NAME="ROCKNIX"\nOS_VERSION="20261101"\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('ROCKNIX 20261101', result.stdout)
+
+    def test_standard_metadata_remains_supported(self):
+        result = self.run_preflight('NAME="ROCKNIX"\nVERSION_ID="20261101"\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_wrong_os_or_version_rejected(self):
+        for metadata in ['OS_NAME=OTHER\nOS_VERSION=20261101\n',
+                         'OS_NAME=ROCKNIX\nOS_VERSION=20261001\n',
+                         'OS_NAME=ROCKNIX\n',
+                         'OS_VERSION=20261101\n']:
+            with self.subTest(metadata=metadata):
+                self.assertNotEqual(self.run_preflight(metadata).returncode, 0)
+
+    def test_device_root_and_arch_gates_remain(self):
+        for overrides in [dict(model='Anbernic RG353P'), dict(uid='1000'), dict(arch='x86_64')]:
+            with self.subTest(overrides=overrides):
+                result = self.run_preflight('OS_NAME=ROCKNIX\nOS_VERSION=20261101\n', **overrides)
+                self.assertNotEqual(result.returncode, 0)
 
 
 if __name__ == '__main__':
