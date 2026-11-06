@@ -19,6 +19,10 @@
     const cancelFrame = options.cancelFrame || cancelAnimationFrame;
     const deadzone = options.deadzone === undefined ? 0.5 : options.deadzone;
     const repeatMs = options.repeatMs || 180;
+    // Browsers hide a pad from a new page until it sees input, so the press that
+    // reveals the pad is a real press. A pad seen sooner than this after the page
+    // starts polling may be a button still held from the previous page.
+    const revealMs = options.revealMs === undefined ? 250 : options.revealMs;
     const preferences = options.preferences || preferencesAPI.preferences;
     let keys = {}, capture = null;
     const heldKeys = new Set(), blockedKeys = new Set(), cleanup = [];
@@ -30,7 +34,7 @@
     updateKeyboard(preferences.get());
     cleanup.push(preferences.subscribe(updateKeyboard));
     let shouldersBlocked = false;
-    let last = new Set(), repeated = {}, ready = false, identity = null, frameId, disposed = false;
+    let last = new Set(), repeated = {}, ready = false, identity = null, hiddenSince = null, frameId, disposed = false;
     function emit(button, source) {
       if (!disposed && !capture && active() && options.onAction) options.onAction({action:semantic[button] || button, button, source});
     }
@@ -56,7 +60,7 @@
       heldKeys.add(e.code);
     });
     listen(target, 'keyup', e => { heldKeys.delete(e.code); blockedKeys.delete(e.code); });
-    function reset() { heldKeys.clear(); last.clear(); repeated = {}; ready = false; identity = null; }
+    function reset() { heldKeys.clear(); last.clear(); repeated = {}; ready = false; identity = null; hiddenSince = null; }
     listen(target, 'blur', () => { focused = false; reset(); });
     listen(target, 'focus', () => { focused = true; reset(); });
     if (doc) listen(doc, 'visibilitychange', reset);
@@ -64,10 +68,11 @@
       if (disposed) return;
       if (!active()) { reset(); frameId = requestFrame(poll); return; }
       const pad = navigator.getGamepads && Array.from(navigator.getGamepads()).find(Boolean);
-      if (!pad) { ready = false; identity = null; last.clear(); repeated = {}; }
+      if (!pad) { ready = false; identity = null; last.clear(); repeated = {}; if (hiddenSince === null) hiddenSince = time; }
       else {
         const id = pad.index + ':' + pad.id;
-        if (identity !== id) { identity = id; ready = false; last.clear(); repeated = {}; }
+        if (identity !== id) { identity = id; ready = hiddenSince !== null && time - hiddenSince >= revealMs; last.clear(); repeated = {}; }
+        hiddenSince = null;
         const down = pad.buttons.map(b => b.pressed);
         const axes = pad.axes || [];
         const neutral = !down.some(Boolean) && axes.every(a => Math.abs(a) < deadzone);

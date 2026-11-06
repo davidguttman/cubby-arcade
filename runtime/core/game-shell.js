@@ -6,7 +6,7 @@
 'use strict';
 function install(win){
  const doc=win.document,nav=win.navigator,originalPads=nav.getGamepads?.bind(nav);
- let opened=false,selection=0,ready=false,last=new Set(),blocked=false,menu,resumeButton,homeButton,touch,disposed=false,frame;
+ let opened=false,selection=0,ready=false,last=new Set(),blocked=false,padId,padSince,unmask=false,menu,resumeButton,homeButton,touch,disposed=false,frame;
  const listeners=[],actions=new WeakMap();
  function listen(target,type,fn,capture=false){target.addEventListener(type,fn,capture);listeners.push(()=>target.removeEventListener(type,fn,capture));}
  function signal(){win.dispatchEvent(new win.CustomEvent('handheld:system-menu',{detail:{open:opened}}));}
@@ -20,12 +20,21 @@ function install(win){
  // Reserve the system chord and all controller input while the menu is open.
  // The first neutral frame after dismissal re-arms gameplay, never its held A.
  if(originalPads)Object.defineProperty(nav,'getGamepads',{configurable:true,value(){const values=pads();return values.map(p=>p&&(opened||blocked||chord(p))?{id:p.id,index:p.index,mapping:p.mapping,connected:p.connected,timestamp:p.timestamp,buttons:p.buttons.map(()=>({pressed:false,touched:false,value:0})),axes:p.axes.map(()=>0),vibrationActuator:p.vibrationActuator}:p);}});
- function poll(){
+ function poll(time){
   if(disposed)return;
   const active=!doc.hidden&&(!doc.hasFocus||doc.hasFocus());
   const pad=pads().find(Boolean);
-  if(!active||!pad){ready=false;last.clear();blocked=true;}
-  else if(neutral(pad)){ready=true;blocked=false;last.clear();}
+  // Browsers hide the real pad from a new page until it sees input, so the pad a
+  // page reads (none, or the on-screen one) changes on that first press. Games
+  // carry their own frozen input.js, which ignores a new pad first seen with a
+  // button down: report one neutral frame to arm it, then the press. Soon after
+  // load it may be a button still held from the previous page, so leave it masked.
+  const id=pad?pad.index+':'+pad.id:null,revealed=active&&pad&&id!==padId&&time-padSince>=250;
+  if(id!==padId||!active){padId=id;padSince=time;}
+  if(!active||!pad){ready=false;last.clear();blocked=true;unmask=false;}
+  else if(neutral(pad)){ready=true;blocked=false;unmask=false;last.clear();}
+  else if(revealed){unmask=true;blocked=true;}
+  else if(unmask){unmask=false;ready=true;blocked=false;}
   else if(ready){
    const current=new Set();if(chord(pad))current.add('menu');
    else {if(pad.buttons[0]?.pressed)current.add('confirm');if(pad.buttons[1]?.pressed)current.add('back');if(pad.buttons[14]?.pressed||pad.axes[0]<-0.5)current.add('left');if(pad.buttons[15]?.pressed||pad.axes[0]>0.5)current.add('right');}
