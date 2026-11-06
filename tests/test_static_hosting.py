@@ -1,4 +1,4 @@
-"""The production artifact and Render config need no request-time process."""
+"""The production artifact needs no request-time process or repository Blueprint."""
 import hashlib
 import json
 from pathlib import Path
@@ -6,33 +6,14 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import yaml
 import web
 from test_store_distribution import archive
 from hosting import build as hosting_build
 
 
 class StaticHosting(unittest.TestCase):
-    def test_main_push_deploys_web_only_after_release_checks_pass(self):
-        service = yaml.safe_load((web.HERE / 'render.yaml').read_text())['services'][0]
-        self.assertEqual(service.get('branch'), 'main')
-        self.assertEqual(service['autoDeployTrigger'], 'checksPass')
-
-    def test_render_is_a_static_site_with_json_and_native_routes(self):
-        service = yaml.safe_load((web.HERE / 'render.yaml').read_text())['services'][0]
-        self.assertEqual(service['runtime'], 'static')
-        self.assertEqual(service['staticPublishPath'], '.cache/web')
-        self.assertNotIn('startCommand', service)
-        self.assertNotIn('healthCheckPath', service)
-        routes = {item['source']: item for item in service['routes']}
-        self.assertEqual(routes['/play']['destination'], '/native/index.html')
-        self.assertEqual(routes['/play']['type'], 'rewrite')
-        headers = {item['source']: {h['key']: h['value'] for h in item['headers']}
-                   for item in service['headers']}
-        self.assertEqual(headers['/*']['Access-Control-Allow-Origin'], '*')
-        self.assertIn('must-revalidate', headers['/*']['Cache-Control'])
-        for name in ('/catalog', '/library', '/hub-manifest.json'):
-            self.assertIn('application/json', headers[name]['Content-Type'])
+    def test_render_settings_are_not_managed_by_a_repository_blueprint(self):
+        self.assertFalse((web.HERE / 'render.yaml').exists())
 
     def test_static_export_landing_does_not_replace_native_inventory(self):
         with tempfile.TemporaryDirectory() as tmp:

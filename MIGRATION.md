@@ -37,13 +37,17 @@ The desktop build is `dist/CubbyArcade-linux-x64/CubbyArcade`.
 
 `render-site` is the **historical generated deployment-only branch**, not
 application source and not a branch to merge into `main`. Preserve it unchanged.
-The independent-game migration introduces a source deployment from `main` using
-`hosting/build.py`, `hosting/serve.py` and `render.yaml`; the release supervisor
-switches the existing Render service only after source verification/integration.
-No extra Render service or native executable replacement is required.
+Production uses a dashboard/API-managed Render **Static Site** in **Superstruct**,
+tracking `main` with auto-deploy **On Commit**. There is no repository Blueprint.
+Build with `python3 -m pip install -r requirements.txt && python3 hosting/build.py`
+and publish `.cache/web`; there is no runtime start command. A Python Web Service
+running `hosting/serve.py` is not the production deployment type. The release
+supervisor verifies/integrates source and configures the Static Site separately;
+see the [hosting settings](README.md#source-hosted-cloud-deployment-and-independent-game-updates).
+This does not replace native executables or change their release gates.
 
-The free Python stdlib host serves the generated `.cache/web` browser preview,
-registry, stable manifests and immutable archives (with possible cold starts).
+The CDN serves the generated browser preview, registry, stable manifests and
+immutable archives. `hosting/serve.py` is only a local development/test adapter.
 Legacy Line Cutter 0.2.0/0.2.1 and Little Camp 0.1.0 distribution archives are
 retained exactly under `hosting/releases/` with checksum/source inventory. Every
 source build reproduces their old package/media URLs, keeping existing installs
@@ -57,8 +61,10 @@ introduced in Cubby 0.3.0, without requiring ZIP publication.
 The historical bootstrap lock is not an updater version pin: future releases
 require no new ZIP, lock edit, or Cubby release. Fresh catalogs point
 to its publisher-owned stable manifest. The old Cubby stable metadata endpoint
-forwards bounded, validated live publisher JSON with HTTP 200 and revalidation,
-not an HTTP redirect or a copied release snapshot. Upstream failures/redirects
-return 502, leaving installed versions unchanged. Native clients keep their origin, ID, saves and update
+serves a compatibility snapshot generated at Cubby build time, not a live proxy
+or redirect. The build validates bounded publisher metadata, resolves relative
+file URLs against its final URL, and fails closed on invalid metadata. That old
+endpoint refreshes only on a Cubby deployment; current catalogs use the
+publisher-owned stable URL directly. Native clients keep their origin, ID, saves and update
 activation rules, and future game releases do not require a launcher rebuild.
 The native installer remains a desktop/VM adapter, not a browser capability.
