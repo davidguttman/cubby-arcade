@@ -98,6 +98,23 @@ class CloudHub{
    try{const version=(await fs.readFile(path.join(this.root,'current'),'utf8')).trim();if(!/^[a-f0-9]{64}$/.test(version))throw Error('Invalid cache pointer');await this.load(path.join(this.root,version));this.source='cache';}catch{this.directory=null;this.manifest=null;this.source='bundle';}
   }finally{if(stage)await fs.rm(stage,{recursive:true,force:true});}
  }
+ // Discovery has its own validated cache: never mutate the coherent shell snapshot.
+ catalog(fallback){
+  if(this.catalogChecking)return this.catalogChecking;
+  this.catalogChecking=(async()=>{
+   const file=path.join(this.root,'catalog.json');
+   if(this.catalogEntries===undefined){
+    try{const data=await fs.readFile(file);if(data.length>2*1024*1024)throw Error('Catalog too large');this.catalogEntries=validateCatalog(data);}
+    catch{this.catalogEntries=validateCatalog(JSON.stringify(fallback));}
+   }
+   try{
+    const data=await this.download('/catalog',2*1024*1024,AbortSignal.timeout(5000)),entries=validateCatalog(data);
+    await fs.mkdir(this.root,{recursive:true});await fs.writeFile(file+'.tmp',JSON.stringify(entries));await fs.rename(file+'.tmp',file);
+    this.catalogEntries=entries;
+   }catch{/* Offline or invalid discovery never replaces the last valid catalog. */}
+   return structuredClone(this.catalogEntries);
+  })().finally(()=>this.catalogChecking=null);return this.catalogChecking;
+ }
  async read(name){name=name==='/'?'/index.html':name;if(!this.directory||!shellPath(name)||!Object.hasOwn(this.manifest.files,name))return null;return fs.readFile(path.join(this.directory,name.slice(1)));}
 }
 module.exports={CloudHub,validate,validateCatalog,DEFAULT_ORIGIN};

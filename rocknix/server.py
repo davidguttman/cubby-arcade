@@ -18,6 +18,7 @@ import yaml
 from runtime import battery, catalog, packages, server as assets
 from rocknix import network, updates
 
+CATALOG_CHECK_SECONDS = 5 * 60
 UPDATE_CHECK_SECONDS = 15 * 60
 UPDATE_RETRY_SECONDS = 5 * 60
 UPDATE_FIRST_CHECK_SECONDS = 60
@@ -64,9 +65,10 @@ class State:
             temporary.replace(self.data / 'catalog.json')
             with self.lock:
                 self.catalog = entries
+            return True
         except (OSError, ValueError, TypeError):
             # A verified cache or checked-in discovery pointers work offline.
-            pass
+            return False
 
     def install(self, entry):
         game_id = entry['id']
@@ -397,6 +399,14 @@ def check_for_update(state):
         return False
 
 
+def watch_catalog(state, wait=time.sleep):
+    """Discovery is independent of app releases; retry offline failures quietly."""
+    while True:
+        if not state.active_game and not state.busy and not state.network_busy:
+            state.refresh_catalog()
+        wait(CATALOG_CHECK_SECONDS)
+
+
 def watch_for_updates(state, wait=time.sleep):
     wait(UPDATE_FIRST_CHECK_SECONDS)
     while True:
@@ -410,6 +420,6 @@ if __name__ == '__main__':
     state.updater = updates.HostClient()
     if os.environ.get('CUBBY_NETWORK_SIMULATION') == '1':
         state.network = network.Onboarding(network.Simulation(), state.data)
-    threading.Thread(target=state.refresh_catalog, daemon=True).start()
+    threading.Thread(target=watch_catalog, args=(state,), daemon=True).start()
     threading.Thread(target=watch_for_updates, args=(state,), daemon=True).start()
     make_server(state).serve_forever()

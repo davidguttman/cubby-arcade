@@ -659,8 +659,8 @@ The shared-origin catalog continues to require trusted developer game packages.
 
 The desktop executable is a thin, sandboxed shell. On launch it requests
 `https://cubby.david.app/hub-manifest.json`, downloads the small
-launcher UI/core/catalog snapshot, verifies its size/hash inventory, and caches
-it coherently before opening the hub. Rebuilding/publishing the web export is
+launcher UI/core snapshot (with a fallback catalog), verifies its size/hash
+inventory, and caches it coherently before opening the hub. Rebuilding/publishing the web export is
 all that is needed to deliver launcher/store UI changes on the next app launch.
 There is no binary self-updater, update menu, mid-game reload, or restart loop.
 
@@ -672,7 +672,21 @@ downloads updates in the background, and activates them only while in the hub.
 Installed-game previews work offline; store media for uninstalled games requires
 connectivity. A failed or incompatible refresh retains the last verified cached
 shell; first-run offline falls back to the bundled shell. Startup network work
-has a five-second total deadline. The current shell stays fixed for that process.
+has a five-second deadline per shell/catalog refresh. The current shell code stays
+fixed for that process, but discovery does not: the hub polls `/catalog` every
+five minutes and catches up when it becomes visible or comes back online.
+Desktop discovery uses a separate bounded, validated last-known-good cache; it
+never modifies the hash-verified launcher snapshot. The native installer and
+Store share the refreshed offers. Browser discovery keeps its existing validated
+offline cache; the handheld refreshes its cached catalog in the background every
+five minutes while idle. Invalid responses or an unavailable network keep the
+last valid catalog, and removing an offer never uninstalls a game or deletes saves.
+
+To add, change, or remove offers, edit `hosting/catalog.yaml` and deploy the static
+web export. Catalog-only deployments require no product-version bump, executable
+release, launcher restart, or adult update action. Existing desktop executables
+and handheld app builds need a one-time host update to acquire this independent
+polling behavior; subsequent catalog changes are data-only.
 
 The HTTPS cloud host is trusted to supply launcher JavaScript, but never gets
 Node access or arbitrary filesystem/native bridge access. `bridge_version: 1`

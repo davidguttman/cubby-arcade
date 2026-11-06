@@ -30,7 +30,9 @@ app.whenReady().then(async()=>{
   const installer=new GameInstaller(library,{canActivate:()=>hubActive&&!launcher?.pending,onChange:states=>{
     if(win&&!win.isDestroyed()&&hubActive)win.webContents.send('hub:install-state',states);
   }});
-  const registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
+  let registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
+  async function refreshRegistry(){registry=await cloud.catalog(registry);installer.setCatalog(registry);return registry;}
+  await refreshRegistry();
   installer.setCatalog(registry);
   protocol.handle('hub',async request=>{
     try{
@@ -41,6 +43,7 @@ app.whenReady().then(async()=>{
       const file=library.file(request.url);
       let data=await cloud.read(pathname);
       if(pathname==='/catalog'){
+        if(hubActive)await refreshRegistry();
         const local=library.entries();
         data=Buffer.from(JSON.stringify(registry.map(entry=>{
           const installed=local.find(game=>game.id===entry.id);
@@ -105,7 +108,7 @@ app.whenReady().then(async()=>{
   win.webContents.on('did-navigate',(_event,url)=>{
     try{hubActive=['/','/index.html'].includes(assetName(url));}catch{hubActive=false;}
     if(hubActive)launcher.home();
-    if(hubActive)installer.checkUpdates().catch(error=>console.error('Game update check:',error.message));
+    if(hubActive)refreshRegistry().then(()=>installer.checkUpdates()).catch(error=>console.error('Game update check:',error.message));
   });
   win.removeMenu();
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
