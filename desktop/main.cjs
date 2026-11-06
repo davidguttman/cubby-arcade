@@ -134,11 +134,11 @@ app.whenReady().then(async()=>{
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
   if(uninstallSmoke){
-    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,store,account,{output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
+    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,store,account,{cloud,output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
     catch(error){console.error(error);exitSmoke(1);}return;
   }
   if(installSmoke){
-    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{origin:cloud.origin,output:env('SMOKE_DIR')});exitSmoke(0);}
+    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{cloud,origin:cloud.origin,output:env('SMOKE_DIR')});exitSmoke(0);}
     catch(error){console.error(error);exitSmoke(1);}return;
   }
   if(smoke){

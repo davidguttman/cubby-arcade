@@ -5,7 +5,7 @@ async function run(win,installer,library,registry,store,account,options={}){
  win.webContents.debugger.attach('1.3');await win.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled',{enabled:true});
  const bytes=await fs.readFile(options.package||path.join(__dirname,'../hosting/releases/line-cutter/0.2.1/line-cutter-0.2.1.game.zip'));
  const manifest={schema_version:1,id,version:'0.2.1',runtime:'web',entrypoint:'play.html',package:{url:origin+'/game.zip',size:bytes.length,sha256:crypto.createHash('sha256').update(bytes).digest('hex')}};
- registry.splice(0,registry.length,{id,title:'Line Cutter',manifest_url:origin+'/manifest.json',artwork:origin+'/cover.png'});installer.setCatalog(registry);
+ await require('./install-smoke.cjs').setCatalog(options.cloud,installer,[{id,title:'Line Cutter',manifest_url:origin+'/manifest.json',artwork:origin+'/cover.png'}]);
  installer.fetch=async url=>new Response(String(url)===origin+'/manifest.json'?JSON.stringify(manifest):bytes);
  const evaluate=script=>win.webContents.executeJavaScript(script);
  async function wait(check,label){const until=Date.now()+12000;while(Date.now()<until){if(await check())return;await new Promise(r=>setTimeout(r,30));}throw Error('Uninstall smoke timed out: '+label);}

@@ -1,6 +1,14 @@
 /* Self-terminating native smoke: legacy ZIP install followed by file releases. */
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+// Supply discovery at its transport boundary: navigation and polling deliberately
+// replace registry arrays, so mutating a previous array cannot seed a fixture.
+async function setCatalog(cloud,installer,entries){
+ const fetch=cloud.fetch;
+ cloud.fetch=(url,settings)=>new URL(url).href===new URL('/catalog',cloud.origin).href
+  ?Promise.resolve(new Response(JSON.stringify(entries))):fetch(url,settings);
+ installer.setCatalog(await cloud.catalog(entries));
+}
 async function run(win,installer,library,registry,options={}){
  const fixture=(process.env.CUBBY_ARCADE_SMOKE_INSTALL_DIR??process.env.HUB_SMOKE_INSTALL_DIR);if(!fixture)throw Error('HUB_SMOKE_INSTALL_DIR required');
  const first=await fs.readFile(path.join(fixture,'demo-1.zip'));
@@ -25,7 +33,7 @@ async function run(win,installer,library,registry,options={}){
   return originalFetch(url,settings);
  };
  const entry={id:'demo',title:'Demo',manifest_url:origin+'/manifest.json',artwork:options.origin+'/games/line-cutter/cover.png',screenshots:[]};
- registry.push(entry);installer.setCatalog(registry);
+ await setCatalog(options.cloud,installer,[...registry,entry]);
  async function wait(check,label){const deadline=Date.now()+10000;while(Date.now()<deadline){if(await check())return;await new Promise(r=>setTimeout(r,30));}throw Error('Smoke timed out: '+label);}
  async function evaluate(fn){return win.webContents.executeJavaScript(fn);}
  async function settleUpdates(){if(installer.checking)await installer.checking;if(installer.jobs.has('demo'))await installer.jobs.get('demo');}
@@ -71,4 +79,4 @@ async function run(win,installer,library,registry,options={}){
  if(options.output)await fs.writeFile(path.join(options.output,'install-report.json'),JSON.stringify(report,null,2));
  console.log(JSON.stringify(report));
 }
-module.exports={run};
+module.exports={run,setCatalog};
