@@ -863,15 +863,23 @@ Render serves `.cache/web` from its Static Site CDN. Maintain these routes and
 headers in the dashboard/API alongside the `cubby.david.app` custom domain:
 
 - Rewrite `/play` and `/play/` to `/native/index.html` (not redirects).
-- On `/*`, set `Access-Control-Allow-Origin: *`,
-  `Cache-Control: public, max-age=0, must-revalidate`, and
-  `X-Content-Type-Options: nosniff`.
+- On `/*`, set `Access-Control-Allow-Origin: *` and
+  `X-Content-Type-Options: nosniff` (not a blanket cache rule).
 - On `/catalog`, `/library`, and `/hub-manifest.json`, set
   `Content-Type: application/json; charset=utf-8`.
-- Override caching to `public, max-age=31536000, immutable` for the retained
-  `/store/line-cutter/0.2.0/*`, `/store/line-cutter/0.2.1/*`,
+- Set `Cache-Control: public, max-age=0, must-revalidate, no-transform` on the
+  mutable paths `/`, `/index`, `/index.html`, `/play`, `/play/`, `/native/*`,
+  `/runtime/*`, `/site/*`, `/docs/*`, `/catalog`, `/library`,
+  `/hub-manifest.json`, and `/browser-sw.js`. Apply the same policy separately
+  to each exact stable `/store/<game>/manifest.json` path, including
+  `/store/line-cutter/manifest.json` and `/store/little-camp/manifest.json`.
+- Set `Cache-Control: public, max-age=31536000, immutable, no-transform` on the
+  retained `/store/line-cutter/0.2.0/*`, `/store/line-cutter/0.2.1/*`,
   `/store/line-cutter/0.3.0/*`, and `/store/little-camp/0.1.0/*` artifacts.
-  Stable manifests must remain revalidated, not immutable.
+  These paths do not overlap the mutable rules. Do not add a blanket `/*`
+  cache override or cache stable manifests as immutable. Keep `no-transform`
+  in both classes so CDN transformations do not change byte-verified assets
+  such as PNGs.
 
 Python runs only at build time. There is no runtime start command, request-time
 process, cold-starting web service or API server. `hosting/serve.py` remains a
