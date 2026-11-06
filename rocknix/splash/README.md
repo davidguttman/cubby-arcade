@@ -22,6 +22,28 @@ ROCKNIX rendering. A mock framebuffer alone does not prove panel initialization;
 RG353V evidence below.
 No kernel, bootloader, initramfs, SYSTEM image, game data or saves are patched.
 
+## Holding the art for the whole boot
+
+`load.sh` draws the art, then unbinds the text console. Otherwise systemd's console
+reset zeroes the framebuffer as it starts, and ROCKNIX's boot messages draw over it.
+`runtime/native/rg353v/boot-screen/boot-screen.py` then keeps the art up with a
+progress bar: on the framebuffer before Sway, then as an overlay layer surface once
+Sway runs. It exits when the hub reports it has painted (`/api/ui-ready` touches
+`cubby-ui-ready` in the runtime directory), or after 60 seconds so recovery is never hidden.
+
+The overlay buffer must keep a format with alpha. Sway sends no frame callbacks
+to a window under an opaque surface, so an opaque overlay stops the hub painting
+and the boot screen then waits for a signal it is preventing.
+
+The bar estimates from the last boot's time (`/storage/cubby/state/boot-seconds`).
+Updates deliver the unit and script: `rocknix/network.py` installs the unit once a
+release passes its trial. `load.sh` stays on `/flash` with the rest of the card's
+boot files. Initramfs sources it, so a bad write can stop the device booting and no
+rollback reaches it, which keeps it outside updates (see `docs/rg353v-updates.md`).
+New images carry it; an existing card without it uses the offline installer below,
+and until then the art may clear early before the service redraws it.
+Nothing draws before that early hook runs, so the screen stays dark from the reset until then.
+
 ## Existing Cubby card: offline install and restore
 
 Power the handheld off, remove its card, and mount the FAT **boot** partition

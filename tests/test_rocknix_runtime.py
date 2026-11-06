@@ -178,6 +178,14 @@ class RuntimeTests(unittest.TestCase):
         connection.close()
         return result
 
+    def test_painted_page_tells_the_boot_screen_to_step_aside(self):
+        with tempfile.TemporaryDirectory() as runtime, patch.dict(os.environ, {'XDG_RUNTIME_DIR': runtime}):
+            marker = Path(runtime) / 'cubby-ui-ready'
+            self.assertEqual(self.request('POST', '/api/ui-ready', {}, {'X-Cubby-Session': 'wrong'})[0], 403)
+            self.assertFalse(marker.exists())
+            self.assertEqual(self.request('POST', '/api/ui-ready', {})[0], 200)
+            self.assertTrue(marker.exists())
+
     def test_power_is_hub_only_and_waits_for_writes(self):
         calls = []
         class Host:

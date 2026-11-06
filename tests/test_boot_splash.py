@@ -174,6 +174,13 @@ fi
             fbset.chmod(0o755)
             script = (ROOT / 'rocknix/device/boot-splash.sh').read_text()
             script = script.replace('/flash', str(flash)).replace('/proc/device-tree/model', str(model)).replace('/proc/device-tree', str(dt)).replace('/sys/class/graphics/fb0', str(fb)).replace('/dev/fb0', str(device))
+            consoles = root / 'vtconsole'
+            for name, label in (('vtcon0', '(S) dummy device'), ('vtcon1', '(M) frame buffer device')):
+                (consoles / name).mkdir(parents=True)
+                (consoles / name / 'name').write_text(label + '\n')
+                (consoles / name / 'bind').write_text('1\n')
+            self.assertIn('/sys/class/vtconsole', script)
+            script = script.replace('/sys/class/vtconsole', str(consoles))
             status = root / 'splash.status'
             script = script.replace('/run/cubby-splash.status', str(status))
             import os
@@ -188,6 +195,9 @@ fi
             expected = (flash / 'cubby-splash/splash-32.raw').read_bytes()
             self.assertEqual(device.read_bytes(), expected)
             self.assertEqual(status.read_text(), 'rendered 640x480 32\n')
+            # The text console would clear the art as systemd starts.
+            self.assertEqual((consoles / 'vtcon1/bind').read_text(), '0\n')
+            self.assertEqual((consoles / 'vtcon0/bind').read_text(), '1\n')
             (fb / 'bits_per_pixel').write_text('16')
             (fb / 'stride').write_text('1280')
             fbset.write_text('#!/bin/sh\necho "geometry 640 480 640 480 16"\necho "rgba 5/11,6/5,5/0,0/0"\n')

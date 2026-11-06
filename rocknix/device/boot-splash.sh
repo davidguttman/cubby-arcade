@@ -41,6 +41,11 @@ cubby_show_splash() {
   echo "$cubby_layout" | grep -q "^[[:space:]]*geometry 640 480 640 480 $cubby_depth[[:space:]]*$" || return 1
   (cd /flash/cubby-splash && sha256sum -c "splash-$cubby_depth.sha256" >/dev/null 2>&1) || return 1
   dd if="/flash/cubby-splash/splash-$cubby_depth.raw" of=/dev/fb0 bs=4096 2>/dev/null || return 1
+  # Keep the art on screen. The text console would clear it as systemd starts,
+  # and draw ROCKNIX's boot messages over it. Failing here only loses the art early.
+  for cubby_console in /sys/class/vtconsole/vtcon*; do
+    grep -q 'frame buffer' "$cubby_console/name" && echo 0 > "$cubby_console/bind"
+  done 2>/dev/null
   # /run is moved into the real root; retain boot execution evidence without
   # writing to the card. Diagnostics must not turn a successful draw into failure.
   { printf 'rendered 640x480 %s\n' "$cubby_depth" > /run/cubby-splash.status; } 2>/dev/null || :

@@ -27,6 +27,8 @@ SOCKET = '/run/cubby-network/socket'
 BSSID = re.compile(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}')
 ERRORS = {'invalid_request', 'connection_failed', 'busy', 'unavailable', 'unsupported_network'}
 POWER_MODES = {'poweroff', 'reboot'}
+BOOT_SCREEN_BUNDLE = 'runtime/native/rg353v/boot-screen'
+BOOT_SCREEN_UNIT = 'cubby-boot-screen.service'
 
 
 class NetworkError(Exception):
@@ -322,6 +324,50 @@ class HostHandler(socketserver.StreamRequestHandler):
         self.wfile.write(json.dumps(result).encode() + b'\n')
 
 
+def replace_file(path, body):
+    temporary = path.with_name(path.name + '.new')
+    try:
+        with temporary.open('wb') as stream:
+            stream.write(body)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def install_boot_screen(app, storage=Path('/storage')):
+    """Put this release's boot screen unit in place for the next boot.
+
+    The early loader on /flash is deliberately left alone: initramfs sources it,
+    so a bad write there can stop the device booting and no rollback can reach it.
+    """
+    bundle = app / BOOT_SCREEN_BUNDLE
+    system = storage / '.config/system.d'
+    unit = (bundle / BOOT_SCREEN_UNIT).read_bytes()
+    if not (system / BOOT_SCREEN_UNIT).is_file() or (system / BOOT_SCREEN_UNIT).read_bytes() != unit:
+        replace_file(system / BOOT_SCREEN_UNIT, unit)
+    wants = system / 'sysinit.target.wants'
+    wants.mkdir(exist_ok=True)
+    if not (wants / BOOT_SCREEN_UNIT).is_symlink():
+        (wants / BOOT_SCREEN_UNIT).symlink_to('../' + BOOT_SCREEN_UNIT)
+
+
+def install_boot_screen_once_confirmed(script=None, sleep=time.sleep, install=install_boot_screen):
+    """Install from a release only after it passes its trial. Never breaks this helper."""
+    try:
+        here = Path(script or __file__).resolve()
+        app, release = here.parents[1], here.parents[2]
+        if release.parent.name != 'releases':
+            return
+        base = release.parents[1]
+        while (base / 'updates/pending.json').exists():
+            sleep(30)
+        install(app, storage=base.parent)
+    except Exception as error:  # Retried from the next session.
+        print('Cubby boot screen was not installed:', error, file=sys.stderr)
+
+
 class HostServer(socketserver.ThreadingUnixStreamServer):
     daemon_threads = True
 
@@ -365,6 +411,7 @@ def main():
         server.allowed_uid = 0
         server.manager = Onboarding(NetworkManager(), args.state)
         threading.Thread(target=bridge_to_guarded_updates, daemon=True).start()
+        threading.Thread(target=install_boot_screen_once_confirmed, daemon=True).start()
         server.serve_forever()
 
 

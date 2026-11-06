@@ -1,0 +1,11 @@
+[Unit]
+Description=Cubby boot art and progress
+DefaultDependencies=no
+ConditionPathExists=!/flash/CUBBY-DISABLED
+ConditionPathExists=!/storage/cubby/DISABLED
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /storage/cubby/current/app/runtime/native/rg353v/boot-screen/boot-screen.py
+Restart=no
+[Install]
+WantedBy=sysinit.target

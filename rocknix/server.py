@@ -258,6 +258,7 @@ class Handler(assets.Handler):
                 body = json.loads(self.rfile.read(size))
                 if ready:
                     if body != {}: raise ValueError('Invalid readiness')
+                    mark_ui_ready()
                     trial = os.environ.get('CUBBY_UPDATE_TRIAL')
                     if trial and self.state.updater:
                         self.state.updater.dispatch({'action':'ready','token':trial})
@@ -389,6 +390,14 @@ def make_server(state, port=8080):
     instance = http.server.ThreadingHTTPServer(('127.0.0.1', port), Handler)
     instance.state = state
     return instance
+
+
+def mark_ui_ready():
+    """Tell the host's boot screen a page has painted, so it can step aside."""
+    try:
+        (Path(os.environ.get('XDG_RUNTIME_DIR', '/run/host-runtime')) / 'cubby-ui-ready').touch()
+    except OSError:
+        pass
 
 
 def app_version(state):
