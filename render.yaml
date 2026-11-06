@@ -2,9 +2,10 @@ services:
   - type: web
     name: cubby-arcade
     runtime: static
+    branch: main
     buildCommand: python3 -m pip install -r requirements.txt && python3 hosting/build.py
     staticPublishPath: .cache/web
-    autoDeployTrigger: off
+    autoDeployTrigger: checksPass
     domains:
       - cubby.david.app
     routes:

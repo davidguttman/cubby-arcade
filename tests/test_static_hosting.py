@@ -13,6 +13,11 @@ from hosting import build as hosting_build
 
 
 class StaticHosting(unittest.TestCase):
+    def test_main_push_deploys_web_only_after_release_checks_pass(self):
+        service = yaml.safe_load((web.HERE / 'render.yaml').read_text())['services'][0]
+        self.assertEqual(service.get('branch'), 'main')
+        self.assertEqual(service['autoDeployTrigger'], 'checksPass')
+
     def test_render_is_a_static_site_with_json_and_native_routes(self):
         service = yaml.safe_load((web.HERE / 'render.yaml').read_text())['services'][0]
         self.assertEqual(service['runtime'], 'static')

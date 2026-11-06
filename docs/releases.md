@@ -18,6 +18,15 @@ immutable WPE runtime, and ROCKNIX retain their own independent versions.
    `cubby-device-stable/manifest.json` and its detached signature. Existing
    handhelds keep using their configured feed and trust key, and update through
    the gear tab → updates tile. No reinstall, reflash, or save reset.
+5. Render's Static Site tracks `main` with `autoDeployTrigger: checksPass` in
+   `render.yaml`. After the commit's checks succeed, Render automatically builds
+   and deploys the website, including `/play` and the cloud launcher used by
+   Windows/Linux apps. No second push, manual web deploy, or tag push is needed.
+
+One versioned push therefore publishes the Windows, Linux, and handheld release
+and updates the website. Publication does not install the handheld update:
+an adult still chooses it in the device's updates tile. Desktop apps refresh
+their cloud launcher from the website; this is not executable self-update.
 
 No second device version or manually incremented device counter is needed.
 The anti-replay sequence is derived from SemVer: `(major*10000+minor)*10000+patch+1`;
@@ -25,9 +34,11 @@ components must be below 10000. This is larger than the legacy sequence 4 at
 0.2.0. Legacy device tags remain historical; new device archives live beside
 desktop assets on the shared `vX.Y.Z` release.
 
-An ordinary push keeping an already published version performs checks/builds,
-but does not overwrite or manufacture another release. Main version changes
-publish automatically; matching tag pushes and manual runs on main can retry.
+An ordinary push keeping an already published version performs checks/builds
+and automatically updates the website after checks pass, but does not overwrite
+or manufacture another release. New platform artifacts require a new version.
+Main version changes publish automatically; matching tag pushes and manual runs
+on main can retry.
 The workflow does not rely on a GITHUB_TOKEN-created tag triggering another
 workflow. Publication is serialized with `cancel-in-progress: false`.
 

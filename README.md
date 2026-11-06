@@ -309,26 +309,34 @@ the latest release's stable platform filenames `CubbyArcade-win32-x64.zip` and
 `CubbyArcade-linux-x64.tar.gz`. The desktop release workflow publishes both
 automatically, together with their SHA-256 checksum files.
 
-### Automatic desktop releases (adult/developer flow)
+### Automatic product releases (adult/developer flow)
 
-Bump the desktop version in `package.json` and `package-lock.json` according to
-SemVer, commit the release, then push its matching stable `vX.Y.Z` tag. The
-`Desktop builds and releases` GitHub Actions workflow validates that the tag
-matches `package.json`, builds on native Windows and Linux runners, and runs
-packaged install/update/play/offline and uninstall/save-retention smokes.
-Only after **both** platform jobs succeed does its publishing job create a
-draft GitHub Release, upload both archives and checksums, verify every remote
-asset's size and SHA-256 digest, then publish it as the latest release. The
-landing-page download links follow it without source edits or manual uploads.
-Branch pushes and manual workflow runs only build/test; they cannot publish.
-No npm, app-store or executable self-update publication is involved.
+Bump the shared product version in `package.json` and `package-lock.json`
+according to SemVer, commit, then push `main` once. **Cubby builds and releases**
+builds on native Windows and Linux runners, runs packaged
+install/update/play/offline and uninstall/save-retention smokes, and signs the
+handheld app update from the same commit and version.
+Only after **both** platform jobs succeed does its publishing job create the
+matching `vX.Y.Z` tag and draft GitHub Release, upload all seven assets, verify
+every remote asset's size and SHA-256 digest, then publish the complete release
+and advance the signed handheld feed. The landing-page download links follow
+the latest release without source edits or manual uploads. After the commit's
+checks succeed, Render automatically deploys the website and cloud launcher
+used by desktop apps from `main`; no separate tag push or manual deploy is
+needed. A handheld installs the published update only when an adult chooses
+the gear tab's updates tile. No npm, app-store or executable self-update
+publication is involved. See [release details and retries](docs/releases.md).
+
+Main pushes without a version bump still run checks/builds and deploy the
+website after checks pass, but never overwrite a published platform release.
+New platform artifacts require a new version. Matching tag pushes and manual
+runs on `main` can retry publication; other branches only build/test.
 
 An upload failure leaves an unpublished draft, never a half-complete latest
 release. Matching reruns can resume missing uploads; differing draft assets
 are rejected rather than overwritten (inspect and remove only that failed
 draft before retrying if new builds produce different bytes). Published
 release assets are immutable: a rerun must match every archive and checksum.
-Deploy the landing page only after its first Windows release is published.
 
 Windows 10/11 x64 uses the same launcher, Store, controller input and offline
 game library as Linux. Download the portable
@@ -832,7 +840,9 @@ these routes; this does not change the installed launcher or children's UI.
 
 ## Source-hosted cloud deployment and independent game updates
 
-Render can deploy source `main` with the checked-in `render.yaml`:
+Render automatically deploys source `main` after its checks pass, using
+`branch: main` and `autoDeployTrigger: checksPass` in the checked-in `render.yaml`.
+The static build is:
 
 ```sh
 uv run python hosting/build.py
