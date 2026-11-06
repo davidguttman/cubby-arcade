@@ -41,16 +41,21 @@ class StoreDistribution(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         web.default_registry()
 
-    def test_default_fallback_has_two_offers_but_no_payloads(self):
+    def test_default_fallback_has_three_offers_but_no_payloads(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = web.build(Path(tmp) / 'site', registry=web.default_registry())
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'line-cutter'])
+                             ['trail-mix', 'line-cutter', 'fox-barrister'])
             trail = next(e for e in json.loads((site / 'catalog').read_text()) if e['id'] == 'trail-mix')
             self.assertEqual(trail['manifest_url'], 'https://trailmix.david.app/arcade/manifest.json')
             self.assertEqual(trail['artwork'], 'https://trailmix.david.app/discovery/cover.png')
             self.assertEqual(trail['attract'], 'https://trailmix.david.app/discovery/trailer.webm')
+            fox = next(e for e in json.loads((site / 'catalog').read_text()) if e['id'] == 'fox-barrister')
+            self.assertEqual(fox['title'], 'Fox Barrister')
+            self.assertEqual(fox['manifest_url'], 'https://foxbarrister.david.app/arcade/manifest.json')
+            self.assertEqual(fox['artwork'], 'https://foxbarrister.david.app/discovery/cover.png')
+            self.assertNotIn('attract', fox)
             self.assertFalse((site / 'games').exists())
             self.assertFalse((site / 'store').exists())
 
@@ -67,7 +72,7 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertFalse((site / 'games').exists())
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'line-cutter'])
+                             ['trail-mix', 'line-cutter', 'fox-barrister'])
             self.assertEqual((site / 'store/little-camp/1/little-camp-1.game.zip').read_bytes(), old.read_bytes())
             self.assertFalse((site / 'store/trail-mix').exists())
             self.assertTrue((site / 'store/line-cutter/1/line-cutter-1.game.zip').is_file())
