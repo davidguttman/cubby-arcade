@@ -105,6 +105,8 @@ test('uninstalled Store selection keeps its download action after Back',async()=
  const {host,hub,action}=mountedHub([],offers,{install:true});await settle();
  const card=host.querySelector('[data-game-id="two"]');card.click();
  const download=host.querySelector('.download-game');assert.ok(download);
+ const media=host.querySelector('.preview-media');assert.equal(media.tagName,'img');assert.equal(media.src,'two.svg');
+ assert.equal(host.querySelectorAll('video').length,0);
  host.querySelector('.detail-close').click();
  for(const control of ['back','back','exit']){
   action(control);assert.equal(hub.state.view,'store');assert.equal(hub.state.detail?.id,'two');

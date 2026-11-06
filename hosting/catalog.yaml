@@ -9,3 +9,7 @@
   manifest_url: https://linecutter.david.app/store/line-cutter/manifest.json
   artwork: https://linecutter.david.app/store/line-cutter/0.4.0/files/cover.png
   attract: https://linecutter.david.app/store/line-cutter/0.4.0/files/trailer-handheld.webm
+- id: fox-barrister
+  title: Fox Barrister
+  manifest_url: https://foxbarrister.david.app/arcade/manifest.json
+  artwork: https://foxbarrister.david.app/discovery/cover.png
