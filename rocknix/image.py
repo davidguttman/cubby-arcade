@@ -32,7 +32,7 @@ from rocknix.device_profile import (media_identities, rewrite_boot_labels,
 ROCKNIX_SHA256 = 'b573c9656d85bca5fa1aba038aac6cfabd92345d28a55cd74725cc98c618c775'
 ROOTFS_SHA256 = 'e1859403acf7593e5b2ad9b932092258302f415a093959de24fd402b7475ee92'
 TRAIL_MIX_SHA256 = '0f58736c83f3be504071425310d9a86e5425fc78b5de41ce08e6a1bf47a5da76'
-BOOT_HOOK = '''#!/bin/sh
+BASE_BOOT_HOOK = '''#!/bin/sh
 # Managed by Cubby Arcade RG353V image builder.
 # Sourced by ROCKNIX initramfs before /run is moved into the real root.
 # Do not populate /storage/.config: stock first-boot resize must run first.
@@ -61,6 +61,10 @@ ExecStart=/storage/cubby/current/device/launch.sh
 UNIT
 fi
 '''
+
+
+from rocknix.boot_splash import SPLASH_HOOK, installation_files as splash_files
+BOOT_HOOK = BASE_BOOT_HOOK + SPLASH_HOOK
 
 
 def verify(path: Path, expected: str) -> None:
@@ -356,6 +360,9 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             if flash.exists('/post-sysroot.sh'):
                 raise ValueError('Refusing to replace upstream post-sysroot hook')
             flash.writetext('/post-sysroot.sh', BOOT_HOOK)
+            flash.makedir('/cubby-splash')
+            for name, data in splash_files(BASE_BOOT_HOOK.encode(), BOOT_HOOK.encode(), source_root).items():
+                flash.writebytes('/cubby-splash/' + name, data)
             flash.makedir('/cubby-usb-diagnostics')
             for source, destination in (
                 ('usb-diagnostics-start.sh', 'start.sh'),
