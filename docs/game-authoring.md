@@ -55,6 +55,26 @@ system menu. Listen for `handheld:system-menu` (`event.detail.open`) to pause
 your own simulation and audio while it is open; pause on lost focus/visibility.
 The injected menu alone cannot automatically pause an arbitrary game loop.
 
+Cubby also tells games about system events. You don't have to listen; a game that
+doesn't is simply frozen and resumed. Each one is a window event carrying
+`event.detail`:
+
+- `handheld:sleep`: the device is about to sleep. `detail.reason` is `button`,
+  `idle` or `system`. It may not wake again before the battery runs out, so this
+  is a good moment to save if your game needs to.
+- `handheld:wake`: the device is back. `detail.reason` is `button` or `other`.
+
+```js
+addEventListener('handheld:sleep', event => {
+  save();                                  // Synchronous work just happens.
+  event.waitUntil(saveToServer());         // Or ask for a moment; about a second, not more.
+});
+```
+
+Cubby injects this, so no SDK or package change is involved, and the display and
+sound are already off when you hear `handheld:sleep`. Don't start music or
+animations in response to it. On hosts with no such signal, these events don't fire.
+
 ## Publish once, without a ZIP
 
 1. Build offline files into `dist/game/`.

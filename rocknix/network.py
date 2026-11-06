@@ -315,6 +315,10 @@ class HostHandler(socketserver.StreamRequestHandler):
             request = json.loads(line)
             if isinstance(request, dict) and request.get('action') == 'power':
                 result = request_power(request)
+            elif isinstance(request, dict) and str(request.get('action')).startswith('system-'):
+                if not self.server.events:
+                    raise NetworkError('unavailable')
+                result = self.server.events.dispatch(request)
             else:
                 result = self.server.manager.dispatch(request)
         except NetworkError as error:
@@ -370,6 +374,7 @@ def install_boot_screen_once_confirmed(script=None, sleep=time.sleep, install=in
 
 class HostServer(socketserver.ThreadingUnixStreamServer):
     daemon_threads = True
+    events = None
 
 
 def bridge_to_guarded_updates(wait=60, sleep=time.sleep):
@@ -394,6 +399,30 @@ def bridge_to_guarded_updates(wait=60, sleep=time.sleep):
         print('Cubby update bridge did not finish:', error, file=sys.stderr)
 
 
+def start_power(server, state_dir):
+    """Idle sleep and low-battery shutdown. If this fails, stock ROCKNIX sleep still works."""
+    here = Path(__file__).resolve()
+    candidates = [here.parents[1] / 'runtime/native/rg353v/device/power.py', here.with_name('device') / 'power.py']
+    path = next((p for p in candidates if p.is_file()), None)
+    if not path:
+        return
+    try:
+        spec = importlib.util.spec_from_file_location('cubby_power', path)
+        power = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(power)
+        server.events = power.EventHub()
+    except Exception as error:
+        print('Cubby power did not start:', error, file=sys.stderr)
+        return
+
+    def run():
+        try:
+            power.run(server.events, state_dir)
+        except Exception as error:
+            print('Cubby power stopped:', error, file=sys.stderr)
+    threading.Thread(target=run, daemon=True).start()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--socket', default=SOCKET)
@@ -412,6 +441,7 @@ def main():
         server.manager = Onboarding(NetworkManager(), args.state)
         threading.Thread(target=bridge_to_guarded_updates, daemon=True).start()
         threading.Thread(target=install_boot_screen_once_confirmed, daemon=True).start()
+        start_power(server, args.state)
         server.serve_forever()
 
 

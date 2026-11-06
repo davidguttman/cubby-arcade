@@ -15,7 +15,7 @@ from unittest.mock import patch
 from rocknix.network import NetworkError, Onboarding, Simulation
 from rocknix.updates import app_path
 from runtime import server as assets
-from rocknix.server import State, app_version, check_for_update, make_server, update_attention
+from rocknix.server import State, app_version, check_for_update, make_server, relay_system_events, update_attention
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -185,6 +185,88 @@ class RuntimeTests(unittest.TestCase):
             self.assertFalse(marker.exists())
             self.assertEqual(self.request('POST', '/api/ui-ready', {})[0], 200)
             self.assertTrue(marker.exists())
+
+    def test_power_state_reports_work_the_idle_timer_must_not_interrupt(self):
+        def busy():
+            status, body = self.request('GET', '/api/power-state')
+            self.assertEqual(status, 200)
+            return json.loads(body)['busy']
+        self.assertFalse(busy())
+        for flag in ('busy', 'network_busy'):
+            setattr(self.state, flag, True)
+            self.assertTrue(busy(), flag)
+            setattr(self.state, flag, False)
+        class Updater:
+            phase = 'idle'
+            def dispatch(self, request):
+                if self.phase == 'broken':
+                    raise ValueError('Updater unavailable')
+                return {'phase': self.phase}
+        self.state.updater = Updater()
+        for phase, expected in [('idle', False), ('available', False), ('staged', False), ('error', False), ('broken', False),
+                                ('checking', True), ('downloading', True), ('trial', True)]:
+            self.state.updater.phase = phase
+            self.assertEqual(busy(), expected, phase)
+
+    def test_pages_hear_system_events_by_long_polling(self):
+        status, body = self.request('GET', '/api/system-events?after=-1')
+        self.assertEqual((status, json.loads(body)), (200, {'seq': 0, 'events': []}))
+        event = {'seq': 1, 'type': 'sleep', 'detail': {'reason': 'idle'}}
+        threading.Timer(.05, self.state.system_events.add, (1, [event])).start()
+        started = time.monotonic()
+        status, body = self.request('GET', '/api/system-events?after=0')
+        self.assertEqual((status, json.loads(body)), (200, {'seq': 1, 'events': [event]}))
+        self.assertLess(time.monotonic() - started, 2)
+        # A page that loads later starts from now, not from history.
+        self.assertEqual(json.loads(self.request('GET', '/api/system-events?after=-1')[1]), {'seq': 1, 'events': []})
+        self.assertEqual(self.request('GET', '/api/system-events?after=-1', headers={'Host': 'evil.test'})[0], 403)
+
+    def test_a_page_ack_reaches_the_host_and_only_from_this_origin(self):
+        calls = []
+        class Host:
+            def dispatch(self, request):
+                calls.append(request)
+                return {'accepted': True}
+        self.state.network = Host()
+        self.assertEqual(self.request('POST', '/api/system-events/ack', {'seq': 3})[0], 200)
+        self.assertEqual(calls, [{'action': 'system-ack', 'seq': 3}])
+        self.assertEqual(self.request('POST', '/api/system-events/ack', {'seq': 4}, {'Origin': 'http://evil.test'})[0], 403)
+        for body in ({'seq': 'x'}, {}, [1]):
+            self.assertEqual(self.request('POST', '/api/system-events/ack', body)[0], 400, body)
+        self.assertEqual(len(calls), 1)
+
+    def test_relay_acks_at_once_when_no_page_listens_and_waits_when_one_does(self):
+        event = {'seq': 1, 'type': 'sleep', 'detail': {}}
+        for listening, acks in ((False, [{'action': 'system-ack', 'seq': 1}]), (True, [])):
+            with self.subTest(listening=listening):
+                state = State(ROOT, Path(self.tmp.name))
+                calls = []
+                class Host:
+                    def dispatch(self, request):
+                        calls.append(request)
+                        if request['action'] == 'system-wait' and request['after'] < 0:
+                            return {'seq': 0, 'events': []}
+                        if request['action'] == 'system-wait':
+                            return {'seq': 1, 'events': [event]}
+                        return {'accepted': True}
+                state.network = Host()
+                if listening:
+                    state.system_events.wait(-1, 0)
+                rounds = iter([True, True, False])
+                relay_system_events(state, keep_going=lambda: next(rounds))
+                self.assertEqual([c for c in calls if c['action'] == 'system-ack'], acks)
+                self.assertEqual(state.system_events.seq, 1)
+
+    def test_relay_survives_a_host_without_system_events(self):
+        state = State(ROOT, Path(self.tmp.name))
+        waits = []
+        class Host:
+            def dispatch(self, request):
+                raise NetworkError('unavailable')
+        state.network = Host()
+        rounds = iter([True, True, False])
+        relay_system_events(state, wait=waits.append, keep_going=lambda: next(rounds))
+        self.assertEqual(waits, [5, 5])
 
     def test_power_is_hub_only_and_waits_for_writes(self):
         calls = []

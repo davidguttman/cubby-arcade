@@ -4,6 +4,7 @@
  else {root.HandheldGameShellAPI=api;if(/^\/(?:games|__cubby_games__)\//.test(root.location.pathname))root.HandheldGameShell=api.install(root);}
 })(globalThis,function(){
 'use strict';
+const SYSTEM_EVENT_WINDOW=1500;
 function install(win){
  const doc=win.document,nav=win.navigator,originalPads=nav.getGamepads?.bind(nav);
  let opened=false,selection=0,ready=false,last=new Set(),blocked=false,padId,padSince,unmask=false,menu,resumeButton,homeButton,touch,disposed=false,frame;
@@ -81,9 +82,33 @@ function install(win){
   const media=win.matchMedia?.('(any-pointer: coarse)');if(media?.addEventListener)listen(media,'change',update);
   if(opened)focus();
  }
+ // System events reach games as window events: handheld:sleep, handheld:wake. A game
+ // decides what to do, if anything; event.waitUntil(promise) asks for a moment first.
+ function systemEvent(type,detail={}){
+  const waits=[],event=new win.CustomEvent('handheld:'+type,{detail});
+  event.waitUntil=promise=>{waits.push(promise);};
+  try{win.dispatchEvent(event);}catch{}
+  if(!waits.length)return Promise.resolve();
+  return Promise.race([Promise.allSettled(waits),new Promise(done=>win.setTimeout(done,SYSTEM_EVENT_WINDOW))]);
+ }
+ const hostEvents=win.AbortController?new win.AbortController():null;
+ async function watchHostEvents(){
+  if(typeof win.fetch!=='function'||!/^https?:$/.test(win.location.protocol))return;
+  let after=-1,failures=0;
+  while(!disposed&&failures<5){
+   try{
+    const reply=await win.fetch('/api/system-events?after='+after,{cache:'no-store',signal:hostEvents?.signal});
+    if(!reply.ok)return;
+    const body=await reply.json();
+    after=body.seq;failures=0;
+    for(const item of body.events)systemEvent(item.type,item.detail).then(()=>win.fetch('/api/system-events/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seq:item.seq})})).catch(()=>{});
+   }catch{failures+=1;if(!disposed)await new Promise(done=>win.setTimeout(done,2000));}
+  }
+ }
  if(doc.readyState==='loading')listen(doc,'DOMContentLoaded',mount);else mount();
  frame=win.requestAnimationFrame(poll);
- return {open,resume,home,isOpen:()=>opened,dispose(){disposed=true;win.cancelAnimationFrame(frame);listeners.forEach(f=>f());if(originalPads)Object.defineProperty(nav,'getGamepads',{configurable:true,value:originalPads});menu?.remove();touch?.remove();win.HandheldOSD?.dispose();}};
+ watchHostEvents();
+ return {open,resume,home,systemEvent,isOpen:()=>opened,dispose(){disposed=true;hostEvents?.abort();win.cancelAnimationFrame(frame);listeners.forEach(f=>f());if(originalPads)Object.defineProperty(nav,'getGamepads',{configurable:true,value:originalPads});menu?.remove();touch?.remove();win.HandheldOSD?.dispose();}};
 }
 return {install};
 });

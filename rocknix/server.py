@@ -11,7 +11,7 @@ from pathlib import Path
 import secrets
 import threading
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import yaml
 
@@ -22,6 +22,39 @@ CATALOG_CHECK_SECONDS = 5 * 60
 UPDATE_CHECK_SECONDS = 15 * 60
 UPDATE_RETRY_SECONDS = 5 * 60
 UPDATE_FIRST_CHECK_SECONDS = 60
+SYSTEM_EVENT_WAIT = 25
+
+
+class SystemEvents:
+    """Sleep and wake for game pages. Pages long-poll this; the host helper feeds it."""
+    LISTENING_SECONDS = 35
+
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.condition = threading.Condition()
+        self.seq = 0
+        self.events = []
+        self.polled_at = None
+
+    def add(self, seq, events):
+        with self.condition:
+            self.seq = max(self.seq, seq)
+            self.events = (self.events + events)[-16:]
+            self.condition.notify_all()
+
+    def listening(self):
+        with self.condition:
+            return self.polled_at is not None and self.clock() - self.polled_at < self.LISTENING_SECONDS
+
+    def wait(self, after, timeout):
+        deadline = self.clock() + timeout
+        with self.condition:
+            self.polled_at = self.clock()
+            if after >= 0:
+                while self.seq <= after and self.clock() < deadline:
+                    self.condition.wait(min(1, max(0, deadline - self.clock())))
+            self.polled_at = self.clock()
+            return {'seq': self.seq, 'events': [e for e in self.events if e['seq'] > after] if after >= 0 else []}
 
 
 class State:
@@ -38,6 +71,7 @@ class State:
         self.busy = False
         self.network_busy = False
         self.status = {}
+        self.system_events = SystemEvents()
         self.developer = False
         self.catalog = catalog.validate_registry(yaml.safe_load(
             (self.app / 'hosting/catalog.yaml').read_text()))
@@ -232,6 +266,16 @@ class Handler(assets.Handler):
         if path == '/api/update-attention':
             self.json_response({'attention': update_attention(self.state)})
             return
+        if path == '/api/power-state':
+            self.json_response({'busy': power_busy(self.state)})
+            return
+        if path == '/api/system-events':
+            try:
+                after = int(parse_qs(urlsplit(self.path).query).get('after', ['-1'])[0])
+            except ValueError:
+                after = -1
+            self.json_response(self.state.system_events.wait(after, SYSTEM_EVENT_WAIT))
+            return
         if path == '/health':
             self.json_response({'ready': True})
             return
@@ -239,6 +283,9 @@ class Handler(assets.Handler):
         http.server.SimpleHTTPRequestHandler.do_GET(self)
 
     def do_POST(self):
+        if self.path == '/api/system-events/ack':
+            self.system_event_ack()
+            return
         if self.path in {'/api/update', '/api/ui-ready'}:
             ready = self.path == '/api/ui-ready'
             expected_token = self.state.adult_token
@@ -360,6 +407,23 @@ class Handler(assets.Handler):
             self.json_response({'error': 'invalid operation'}, 400)
 
 
+    def system_event_ack(self):
+        if not self.valid_host() or self.headers.get('Origin') != self.origin:
+            self.send_error(403)
+            return
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 < size <= 128:
+                raise ValueError('Invalid size')
+            seq = json.loads(self.rfile.read(size)).get('seq')
+            if type(seq) is not int:
+                raise ValueError('Invalid sequence')
+            if self.state.network:
+                self.state.network.dispatch({'action': 'system-ack', 'seq': seq})
+            self.json_response({'accepted': True})
+        except (ValueError, TypeError, AttributeError, OSError, network.NetworkError):
+            self.json_response({'error': 'invalid request'}, 400)
+
     def request_power(self):
         try:
             size = int(self.headers.get('Content-Length', '0'))
@@ -437,6 +501,32 @@ def check_for_update(state):
         return False
 
 
+def power_busy(state):
+    """Work the idle timer must not interrupt. Button sleep is the person's own call."""
+    if state.busy or state.network_busy:
+        return True
+    if not state.updater:
+        return False
+    try:
+        return state.updater.dispatch({'action': 'status'}).get('phase') in {'checking', 'downloading', 'trial'}
+    except (OSError, ValueError, TypeError):
+        return False    # A failed update reports as an error, and that's not work in progress.
+
+
+def relay_system_events(state, wait=time.sleep, keep_going=lambda: True):
+    """Carry sleep and wake from the host helper to game pages, acking at once when none listens."""
+    seq = -1
+    while keep_going():
+        try:
+            reply = state.network.dispatch({'action': 'system-wait', 'after': seq, 'timeout': 20})
+            seq = reply['seq']
+            state.system_events.add(seq, reply['events'])
+            if reply['events'] and not state.system_events.listening():
+                state.network.dispatch({'action': 'system-ack', 'seq': seq})
+        except (network.NetworkError, KeyError, TypeError):
+            wait(5)
+
+
 def watch_catalog(state, wait=time.sleep):
     """Discovery is independent of app releases; retry offline failures quietly."""
     while True:
@@ -460,4 +550,5 @@ if __name__ == '__main__':
         state.network = network.Onboarding(network.Simulation(), state.data)
     threading.Thread(target=watch_catalog, args=(state,), daemon=True).start()
     threading.Thread(target=watch_for_updates, args=(state,), daemon=True).start()
+    threading.Thread(target=relay_system_events, args=(state,), daemon=True).start()
     make_server(state).serve_forever()

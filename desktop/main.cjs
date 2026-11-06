@@ -1,4 +1,4 @@
-const {app,BrowserWindow,protocol,ipcMain}=require('electron');
+const {app,BrowserWindow,protocol,ipcMain,powerMonitor}=require('electron');
 const fs=require('node:fs/promises');
 const path=require('node:path');
 const {CloudHub}=require('./cloud.cjs');
@@ -130,6 +130,8 @@ app.whenReady().then(async()=>{
   win.webContents.on('will-navigate',guardNavigation);
   win.webContents.on('will-redirect',guardNavigation);
   win.webContents.session.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
+  // Same game events as every host; only the signal source differs.
+  for(const [signal,type] of [['suspend','sleep'],['resume','wake']])powerMonitor.on(signal,()=>{if(!win.isDestroyed())win.webContents.executeJavaScript(`window.HandheldGameShell?.systemEvent(${JSON.stringify(type)},{reason:'system'})`).catch(()=>{});});
   win.on('blur',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.pause()); window.handheldAudio?.suspend();').catch(()=>{}));
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
