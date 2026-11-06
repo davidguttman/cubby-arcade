@@ -308,13 +308,25 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.state, power.AWAKE)
         self.assertEqual(self.events()[-1], ('wake', 'button'))
 
-    def test_a_press_during_a_dark_wake_lights_up_at_once(self):
+    def test_a_press_during_a_dark_wake_comes_straight_back_lit(self):
         self.sleep_now()
         self.alarm_fires()
         self.controller.power_pressed()
+        self.controller.prepare_for_sleep()   # The re-suspend was already on its way.
+        self.assertEqual(self.host.alarm, power.PRESSED_WAKE)
+        self.alarm_fires()
         self.assertEqual(self.controller.state, power.AWAKE)
         self.assertTrue(self.host.lit)
         self.assertFalse(self.host.frozen)
+        self.assertEqual(self.events()[-1], ('wake', 'button'))
+
+    def test_a_press_is_not_remembered_into_the_next_sleep(self):
+        self.sleep_now()
+        self.controller.power_pressed()
+        self.alarm_fires()
+        self.sleep_now()
+        self.alarm_fires()
+        self.assertEqual(self.controller.state, power.DARK)
 
     def test_low_battery_powers_off_without_lighting_up(self):
         self.sleep_now()

@@ -50,7 +50,9 @@ recompute.
 
 A wake stays dark only if every sign agrees: the alarm was due, the RTC interrupt
 count rose, the power key interrupt count didn't, and the input watcher saw no press.
-Anything else lights up as a real wake, so a person's press always works. Cog stays
+Anything else lights up as a real wake, so a person's press always works. A press during
+a dark wake, when the next suspend is already on its way, brings it straight back about
+3 seconds later. Cog stays
 stopped, the display off and the sink muted until then. A step that stalls also ends
 lit, and a marker in `/run` restores the display if the helper dies while dark.
 

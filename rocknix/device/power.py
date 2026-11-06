@@ -48,6 +48,7 @@ SUSPEND_START_TIMEOUT = 15
 RESUME_TIMEOUT = 30
 POWEROFF_TIMEOUT = 60
 POWER_KEY_GRACE = 2
+PRESSED_WAKE = 3
 BUSY_RETRY = 5
 EXTERNAL_CHECK = 5
 INPUT_RESCAN = 5
@@ -417,9 +418,8 @@ class Controller:
     def power_pressed(self):
         self.input_activity()
         self.press_at = self.host.monotonic()
-        if self.state == DARK:
-            self.wake('button')
-        elif self.state == ASLEEP:
+        # Suspend is already on its way in either state, so it can't be called off here.
+        if self.state in (DARK, ASLEEP):
             self.pressed_in_dark = True
 
     def prepare_for_sleep(self):
@@ -437,9 +437,11 @@ class Controller:
             reading = self.host.battery()
             self.log(f'sleep reason={reason} battery={reading}')
             self.next_wake = self.plan.start(reading, self.host.now())
+            self.pressed_in_dark = False
         elif self.state != DARK:
             return
-        self.pressed_in_dark = False
+        elif self.pressed_in_dark:
+            self.next_wake = PRESSED_WAKE   # Someone is waiting. Come straight back, lit.
         self.arm(self.next_wake if self.can_be_dark else None)
         self.host.release_delay_lock()
         self.state = ASLEEP
