@@ -320,15 +320,15 @@ Only after **both** platform jobs succeed does its publishing job create the
 matching `vX.Y.Z` tag and draft GitHub Release, upload all seven assets, verify
 every remote asset's size and SHA-256 digest, then publish the complete release
 and advance the signed handheld feed. The landing-page download links follow
-the latest release without source edits or manual uploads. After the commit's
-checks succeed, Render automatically deploys the website and cloud launcher
-used by desktop apps from `main`; no separate tag push or manual deploy is
-needed. A handheld installs the published update only when an adult chooses
+the latest release without source edits or manual uploads. Independently,
+Render automatically deploys the website and cloud launcher used by desktop
+apps from `main` with **On Commit**, without waiting for release checks; no
+separate tag push or manual deploy is needed. A handheld installs the published update only when an adult chooses
 the gear tab's updates tile. No npm, app-store or executable self-update
 publication is involved. See [release details and retries](docs/releases.md).
 
 Main pushes without a version bump still run checks/builds and deploy the
-website after checks pass, but never overwrite a published platform release.
+website On Commit, but never overwrite a published platform release.
 New platform artifacts require a new version. Matching tag pushes and manual
 runs on `main` can retry publication; other branches only build/test.
 
@@ -840,9 +840,11 @@ these routes; this does not change the installed launcher or children's UI.
 
 ## Source-hosted cloud deployment and independent game updates
 
-Render automatically deploys source `main` after its checks pass, using
-`branch: main` and `autoDeployTrigger: checksPass` in the checked-in `render.yaml`.
-The static build is:
+Production hosting is a Render **Static Site** in the **Superstruct** workspace,
+managed through the Render dashboard/API, not a repository Blueprint. Configure
+branch **main** and auto-deploy **On Commit**. Website deploys do not wait for
+GitHub release checks; platform publication and device-feed verification remain
+separate gates described in [Cubby releases](docs/releases.md). The static build is:
 
 ```sh
 uv run python hosting/build.py
@@ -857,11 +859,25 @@ the Store. It keeps all immutable previously published releases (including the
 unlisted Little Camp) for existing clients. `hosting/releases/` contains the exact historical distribution
 archives, not editable game source. Their size/hash/provenance inventory is
 `hosting/releases.json`; old package and media URLs remain byte-identical.
-Render serves `.cache/web` from its Static Site CDN, with the routes, CORS, JSON
-content types and cache headers declared in `render.yaml`. Python runs only at
-build time. There is no request-time process, cold-starting web service or API
-server. `hosting/serve.py` remains a local development/test adapter, not the
-production host.
+Render serves `.cache/web` from its Static Site CDN. Maintain these routes and
+headers in the dashboard/API alongside the `cubby.david.app` custom domain:
+
+- Rewrite `/play` and `/play/` to `/native/index.html` (not redirects).
+- On `/*`, set `Access-Control-Allow-Origin: *`,
+  `Cache-Control: public, max-age=0, must-revalidate`, and
+  `X-Content-Type-Options: nosniff`.
+- On `/catalog`, `/library`, and `/hub-manifest.json`, set
+  `Content-Type: application/json; charset=utf-8`.
+- Override caching to `public, max-age=31536000, immutable` for the retained
+  `/store/line-cutter/0.2.0/*`, `/store/line-cutter/0.2.1/*`,
+  `/store/line-cutter/0.3.0/*`, and `/store/little-camp/0.1.0/*` artifacts.
+  Stable manifests must remain revalidated, not immutable.
+
+Python runs only at build time. There is no runtime start command, request-time
+process, cold-starting web service or API server. `hosting/serve.py` remains a
+local development/test adapter, not the production host. Repository tests check
+the exported artifact; verify the managed routes and response headers on the
+deployed site separately.
 
 New exports advertise Line Cutter's independent stable manifest:
 `https://linecutter.david.app/store/line-cutter/manifest.json`. The previous Cubby

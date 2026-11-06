@@ -18,10 +18,14 @@ immutable WPE runtime, and ROCKNIX retain their own independent versions.
    `cubby-device-stable/manifest.json` and its detached signature. Existing
    handhelds keep using their configured feed and trust key, and update through
    the gear tab → updates tile. No reinstall, reflash, or save reset.
-5. Render's Static Site tracks `main` with `autoDeployTrigger: checksPass` in
-   `render.yaml`. After the commit's checks succeed, Render automatically builds
-   and deploys the website, including `/play` and the cloud launcher used by
-   Windows/Linux apps. No second push, manual web deploy, or tag push is needed.
+5. Independently of those release gates, Render's Static Site in **Superstruct**
+   tracks `main` with auto-deploy **On Commit**, managed in the dashboard/API.
+   It builds with `python3 -m pip install -r requirements.txt && python3 hosting/build.py`
+   and publishes `.cache/web`, with no runtime start command. Each main commit
+   deploys the website, including `/play` and the cloud launcher used by
+   Windows/Linux apps, without waiting for checks. No second push, manual web
+   deploy, or tag push is needed. This does not bypass platform-release or
+   device-feed verification.
 
 One versioned push therefore publishes the Windows, Linux, and handheld release
 and updates the website. Publication does not install the handheld update:
@@ -35,7 +39,7 @@ components must be below 10000. This is larger than the legacy sequence 4 at
 desktop assets on the shared `vX.Y.Z` release.
 
 An ordinary push keeping an already published version performs checks/builds
-and automatically updates the website after checks pass, but does not overwrite
+and independently auto-deploys the website On Commit, but does not overwrite
 or manufacture another release. New platform artifacts require a new version.
 Main version changes publish automatically; matching tag pushes and manual runs
 on main can retry.
