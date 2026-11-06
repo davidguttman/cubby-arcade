@@ -245,3 +245,22 @@ The Python suite ran 256 tests with one skipped. Unit tests use ephemeral keys
 and disposable files; browser regressions are explicit 640×480 simulations.
 Default trust provisioning is tested, but a newly composed first-boot image and
 abrupt physical power interruption still need separate hardware acceptance.
+
+## Hardware validation
+
+On 2026-11-06 an RG353V ran this path from its installed 0.20.1 layout, using
+signed test builds on a separate feed:
+
+- The old coordinator installed a release, then the bridge armed without moving
+  `current`. The first boot through the guard confirmed the new layout 39 seconds
+  after power-on, and later reboots stayed clean.
+- A whole-device update replaced the coordinator and device files.
+- Rollback worked for a session that exits, a coordinator that raises on start, a
+  hub that never reports ready (122 seconds), and a hard crash during a trial.
+- A runtime update took 141 seconds to download, unpack, verify and probe, and rolled
+  back across runtimes when its session failed.
+- Corrupting a confirmed release stepped down to `previous` (67 seconds after
+  power-on), then to the old-layout `fallback`, which took a new update and migrated
+  again.
+
+Key rotation and the final step down to stock ROCKNIX are covered by tests only.
