@@ -1,0 +1,1 @@
+Built-in image_gen. Portrait and landscape: replace HandheldHub with Cubby, preserving composition and style. Hero: regenerate matching textless panorama. Logo: replace wordmark with Cubby, preserve cream type and mint/coral orbit, transparent. Icon: regenerate handheld with C monogram, transparent. Steam sizes: 600x900, 920x430, 1920x620, 1280x427, 512x512.
