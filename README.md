@@ -268,6 +268,20 @@ Call `verifyHostOSD()` in the browser after loading beside `/runtime/core/`.
 Run shared input/platform/lifecycle regression tests with
 `node --test tests/shared_core.cjs` or `uv run python -m unittest discover -s tests`.
 
+## Delete a game's saves
+
+Open the hub's gear tab, select the trash-can **Game saves** tile, and answer
+its adult math check. Choose a game, then **Delete saves** to confirm, or
+**Cancel** to keep its progress. This adult-only page also lists saved games
+that are no longer installed. It deletes the selected game's saves, not the
+game itself; other games, favorites, controls and token budgets stay unchanged.
+
+This works with browser/device localStorage and desktop native saves. The
+published Line Cutter `linecutter_run` alias is included so old progress cannot
+reappear after reset. Standalone games on other origins and arbitrary storage
+outside Cubby's SDK namespace are not managed by this flow. Uninstall still
+keeps saves; it does not imply a reset.
+
 ## Web host: same launcher and packages
 
 ```sh
