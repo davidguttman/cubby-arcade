@@ -1,0 +1,19 @@
+--- a/launcher/cog-launcher.c
++++ b/launcher/cog-launcher.c
+@@ -298,8 +298,16 @@
+     if (!view_backend)
+         g_error("Could not instantiate any WPE backend.");
+ 
++    /* Cubby appliance profile: gamepad input is polled, so it is never a user
++     * gesture. WebKit's default website policy (allow without sound) overrides
++     * media-playback-requires-user-gesture and would hold audio until a touch. */
++    g_autoptr(WebKitWebsitePolicies) website_policies = NULL;
++    if (g_strcmp0(g_getenv("COG_PLATFORM_GTK4_KIOSK"), "1") == 0)
++        website_policies = webkit_website_policies_new_with_policies("autoplay", WEBKIT_AUTOPLAY_ALLOW, NULL);
++
+     g_autoptr(WebKitWebView) web_view =
+         g_object_new(WEBKIT_TYPE_WEB_VIEW, "settings", cog_shell_get_web_settings(shell), "web-context", web_context,
++                     "website-policies", website_policies,
+ #if COG_USE_WPE2
+                      "network-session", self->network_session,
+ #endif

@@ -1,9 +1,9 @@
 import hashlib
 import http.client
 import json
-import configparser
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import tempfile
@@ -13,6 +13,8 @@ import unittest
 from unittest.mock import patch
 
 from rocknix.network import NetworkError, Onboarding, Simulation
+from rocknix.updates import app_path
+from runtime import server as assets
 from rocknix.server import State, app_version, check_for_update, make_server, update_attention
 
 
@@ -21,41 +23,68 @@ PACKAGE = ROOT / 'hosting/releases/line-cutter/0.2.1/line-cutter-0.2.1.game.zip'
 
 
 class SessionTests(unittest.TestCase):
-    def test_gamepad_session_loads_audio_autoplay_policy(self):
+    def test_session_launches_the_cog_the_release_carries(self):
         # Exercise the actual launcher without requiring the handheld's Wayland
         # compositor or ARM browser. Only external processes and mount paths are
-        # substituted; inspect the config Cog really receives.
+        # substituted. The runtime's stock Cog holds audio until a touch, so
+        # the session must never fall through to it.
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
             socket_path = temporary / 'wayland-0'
+            result = temporary / 'launched'
+            bundled = temporary / 'app/runtime/native/rg353v'
+            stock = temporary / 'opt-cog'
+            tools = temporary / 'tools'
+            for folder, name, body in [
+                (bundled, 'cog', 'printf "bundled %s\\n" "$*" > "$RESULT"\n'),
+                (stock, 'cog', 'printf "stock %s\\n" "$*" > "$RESULT"\n'),
+                (tools, 'python3', 'if [ "$1" = -m ]; then exec sleep 30; fi\nexit 0\n'),
+            ]:
+                folder.mkdir(parents=True)
+                executable = folder / name
+                executable.write_text('#!/bin/sh\n' + body)
+                executable.chmod(0o755)
             with socket.socket(socket.AF_UNIX) as compositor:
                 compositor.bind(str(socket_path))
-                for name, body in {
-                    'python3': 'if [ "$1" = -m ]; then exec sleep 30; fi\nexit 0\n',
-                    'cog': ('for argument do\n'
-                            '  [ "$argument" != --enable-sandbox ] || exit 2\n'
-                            'done\n'
-                            'printf "%s\\n" "$@" > "$COG_ARGUMENTS"\n'),
-                }.items():
-                    executable = temporary / name
-                    executable.write_text('#!/bin/sh\n' + body)
-                    executable.chmod(0o755)
                 script = (ROOT / 'rocknix/session.sh').read_text()
-                script = script.replace('cd /opt/cubby', 'cd ' + str(ROOT))
+                script = script.replace('/opt/cubby-cog-gtk4-kiosk/bin', str(stock))
+                script = script.replace('/opt/cubby', str(temporary / 'app'))
                 script = script.replace('/run/host-runtime', str(temporary))
                 script = script.replace('/var/lib/handheld', str(temporary / 'state'))
-                arguments = temporary / 'arguments'
-                environment = dict(os.environ, PATH=str(temporary) + ':' + os.environ['PATH'],
-                                   WAYLAND_DISPLAY='wayland-0', COG_ARGUMENTS=str(arguments))
+                environment = dict(os.environ, PATH=str(tools) + ':' + os.environ['PATH'],
+                                   WAYLAND_DISPLAY='wayland-0', RESULT=str(result))
                 subprocess.run(['bash', '-c', script], env=environment, check=True, timeout=5)
-                received = arguments.read_text().splitlines()
-                self.assertIn('--webprocess-failure=exit', received)
-                self.assertIn('--config', received)
-                config_path = Path(received[received.index('--config') + 1])
-                settings = configparser.ConfigParser()
-                settings.read(ROOT / config_path)
-                self.assertFalse(settings.getboolean('websettings',
-                                                     'media-playback-requires-user-gesture'))
+            launched = result.read_text()
+            self.assertTrue(launched.startswith('bundled '), launched)
+            self.assertIn('--webprocess-failure=exit', launched)
+
+
+class BundledCogTests(unittest.TestCase):
+    COG = ROOT / 'runtime/native/rg353v/cog'
+
+    def test_release_carries_an_arm64_cog_with_the_autoplay_policy(self):
+        body = self.COG.read_bytes()
+        self.assertEqual(body[:4], b'\x7fELF')
+        self.assertEqual(int.from_bytes(body[18:20], 'little'), 183)  # EM_AARCH64
+        for marker in [b'website-policies', b'autoplay', b'COG_PLATFORM_GTK4_KIOSK']:
+            self.assertIn(marker, body)
+        self.assertTrue(self.COG.stat().st_mode & 0o111)
+
+    def test_updater_accepts_the_path_on_existing_devices(self):
+        # updates.py is a baseline file that app releases cannot replace.
+        self.assertEqual(app_path('runtime/native/rg353v/cog'), 'runtime/native/rg353v/cog')
+
+    def test_kiosk_recipe_stays_valid_because_autoplay_is_a_separate_patch(self):
+        recipe = (ROOT / 'rocknix/build-kiosk-rootfs.sh').read_text()
+        self.assertNotIn('cog-0.18.4-autoplay.patch', recipe)
+        pinned = re.search(r'^PATCH_SHA=(\w+)$', recipe, re.MULTILINE).group(1)
+        kiosk = (ROOT / 'rocknix/patches/cog-0.18.4-gtk4-kiosk.patch').read_bytes()
+        self.assertEqual(hashlib.sha256(kiosk).hexdigest(), pinned)
+
+    def test_binary_is_not_served_to_pages(self):
+        handler = object.__new__(assets.Handler)
+        served = handler.translate_path('/runtime/native/rg353v/cog')
+        self.assertTrue(served.endswith('.missing-runtime-asset'), served)
 
 
 class VersionTests(unittest.TestCase):

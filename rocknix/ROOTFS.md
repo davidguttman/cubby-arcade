@@ -68,6 +68,22 @@ Cog COPYING, the patch, package inventory and provenance. Like the baseline,
 this fixes inputs but not generated timestamps: every rebuilt archive needs an
 independent audit and reviewed digest change, not automatic acceptance.
 
+### Cog launcher carried by app releases
+
+`rocknix/session.sh` runs `runtime/native/rg353v/cog`, not the runtime's copy.
+WebKit's default website policy (autoplay without sound) overrides
+`media-playback-requires-user-gesture`, and gamepad input is never a user
+gesture, so the runtime's Cog holds game audio until a touch. The extra
+`patches/cog-0.18.4-autoplay.patch` sets the policy to allow in the kiosk profile.
+
+The launcher is a separate file so that a Cog fix can ship in a normal release
+without changing the pinned runtime. It lives under `runtime/` because the
+baseline updater's allowlist cannot change on installed devices, and the
+servers' explicit allowlists keep it from being served to pages. Rebuild it with
+`rocknix/build-bundled-cog.sh COG_SOURCE.tar.gz`. Accept it on hardware: from a
+cold game launch with only gamepad input, `pactl list short sink-inputs` must
+show a stream and the game must be audible.
+
 Archive downloads use `apt_archives.py` in both build and runtime phases.
 It resolves apt's selected versions without downloading, requires each archive's
 size and SHA256 from the authenticated package indexes, then fetches boundedly

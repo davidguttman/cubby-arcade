@@ -11,7 +11,9 @@ export COG_PLATFORM_NAME=gtk4
 export COG_PLATFORM_GTK4_KIOSK=1
 export GDK_BACKEND=wayland
 export GSK_RENDERER=opengl
-export PATH=/opt/cubby-cog-gtk4-kiosk/bin:$PATH
+# App releases carry their own Cog launcher (rocknix/build-bundled-cog.sh).
+# Its library and GTK4 module still come from the pinned runtime.
+export PATH=/opt/cubby/runtime/native/rg353v:/opt/cubby-cog-gtk4-kiosk/bin:$PATH
 mkdir -p "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 server_pid=
 session_log() {
@@ -76,4 +78,4 @@ session_log 'HTTP ready'
 # to the ROCKNIX launcher through the outer bounded restart/fallback wrapper.
 # This bundle uses WPE WebKit's 2.0 API, where sandboxing is always enabled;
 # Cog's --enable-sandbox option exists only for the older 1.x API.
-cog --config rocknix/cog.ini --platform=gtk4 --gamepad=manette --webprocess-failure=exit http://127.0.0.1:8080/
+cog --platform=gtk4 --gamepad=manette --webprocess-failure=exit http://127.0.0.1:8080/
