@@ -84,7 +84,7 @@
       kind: options.kind || 'web',
       settings: options.settings || [],
       capabilities: Object.freeze({saves:!!storage || nativeSaves, fullscreen:!!(doc && doc.documentElement && doc.documentElement.requestFullscreen),
-        tokens:typeof native.account==='function'&&typeof native.launch==='function', quit:typeof native.quit === 'function', install:typeof native.install === 'function', uninstall:typeof native.uninstall === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
+        tokens:typeof native.account==='function'&&typeof native.launch==='function', quit:typeof native.quit === 'function', power:typeof native.power === 'function', install:typeof native.install === 'function', uninstall:typeof native.uninstall === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
       saves,
       async library() {
         if (native.library) return native.library();
@@ -111,6 +111,7 @@
       refillTokens:native.refillTokens&&native.refillTokens.bind(native),
       onAccountState:native.onAccountState&&native.onAccountState.bind(native),
       quit: typeof native.quit === 'function' ? native.quit.bind(native) : undefined,
+      power: typeof native.power === 'function' ? native.power.bind(native) : undefined,
       install: native.install && native.install.bind(native),
       uninstall: typeof native.uninstall === 'function' ? native.uninstall.bind(native) : undefined,
       installStatus: native.installStatus && native.installStatus.bind(native),

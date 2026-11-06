@@ -209,8 +209,23 @@ class HostSocketTests(unittest.TestCase):
                     self.assertFalse(client.dispatch({'action': 'finish'})['complete'])
                     client.dispatch({'action': 'connect', 'bssid': '02:00:00:00:00:01', 'password': 'cubby-test'})
                     self.assertTrue(client.dispatch({'action': 'finish'})['complete'])
+                    with patch('rocknix.network.threading.Timer') as timer:
+                        self.assertEqual(client.dispatch({'action': 'power', 'mode': 'reboot'}), {'accepted': True})
+                        timer.assert_called_once_with(.3, network.run_power, ('reboot',))
+                        timer.return_value.start.assert_called_once_with()
+                        for request in ({'action': 'power'}, {'action': 'power', 'mode': 'halt'},
+                                        {'action': 'power', 'mode': 'reboot', 'force': True}):
+                            with self.assertRaisesRegex(network.NetworkError, '^invalid_request$'):
+                                client.dispatch(request)
+                        timer.assert_called_once()
                 finally:
                     server.shutdown()
                     thread.join()
+
+    def test_power_runs_only_the_named_systemctl_verb(self):
+        with patch('rocknix.network.subprocess.run') as run:
+            run.return_value.returncode = 0
+            network.run_power('poweroff')
+        self.assertEqual(run.call_args.args[0], ['/usr/bin/systemctl', '--no-block', 'poweroff'])
 
 if __name__ == '__main__': unittest.main()

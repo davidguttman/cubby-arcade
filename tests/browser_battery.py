@@ -51,9 +51,12 @@ async def exercise(cdp, origin, screenshots):
                 screenshots.mkdir(parents=True, exist_ok=True)
                 await page.screenshot(path=str(screenshots / f'battery-{width}x{height}.png'))
                 await gear.click()
-                await page.get_by_role('button', name='Wi-Fi settings', exact=True).click()
-                gate = page.get_by_role('dialog', name='Adult check', exact=True)
+                gate = page.get_by_role('group', name='Adult check', exact=True)
                 await gate.wait_for(state='visible')
+                assert await page.locator('.settings-tile').count() == 0
+                gate_box = await gate.bounding_box()
+                assert gate_box['y'] >= header_box['y'] + header_box['height'] and gate_box['y'] + gate_box['height'] <= height, gate_box
+                await page.screenshot(path=str(screenshots / f'settings-gate-{width}x{height}.png'))
                 assert '/adult/network' not in page.url
                 print(f'{width}x{height}: battery top-right, no gear/nav overlap; adult settings remain math-gated')
             finally:

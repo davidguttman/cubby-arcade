@@ -14,6 +14,7 @@ import socket
 import socketserver
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import urllib.request
@@ -23,6 +24,7 @@ CATALOG = 'https://cubby.david.app/catalog'
 SOCKET = '/run/cubby-network/socket'
 BSSID = re.compile(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}')
 ERRORS = {'invalid_request', 'connection_failed', 'busy', 'unavailable', 'unsupported_network'}
+POWER_MODES = {'poweroff', 'reboot'}
 
 
 class NetworkError(Exception):
@@ -275,6 +277,27 @@ class HostClient:
             raise NetworkError('unavailable') from None
 
 
+def run_power(mode):
+    result = subprocess.run(['/usr/bin/systemctl', '--no-block', mode], stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30, check=False)
+    if result.returncode:
+        print('Cubby power request failed:', mode, result.returncode, file=sys.stderr)
+
+
+def request_power(request, delay=.3):
+    """Power off or restart the host.
+
+    This helper is the only process outside the chroot that an app update can
+    change: device/chroot-run.sh is a baseline file and update packages can't add
+    new rocknix files, so a separate host helper would never reach a shipped
+    handheld. Shutdown stops this service at once, so answer before starting it.
+    """
+    if set(request) != {'action', 'mode'} or request['mode'] not in POWER_MODES:
+        raise NetworkError('invalid_request')
+    threading.Timer(delay, run_power, (request['mode'],)).start()
+    return {'accepted': True}
+
+
 class HostHandler(socketserver.StreamRequestHandler):
     def handle(self):
         # Mode 0700 directory plus root peer check: even a local non-root user
@@ -287,7 +310,11 @@ class HostHandler(socketserver.StreamRequestHandler):
             line = self.rfile.readline(4097)
             if len(line) > 4096 or not line.endswith(b'\n'):
                 raise NetworkError('invalid_request')
-            result = self.server.manager.dispatch(json.loads(line))
+            request = json.loads(line)
+            if isinstance(request, dict) and request.get('action') == 'power':
+                result = request_power(request)
+            else:
+                result = self.server.manager.dispatch(request)
         except NetworkError as error:
             result = {'error': str(error) if str(error) in ERRORS else 'unavailable'}
         except (OSError, ValueError, TypeError):

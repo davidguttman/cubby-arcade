@@ -1,6 +1,7 @@
 /* Isolated, self-terminating family-budget verification; never use a family profile. */
 const fs=require('node:fs/promises'),path=require('node:path');
 const {TokenAccount}=require('./tokens.cjs');
+const {passGate}=require('./hub-smoke.cjs');
 async function run(win,launcher,account,library,options={}){
  const assert=(ok,message)=>{if(!ok)throw Error(message);};
  const evaluate=script=>win.webContents.executeJavaScript(script);
@@ -48,7 +49,7 @@ async function run(win,launcher,account,library,options={}){
   assert(account.status().balance===0,'Encoded zero launch changed balance');
  }
  assert(!encodedFailures.length,encodedFailures.join('; '));
- await evaluate(`document.querySelector('[aria-label=options]').click();document.querySelector('[aria-label="Adult keyboard setup"]').click()`);await capture('adult-refill');
+ await evaluate(`document.querySelector('[aria-label=options]').click();(${passGate})(document);document.querySelector('[aria-label="Adult keyboard setup"]').click()`);await capture('adult-refill');
  await evaluate('document.querySelector(".refill-tokens").click()');await wait(()=>account.status().balance===10,'adult refill');
  await evaluate(`document.querySelector('dialog.adult-setup').dispatchEvent(new Event('cancel',{cancelable:true}));document.querySelector('[aria-label=library]').click()`);
  await play();assert(account.status().balance===9,'Refilled launch did not debit');await home();

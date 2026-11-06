@@ -195,7 +195,7 @@ app.whenReady().then(async()=>{
       await new Promise(resolve=>setTimeout(resolve,400));
       if(!await win.webContents.executeJavaScript('!!document.querySelector(".game-card")'))throw Error('System menu did not return to library');
       win.once('closed',()=>console.log('Desktop Quit closed window'));
-      await win.webContents.executeJavaScript(`document.querySelector('[aria-label=options]').click();document.querySelector('.quit-app').click();document.querySelector('[aria-label=\"Confirm quit\"]').click();`);
+      await win.webContents.executeJavaScript(`document.querySelector('[aria-label=options]').click();(${require('./hub-smoke.cjs').passGate})(document);document.querySelector('.quit-app').click();document.querySelector('[aria-label=\"Confirm quit\"]').click();`);
     }catch(error){console.error(error);exitSmoke(1);}
   }
 });

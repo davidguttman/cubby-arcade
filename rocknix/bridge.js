@@ -30,6 +30,7 @@
       }
     },
     uninstall: id => request('/api/uninstall', {id}),
+    power: mode => request('/api/power', {mode}),
     updateAttention: () => request('/api/update-attention'),
     version: () => request('/api/version'),
     onInstallState(fn) {
@@ -38,14 +39,14 @@
       return () => {listeners.delete(fn); if (!listeners.size) {clearInterval(timer); timer = null;}};
     }
   };
-  // The hub's gear tab is the only settings screen. Its picture tiles ask an adult
-  // math question, then open the worded pages kept out of the wordless child hub.
+  // The hub's gear tab is the only settings screen. It asks an adult math question,
+  // then these picture tiles open the worded pages kept out of the wordless child hub.
   win.HandheldPlatformOptions = {kind: 'kiosk', bridge, settings: [
     {icon: 'trash', label: 'Game saves', href: '#adult-saves'},
     {icon: 'wifi', label: 'Wi-Fi settings', href: '/adult/network'},
     {icon: 'update', label: 'Cubby updates', href: '/adult/updates', notice: true}
   ]};
-  // Controller shortcut to the gear tab, where the tiles still ask the question:
+  // Controller shortcut to the gear tab, which still asks the question:
   // hold L+R+Start for two seconds.
   win.addEventListener('DOMContentLoaded', () => {
     let held = 0, fired = false;

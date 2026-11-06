@@ -21,10 +21,11 @@
 
 ## Adult settings and notices
 
-- On the device, the hub's gear tab is the only settings screen. Add a page by listing it in `settings` in `rocknix/bridge.js`; its tile asks the math question, then opens the worded page. Never add a second entry point or skip the question.
+- The hub's gear tab is the only settings screen, on every host, and it shows the math question until answered. Leaving the tab locks it again; returning from a worded page does not. On the device, add a page by listing it in `settings` in `rocknix/bridge.js`. Never add a second entry point or skip the question.
 - To flag something an adult should act on, use the shimmer: the `has-notice` class on a button (`runtime/core/hub.css`). Things look normal and a glint of light sweeps across them. No dots, badges, or color changes: David rejected those.
 - The update notice is wired through `updateAttention` in `rocknix/bridge.js` and `update_attention()` in `rocknix/server.py`; `notice: true` on a `settings` entry marks its tile. `check_for_update()` runs in the background, and only from idle or a past failure.
 - `rocknix/updates.py` runs on the device as a baseline coordinator that app updates cannot replace. Changes to it reach new images only, so put new behavior in `rocknix/server.py` where possible.
+- App updates ship only the files `app_path()` in `updates.py` allows and never touch `device/`, so a new `rocknix/*.py` or a `chroot-run.sh` edit won't reach an existing handheld. Work that needs the host outside the chroot goes through `rocknix/network.py`, the one updatable host process (power off and restart do).
 - Releasing: bump `package.json` and `package-lock.json`, then push `main` (see `docs/releases.md`). That only publishes; a device installs it from the updates tile.
 
 ## Scope

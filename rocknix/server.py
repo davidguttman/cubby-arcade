@@ -320,6 +320,9 @@ class Handler(assets.Handler):
                 or self.headers.get('Content-Type') != 'application/json'):
             self.send_error(403)
             return
+        if self.path == '/api/power':
+            self.request_power()
+            return
         if self.path not in {'/api/install', '/api/uninstall'}:
             self.send_error(404)
             return
@@ -353,6 +356,32 @@ class Handler(assets.Handler):
                     self.state.status.pop(game_id, None)
                     self.json_response({'removed': True})
         except (ValueError, TypeError, OSError, KeyError):
+            self.json_response({'error': 'invalid operation'}, 400)
+
+
+    def request_power(self):
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 < size <= 64:
+                raise ValueError('Invalid request size')
+            request = json.loads(self.rfile.read(size))
+            if not isinstance(request, dict) or set(request) != {'mode'} or request['mode'] not in network.POWER_MODES:
+                raise ValueError('Invalid power request')
+            with self.state.lock:
+                # Let installs and Wi-Fi changes finish writing. Not state.busy: a failed
+                # update apply leaves it set until restart, which this request must allow.
+                installing = any(item.get('phase') in {'checking', 'downloading'}
+                                 for item in self.state.status.values())
+                if installing or self.state.active_game or self.state.network_busy:
+                    self.json_response({'error': 'busy'}, 409)
+                    return
+            if not self.state.network:
+                raise network.NetworkError('unavailable')
+            self.state.network.dispatch({'action': 'power', 'mode': request['mode']})
+            self.json_response({'accepted': True})
+        except network.NetworkError:
+            self.json_response({'error': 'unavailable'}, 503)
+        except (ValueError, TypeError):
             self.json_response({'error': 'invalid operation'}, 400)
 
 

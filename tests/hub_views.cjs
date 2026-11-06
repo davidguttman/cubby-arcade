@@ -17,13 +17,13 @@ test('host-supplied settings replace keyboard setup and every icon resolves',()=
  const bridge=require('node:fs').readFileSync(require.resolve('../rocknix/bridge.js'),'utf8');
  assert.doesNotMatch(bridge,/⚙/);assert.match(bridge,/\/adult\/network/);assert.match(bridge,/\/adult\/updates/);
 });
-test('settings math question is random, whole-number and matches its answer',()=>{
+test('settings math question is easy mental math and matches its answer',()=>{
  const {challenge}=require('../runtime/core/hub.js');const ops=new Set();
  for(let i=0;i<2000;i++){
-  const {text,answer}=challenge(),[,a,op,b]=text.match(/^What's (\d+) ([+−×]) (\d+)\?$/);ops.add(op);
-  const value=op==='+'?+a + +b:op==='−'?a-b:a*b;assert.equal(answer,String(value));assert.ok(value>=0&&answer.length<=3);
+  const {text,answer}=challenge(),[,a,op,b]=text.match(/^What's (\d) ([+×]) (\d)\?$/);ops.add(op);
+  const value=op==='+'?+a + +b:a*b;assert.equal(answer,String(value));assert.ok(value>=9&&value<=25,text);
  }
- assert.deepEqual([...ops].sort(),['+','×','−'].sort());
+ assert.deepEqual([...ops].sort(),['+','×'].sort());
 });
 test('options contain adult setup but no manual touch controls',()=>{
  const source=require('node:fs').readFileSync('runtime/core/hub.js','utf8');
@@ -31,7 +31,7 @@ test('options contain adult setup but no manual touch controls',()=>{
 });
 
 // Small DOM adapter for exercising the mounted hub without a browser dependency.
-function mountedHub(games,catalog=[],capabilities={},overrides={}){
+function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverrides={}){
  let onInstall,onAction,revision=0;
  class Element{
   constructor(tag='div'){this.tagName=tag;this.children=[];this.attributes={};this.dataset={};this.hidden=false;this.listeners={};this.style={setProperty(){},removeProperty(){}};this.className='';this.ownerDocument=doc;this.classList={contains:n=>this.className.split(' ').includes(n),add:n=>{if(!this.classList.contains(n))this.className+=' '+n;},remove:n=>{this.className=this.className.split(' ').filter(x=>x!==n).join(' ');},toggle:(n,on)=>{on??=!this.classList.contains(n);this.classList[on?'add':'remove'](n);}};}
@@ -60,7 +60,7 @@ function mountedHub(games,catalog=[],capabilities={},overrides={}){
  const windowListeners=new Map();
  doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:options=>(onAction=options.onAction,{dispose(){}})},
  addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
- removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{}};
+ removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{},setTimeout:()=>0,clearTimeout(){},...windowOverrides};
  const host=new Element(),hub=Hub.mount(host);
  return {host,hub,action:action=>onAction({action}),refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
 }
@@ -151,11 +151,63 @@ test('view cycling enters content, including the first options control',async()=
  action('select');assert.equal(hub.state.view,'options');assert.equal(host.ownerDocument.activeElement,host.querySelector('.options-panel').querySelector('button'));
  action('previousView');assert.equal(host.ownerDocument.activeElement,host.querySelector('.download-game'));
 });
-test('options tab enters its first tile without bypassing the adult gate',async()=>{
- const {host,action}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();
+test('gear tab shows only the question until answered, and locks again on leaving',async()=>{
+ const {host,hub,action}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();
  const tab=host.querySelectorAll('.view-tab')[2];tab.focus();tab.click();
- assert.equal(host.ownerDocument.activeElement,host.querySelector('.settings-tile'));
- assert.ok(!host.querySelector('.settings-gate').open);action('confirm');assert.equal(host.querySelector('.settings-gate').open,true);
+ const panel=host.querySelector('.options-panel');
+ assert.equal(host.querySelector('.settings-tile'),null);assert.equal(host.ownerDocument.activeElement,host.querySelector('.gate-pad').querySelector('button'));
+ action('confirm');assert.equal(host.querySelector('.gate-entry').textContent,'1');
+ wrongGate(host);assert.equal(host.querySelector('.gate-feedback').textContent,'Try again.');assert.equal(host.querySelector('.gate-entry').textContent,'');assert.equal(host.querySelector('.settings-tile'),null);
+ passGate(host);assert.equal(host.querySelector('.settings-gate'),null);assert.equal(host.ownerDocument.activeElement,panel.querySelector('.settings-tile'));
+ hub.show('options');assert.ok(host.querySelector('.settings-tile'),'Staying on the tab stays unlocked');
+ hub.show('library');hub.show('options');assert.equal(host.querySelector('.settings-tile'),null);assert.ok(host.querySelector('.settings-gate'));
+});
+test('every host gates its whole settings tab, including Quit',async()=>{
+ const {host,hub}=mountedHub(games,[],{quit:true},{quit:async()=>{}});await settle();hub.show('options');
+ for(const name of ['.quit-app','.manage-saves','.adult-entry'])assert.equal(host.querySelector(name),null,name);
+ passGate(host);for(const name of ['.quit-app','.manage-saves','.adult-entry'])assert.ok(host.querySelector(name),name);
+});
+test('the question never traps a child: shoulders and Back move on, and the D-pad reaches the tabs',async()=>{
+ const {host,hub,action}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();
+ action('previousView');assert.equal(hub.state.view,'options');action('nextView');assert.equal(hub.state.view,'library');
+ action('previousView');assert.equal(hub.state.view,'options');action('back');assert.equal(hub.state.view,'library');
+ action('previousView');const keys=host.querySelector('.gate-pad').querySelectorAll('button'),active=()=>host.ownerDocument.activeElement;
+ action('right');assert.equal(active(),keys[1]);action('down');assert.equal(active(),keys[4]);action('left');assert.equal(active(),keys[3]);action('up');assert.equal(active(),keys[0]);
+ action('left');assert.equal(active(),keys[2]);action('down');action('down');action('down');assert.equal(active(),keys[11]);action('down');assert.equal(active(),keys[2]);
+ action('up');assert.equal(active(),host.querySelectorAll('.view-tab')[2]);
+});
+test('Start submits the answer from the keypad',async()=>{
+ const {host,hub,action}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();hub.show('options');
+ host.querySelector('.gate-pad').querySelector('button').focus();typeAnswer(host);action('pause');assert.ok(host.querySelector('.settings-tile'));
+});
+test('returning from a worded page keeps the answered gate once; other arrivals ask again',async()=>{
+ const stored=new Map(),sessionStorage={getItem:k=>stored.get(k)??null,setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},history={replaceState(){}};
+ const settings=[{icon:'wifi',label:'Wi-Fi settings',href:'/adult/network'}];
+ const first=mountedHub(games,[],{},{settings},{sessionStorage,history,location:{}});await settle();first.hub.show('options');
+ assert.equal(stored.size,0);passGate(first.host);first.host.querySelector('.settings-tile').click();assert.equal(stored.size,1);
+ const back=mountedHub(games,[],{},{settings},{sessionStorage,history,location:{hash:'#options',pathname:'/'}});await settle();
+ assert.equal(back.hub.state.view,'options');assert.ok(back.host.querySelector('.settings-tile'));assert.equal(stored.size,0);
+ const again=mountedHub(games,[],{},{settings},{sessionStorage,history,location:{hash:'#options',pathname:'/'}});await settle();
+ assert.equal(again.host.querySelector('.settings-tile'),null);assert.ok(again.host.querySelector('.settings-gate'));
+ stored.set('cubby:settings-return','1');
+ const home=mountedHub(games,[],{},{settings},{sessionStorage,history,location:{}});await settle();assert.equal(stored.size,0);home.hub.show('options');assert.equal(home.host.querySelector('.settings-tile'),null);
+});
+test('power tiles confirm first, stay put while shutting down, and report failure',async()=>{
+ let calls=[],fail=false,expired=null;const settings=[{icon:'trash',label:'Game saves',href:'#adult-saves'}];
+ const {host,hub,action}=mountedHub(games,[],{power:true},{settings,power:async mode=>{calls.push(mode);if(fail)throw Error('busy');}},{setTimeout:fn=>{expired=fn;return 1;}});await settle();hub.show('options');
+ assert.equal(host.querySelector('.power-off'),null);passGate(host);
+ const off=host.querySelector('.power-off'),restart=host.querySelector('.restart-device'),dialog=host.querySelector('.quit-confirm');
+ off.click();assert.equal(dialog.open,true);assert.equal(dialog.getAttribute('aria-label'),'Power off?');assert.deepEqual(calls,[]);assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-quit'));
+ action('back');assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,off);assert.deepEqual(calls,[]);
+ restart.click();assert.equal(dialog.getAttribute('aria-label'),'Restart?');action('right');action('confirm');await settle();assert.deepEqual(calls,['reboot']);
+ assert.equal(host.querySelector('.power-note').textContent,'Restarting…');assert.ok(host.querySelector('.confirm-quit').disabled);action('back');assert.equal(dialog.open,true,'Cannot back out of a shutdown');
+ expired();assert.match(host.querySelector('.power-note').textContent,/Could not restart/);assert.equal(host.querySelector('.confirm-quit').disabled,false);
+ action('back');assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,restart);
+ fail=true;off.click();host.querySelector('.confirm-quit').click();await settle();assert.deepEqual(calls,['reboot','poweroff']);assert.match(host.querySelector('.power-note').textContent,/Could not power off/);assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-quit'));
+});
+test('hosts without power control show no power tiles',async()=>{
+ const {host,hub}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();hub.show('options');passGate(host);
+ assert.equal(host.querySelector('.power-off'),null);assert.equal(host.querySelector('.restart-device'),null);
 });
 test('tab activation never focuses a disabled Play action',async()=>{
  const {host}=mountedHub(games,[],{tokens:true},{account:async()=>({available:true,balance:0})});await settle();
@@ -222,23 +274,24 @@ test('late Library discovery moves Store off a game it turns out to own',async()
  assert.equal(hub.state.view,'store');assert.equal(hub.state.detail.id,'two');assert.deepEqual(shelfIds(host),['two','one']);
 });
 
-function passGate(host){
- const q=host.querySelector('.gate-question').textContent.match(/(\d+) ([+−×]) (\d+)/),answer=String(q[2]==='+'?+q[1] + +q[3]:q[2]==='−'?q[1]-q[3]:q[1]*q[3]);
- const keys=host.querySelector('.gate-pad').querySelectorAll('button');for(const digit of answer)keys.find(b=>b.textContent===digit).click();host.querySelector('.gate-submit').click();
-}
+function gateAnswer(host){const q=host.querySelector('.gate-question').textContent.match(/(\d) ([+×]) (\d)/);return String(q[2]==='+'?+q[1] + +q[3]:q[1]*q[3]);}
+function typeGate(host,answer){const keys=host.querySelector('.gate-pad').querySelectorAll('button');for(const digit of answer)keys.find(b=>b.textContent===digit).click();}
+function typeAnswer(host){typeGate(host,gateAnswer(host));}
+function passGate(host){typeAnswer(host);host.querySelector('.gate-submit').click();}
+function wrongGate(host){host.querySelector('.gate-erase').click();host.querySelector('.gate-erase').click();typeGate(host,String(+gateAnswer(host)+1));host.querySelector('.gate-submit').click();}
 test('save deletion requires adult gate and explicit confirmation; cancel preserves saves',async()=>{
  let saves=['one','uninstalled'],resets=[];
  const {host,hub,action}=mountedHub(games,[],{}, {savedGames:async()=>saves,resetGameSaves:async id=>{resets.push(id);saves=saves.filter(x=>x!==id);}});await settle();hub.show('options');
- host.querySelector('.manage-saves').click();assert.equal(host.querySelector('.settings-gate').open,true);assert.equal(host.querySelector('.save-management').open,undefined);
- passGate(host);await settle();assert.equal(host.querySelector('.save-management').open,true);
+ assert.equal(host.querySelector('.manage-saves'),null);assert.equal(host.querySelector('.save-management').open,undefined);
+ passGate(host);host.querySelector('.manage-saves').click();await settle();assert.equal(host.querySelector('.save-management').open,true);
  const choice=host.querySelectorAll('.choose-save')[0];choice.click();assert.deepEqual(resets,[]);assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-reset'));
  host.querySelector('.cancel-reset').click();assert.deepEqual(resets,[]);assert.equal(host.querySelectorAll('.choose-save').length,2);
  host.querySelectorAll('.choose-save')[1].click();host.querySelector('.confirm-reset').click();host.querySelector('.confirm-reset').click();await settle();
  assert.deepEqual(resets,['uninstalled']);assert.match(host.querySelector('.save-feedback').textContent,/deleted/);assert.equal(host.querySelectorAll('.choose-save').length,1);
  action('back');assert.equal(host.querySelector('.save-management').open,false);assert.equal(host.ownerDocument.activeElement.getAttribute('aria-label'),'options');
 });
-test('device save tile uses shared gate; reset errors retain retry and cancel',async()=>{
- const {host,hub}=mountedHub(games,[],{}, {settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}],savedGames:async()=>['one'],resetGameSaves:async()=>{throw Error('denied');}});await settle();hub.show('options');host.querySelector('.settings-tile').click();passGate(host);await settle();
+test('device save tile sits behind the shared gate; reset errors retain retry and cancel',async()=>{
+ const {host,hub}=mountedHub(games,[],{}, {settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}],savedGames:async()=>['one'],resetGameSaves:async()=>{throw Error('denied');}});await settle();hub.show('options');passGate(host);host.querySelector('.settings-tile').click();await settle();
  host.querySelector('.choose-save').click();host.querySelector('.confirm-reset').click();await settle();
  assert.match(host.querySelector('.save-feedback').textContent,/could not/i);assert.equal(host.querySelector('.confirm-reset').disabled,false);assert.equal(host.querySelector('.cancel-reset').disabled,false);
 });

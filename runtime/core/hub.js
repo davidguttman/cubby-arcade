@@ -38,12 +38,12 @@ function startBattery(indicator,win){
  refresh();
  return ()=>{stopped=true;win.clearTimeout(timer);win.clearTimeout(deadline);controller?.abort();};
 }
-// Keeps pre-readers out of adult settings: a sum they can't read or work out.
+// Keeps pre-readers out of adult settings: instant for an adult, out of reach of
+// a small child. Sums always carry and times stay within the five times table.
 function challenge(random=Math.random){
- const int=(lo,hi)=>lo+Math.floor(random()*(hi-lo+1)),op=['+','−','×'][int(0,2)];
- let n1,n2;
- if(op==='×'){n1=int(3,9);n2=int(3,9);}else{n1=int(12,49);n2=int(12,49);if(op==='−'&&n2>n1)[n1,n2]=[n2,n1];}
- return {text:"What's "+n1+' '+op+' '+n2+'?',answer:String(op==='+'?n1+n2:op==='−'?n1-n2:n1*n2)};
+ const int=(lo,hi)=>lo+Math.floor(random()*(hi-lo+1)),op=['+','×'][int(0,1)];
+ const n1=op==='+'?int(6,9):int(3,5),n2=op==='+'?int(6,9):int(3,5);
+ return {text:"What's "+n1+' '+op+' '+n2+'?',answer:String(op==='+'?n1+n2:n1*n2)};
 }
 // Catalog data can change while the launcher code and installed games stay put.
 function startCatalogChecks(win,refresh){
@@ -79,9 +79,25 @@ function mount(host){
  const unsubscribeAccount=platform.onAccountState?.(value=>{account=value;if(!disposed)renderAccount();});
  if(platform.capabilities?.tokens)readAccount();
  const quitDialog=element(host,'dialog','quit-confirm');quitDialog.setAttribute('aria-label','Quit application?');
- let quitting=false;
- function closeQuit(){quitDialog.close();options.querySelector('.quit-app')?.focus();}
- function openQuit(){if(!platform.capabilities.quit||quitting)return;quitDialog.replaceChildren();const picture=element(quitDialog,'div','quit-picture');picture.innerHTML=icon('quit');const actions=element(quitDialog,'div','quit-actions');const cancel=button(actions,'back','Cancel quit',closeQuit,'cancel-quit');button(actions,'quit','Confirm quit',async()=>{if(quitting)return;quitting=true;try{await platform.quit();}catch{quitting=false;closeQuit();}},'confirm-quit');quitDialog.showModal();cancel.focus();}
+ let quitting=false,quitOpener=null,powerTimer=null;
+ function closeQuit(){if(quitting)return;quitDialog.close();quitOpener?.focus();quitOpener=null;}
+ function openQuit(){if(!platform.capabilities.quit||quitting)return;quitOpener=options.querySelector('.quit-app');quitDialog.setAttribute('aria-label','Quit application?');quitDialog.replaceChildren();const picture=element(quitDialog,'div','quit-picture');picture.innerHTML=icon('quit');const actions=element(quitDialog,'div','quit-actions');const cancel=button(actions,'back','Cancel quit',closeQuit,'cancel-quit');button(actions,'quit','Confirm quit',async()=>{if(quitting)return;quitting=true;try{await platform.quit();}catch{quitting=false;closeQuit();}},'confirm-quit');quitDialog.showModal();cancel.focus();}
+ // The device goes dark once the host accepts, so a screen still lit well after
+ // that means the request did not take.
+ function openPower(mode,glyph,label,busyText,opener){
+  if(!platform.capabilities.power||quitting)return;
+  quitOpener=opener;quitDialog.setAttribute('aria-label',label+'?');quitDialog.replaceChildren();
+  const picture=element(quitDialog,'div','quit-picture');picture.innerHTML=icon(glyph);
+  const note=element(quitDialog,'p','power-note');note.setAttribute('role','status');note.textContent=label+'?';
+  const actions=element(quitDialog,'div','quit-actions');
+  const cancel=button(actions,'back','Cancel',closeQuit,'cancel-quit');
+  const failed=()=>{win.clearTimeout(powerTimer);quitting=false;note.textContent='Could not '+label.toLowerCase()+'. Try again.';for(const b of actions.querySelectorAll('button'))b.disabled=false;cancel.focus();};
+  button(actions,glyph,label,async()=>{
+   if(quitting)return;quitting=true;note.textContent=busyText;for(const b of actions.querySelectorAll('button'))b.disabled=true;
+   try{await platform.power(mode);if(!disposed)powerTimer=win.setTimeout(failed,30000);}catch{if(!disposed)failed();}
+  },'confirm-quit');
+  quitDialog.showModal();cancel.focus();
+ }
  quitDialog.addEventListener('cancel',e=>{e.preventDefault();closeQuit();});
  const uninstallDialog=element(host,'dialog','uninstall-confirm');uninstallDialog.setAttribute('aria-label','Uninstall game? Saves are kept');
  let uninstallTarget=null,uninstallBusy=false,uninstallPreview=null;
@@ -144,26 +160,31 @@ function mount(host){
   catch{if(disposed||!saveDialog.open)return;saveHeading();saveText(saveDialog,'p','Saved games could not be loaded. Close this page and try again.','save-feedback').setAttribute('role','status');saveButton(saveDialog,'Back',closeSaveManagement,'close-saves').focus();}
  }
  saveDialog.addEventListener('cancel',e=>{e.preventDefault();if(saveBusy)return;if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();});
- const gate=element(host,'dialog','settings-gate');gate.setAttribute('aria-label','Adult check');
- let gateOpener=null,gateSubmit=null;
- function closeGate(){gate.close();gateOpener?.focus();gateOpener=gateSubmit=null;}
- function openGate(href,opener){
-  gateOpener=opener;gate.replaceChildren();
+ // The gear tab shows this keypad instead of settings until it is answered, and
+ // locks again on leaving the tab. It is the tab's content, not a modal, so the
+ // shoulder buttons and Back still move a wandering child straight on.
+ let settingsUnlocked=false,gateSubmit=null;
+ function renderGate(){
+  const gate=element(options,'div','settings-gate');gate.setAttribute('role','group');gate.setAttribute('aria-label','Adult check');
   const question=element(gate,'h1','gate-question'),entry=element(gate,'output','gate-entry'),note=element(gate,'p','gate-feedback'),pad=element(gate,'div','gate-pad');note.setAttribute('role','status');
   let current,typed='';
   function ask(){current=challenge();question.textContent=current.text;typed='';entry.textContent='';}
-  gateSubmit=()=>{if(!typed)return;if(typed===current.answer){if(href==='#adult-saves'){closeGate();openSaveManagement();}else win.location.href=href;return;}note.textContent='Try again.';ask();};
+  gateSubmit=()=>{if(!typed)return;if(typed===current.answer){settingsUnlocked=true;gateSubmit=null;renderOptions();focusView();return;}note.textContent='Try again.';ask();};
   for(const key of ['1','2','3','4','5','6','7','8','9','back','0','ok']){
    if(key==='back')button(pad,'backspace','Backspace',()=>{typed=typed.slice(0,-1);entry.textContent=typed;},'gate-erase');
    else if(key==='ok')button(pad,'check','Submit answer',()=>gateSubmit(),'gate-submit');
-   else{const digit=element(pad,'button');digit.type='button';digit.textContent=key;digit.addEventListener('click',()=>{if(typed.length<3){typed+=key;entry.textContent=typed;note.textContent='';}});}
+   else{const digit=element(pad,'button');digit.type='button';digit.textContent=key;digit.addEventListener('click',()=>{if(typed.length<2){typed+=key;entry.textContent=typed;note.textContent='';}});}
   }
-  ask();gate.showModal();pad.querySelector('button').focus();
+  ask();
  }
- gate.addEventListener('cancel',e=>{e.preventDefault();closeGate();});
+ // A worded page is a separate document, so one marker carries the answered gate
+ // back to it. It is spent on the next load whatever that load turns out to be.
+ const settingsReturn='cubby:settings-return';
+ function openSetting(href){if(href==='#adult-saves'){openSaveManagement();return;}try{win.sessionStorage.setItem(settingsReturn,'1');}catch{}win.location.href=href;}
+ function returningToSettings(){try{const marked=win.sessionStorage.getItem(settingsReturn)==='1';win.sessionStorage.removeItem(settingsReturn);return marked&&win.location?.hash==='#options';}catch{return false;}}
 
  const views=['library','store','options'],tabs={};let pendingTabFocus=null;for(const name of views)tabs[name]=button(nav,name,name,()=>activateView(name),'view-tab');
- function show(view,initial=false){if(adult)return;pendingTabFocus=null;if(!initial)initialViewPending=false;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
+ function show(view,initial=false){if(adult)return;if(view!=='options')settingsUnlocked=false;pendingTabFocus=null;if(!initial)initialViewPending=false;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
  // Activating a tab enters its content; merely navigating across tabs does not.
  function focusView(){(state.view==='options'?options.querySelector('button:not(:disabled)'):!detail.hidden?primaryAction():null)?.focus();}
  function activateView(view){if(adult)return;show(view);tabs[view].focus();focusView();if(loading[view])pendingTabFocus=view;}
@@ -254,12 +275,13 @@ function mount(host){
  function hideDetail(){pausePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
  // Back changes focus, not selection: a populated shelf always has usable actions.
  function returnToGames(toTab=false){const card=shelf.querySelector('[data-game-id="'+state.detail?.id+'"]');(toTab?tabs[state.view]:card||tabs[state.view]).focus();}
- function renderOptions(){options.replaceChildren();
+ function renderOptions(){options.replaceChildren();gateSubmit=null;
+ if(!settingsUnlocked){renderGate();return;}
  if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
- if(platform.settings?.length){const tiles=element(options,'div','settings-tiles');for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openGate(entry.href,tile),'settings-tile');if(entry.notice)tile.dataset.notice='';}showNotice();showVersion();return;}
- const saves=button(options,'trash','Manage game saves',()=>openGate('#adult-saves',saves),'manage-saves settings-tile');
+ if(platform.settings?.length){const tiles=element(options,'div','settings-tiles');for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}showNotice();showVersion();return;}
+ button(options,'trash','Manage game saves',()=>openSetting('#adult-saves'),'manage-saves settings-tile');
  const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
  }
  // A quiet badge for adults: gear tab, then the tile that needs attention.
@@ -268,7 +290,7 @@ function mount(host){
  async function refreshNotice(){try{notice=!!(await platform.updateAttention()).attention;}catch{notice=false;}if(!disposed)showNotice();}
  if(platform.updateAttention){refreshNotice();noticeTimer=win.setInterval(refreshNotice,60000);}
  let appVersion='';
- function showVersion(){if(!appVersion||options.querySelector('.app-version'))return;element(options,'span','app-version').textContent=appVersion;}
+ function showVersion(){if(!settingsUnlocked||!appVersion||options.querySelector('.app-version'))return;element(options,'span','app-version').textContent=appVersion;}
  platform.version?.().then(value=>{appVersion=value?.version||'';if(!disposed)showVersion();}).catch(()=>{});
  function stopCapture(){if(cancelCapture){cancelCapture();cancelCapture=null;}}
  function closeAdult(apply){stopCapture();if(draft){if(apply)draft.apply();else draft.cancel();}draft=null;adult=false;dialog.close();tabs.options.focus();}
@@ -280,23 +302,25 @@ function mount(host){
  for(const [label,fn,cls] of [['Cancel capture',()=>{stopCapture();feedback.textContent='';renderRows();}],['Reset keys',()=>{stopCapture();draft.reset();feedback.textContent='';renderRows();}],['Cancel',()=>closeAdult(false)],['Save',()=>closeAdult(true),'primary']]){const b=element(actions,'button',cls);b.type='button';b.textContent=label;b.addEventListener('click',fn);}
  dialog.showModal();dialog.querySelector('button').focus();}
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeAdult(false);});
- const input=win.HandheldInput.createInput({navigationShoulders:true,onAction:event=>{const a=event.action;if(gate.open){if(a==='back'||a==='exit')closeGate();else if(a==='pause')gateSubmit();else if(a==='confirm')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const keys=Array.from(gate.querySelectorAll('.gate-pad button')),i=keys.indexOf(doc.activeElement),row=i-i%3;keys[a==='left'?row+(i+2)%3:a==='right'?row+(i+1)%3:a==='up'?(i+9)%12:(i+3)%12]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit'){if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();}else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
+ const input=win.HandheldInput.createInput({navigationShoulders:true,onAction:event=>{const a=event.action;if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit'){if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();}else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
  if(a==='exit'||a==='back'){if(!detail.hidden)returnToGames(doc.activeElement?.classList.contains('game-card')||doc.activeElement===tabs[state.view]);else show('library');return;}
  if(a==='select'||a==='nextView'||a==='previousView'){activateView(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);return;}
+ const padKeys=Array.from(doc.activeElement?.closest?.('.gate-pad')?.querySelectorAll('button')||[]);
+ if(padKeys.length){if(a==='pause'){gateSubmit?.();return;}if(['left','right','up','down'].includes(a)){const i=padKeys.indexOf(doc.activeElement),row=i-i%3;if(a==='up'&&i<3)tabs.options.focus();else padKeys[a==='left'?row+(i+2)%3:a==='right'?row+(i+1)%3:a==='up'?i-3:(i+3)%12]?.focus();return;}}
  const nodes=Array.from(host.querySelectorAll('button')).filter(b=>!b.closest('[hidden]')&&!b.closest('dialog')&&!b.disabled);if(!nodes.length)return;
  const active=doc.activeElement,index=nodes.indexOf(active);
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;stopCatalog();stopBattery();win.clearInterval?.(noticeTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;stopCatalog();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
  // Only initial discovery may choose Store; explicit navigation always wins.
  for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length)show('store');else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
  // Adult pages return here so Back lands where the adult left, not on the library.
- function openSettingsFromHash(){if(win.location?.hash!=='#options'||gate.open)return;initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
- show(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);
+ function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
+ settingsUnlocked=returningToSettings();show(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose,refreshCatalog};
 }

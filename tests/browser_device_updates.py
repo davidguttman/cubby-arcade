@@ -36,6 +36,11 @@ async def exercise(cdp,origin,adapter,directory):
                 await page.wait_for_timeout(80)
                 await page.evaluate('(i)=>fixturePad.buttons[i].pressed=false',i)
                 await page.wait_for_timeout(80)
+            async def answer_gate():
+                a,op,b=(await page.locator('.gate-question').inner_text()).removeprefix("What's ").removesuffix('?').split()
+                for digit in str(int(a)+int(b) if op=='+' else int(a)*int(b)):
+                    await page.locator('.gate-pad').get_by_role('button',name=digit,exact=True).click()
+                await page.get_by_role('button',name='Submit answer').click()
             await page.goto(origin+'/adult/updates')
             await page.get_by_text('Cubby is ready.',exact=False).wait_for()
             await page.screenshot(path=str(directory/'adult-update-idle.png'))
@@ -54,12 +59,14 @@ async def exercise(cdp,origin,adapter,directory):
             await page.screenshot(path=str(directory/'adult-update-restarting.png'))
             await page.goto(origin+'/adult/updates')
             await page.get_by_role('button',name='Back').click()
-            await page.locator('.settings-tile').first.wait_for()
+            await page.locator('.settings-gate').wait_for()  # This visit never answered the question.
             assert page.url==origin+'/'  # Hub consumed the return marker.
             # The version sits quietly on the settings tab only.
             await page.route('**/api/version',lambda route:route.fulfill(json={'version':'1.2.3'}))
             await page.goto(origin+'/')
             await page.get_by_role('button',name='options',exact=True).click()
+            assert await page.locator('.app-version').count()==0  # Settings stay hidden until answered.
+            await answer_gate()
             await page.locator('.app-version').wait_for()
             assert await page.locator('.app-version').inner_text()=='1.2.3'
             await page.wait_for_timeout(400)
@@ -74,6 +81,7 @@ async def exercise(cdp,origin,adapter,directory):
             shimmer="getComputedStyle(document.querySelector('.view-tab.has-notice'),'::after').animationName"
             assert await page.evaluate(shimmer)=='notice-shimmer'
             await page.get_by_role('button',name='options',exact=True).click()
+            await answer_gate()
             await page.locator('.settings-tile[data-notice].has-notice').wait_for()
             assert await page.locator('.settings-tile.has-notice').count()==1
             await page.wait_for_timeout(400)

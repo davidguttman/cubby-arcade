@@ -12,7 +12,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from rocknix.network import Onboarding, Simulation
+from rocknix.network import NetworkError, Onboarding, Simulation
 from rocknix.server import State, app_version, check_for_update, make_server, update_attention
 
 
@@ -148,6 +148,42 @@ class RuntimeTests(unittest.TestCase):
         result = response.status, response.read()
         connection.close()
         return result
+
+    def test_power_is_hub_only_and_waits_for_writes(self):
+        calls = []
+        class Host:
+            def dispatch(self, request):
+                calls.append(request)
+                return {'accepted': True}
+        self.assertEqual(self.request('POST', '/api/power', {'mode': 'reboot'})[0], 503)
+        self.state.network = Host()
+        for headers in ({'X-Cubby-Session': 'wrong'}, {'Origin': 'http://evil.test'},
+                        {'Referer': self.origin + '/games/line-cutter/play.html'},
+                        {'X-Cubby-Session': self.state.adult_token}):
+            self.assertEqual(self.request('POST', '/api/power', {'mode': 'reboot'}, headers)[0], 403, headers)
+        for body in ({'mode': 'halt'}, {'mode': 'reboot', 'force': True}, {}, ['reboot']):
+            self.assertEqual(self.request('POST', '/api/power', body)[0], 400, body)
+        for flag in ('active_game', 'network_busy'):
+            setattr(self.state, flag, True)
+            self.assertEqual(self.request('POST', '/api/power', {'mode': 'poweroff'})[0], 409, flag)
+            setattr(self.state, flag, False if flag != 'active_game' else None)
+        self.state.status['line-cutter'] = {'phase': 'downloading'}
+        self.assertEqual(self.request('POST', '/api/power', {'mode': 'poweroff'})[0], 409)
+        self.state.status['line-cutter'] = {'phase': 'installed', 'version': '1'}
+        self.assertEqual(calls, [])
+        # A failed update apply keeps busy set until restart, so restart has to work.
+        self.state.busy = True
+        self.assertEqual(self.request('POST', '/api/power', {'mode': 'reboot'})[0], 200)
+        self.assertEqual(calls.pop(), {'action': 'power', 'mode': 'reboot'})
+        self.state.busy = False
+        status, body = self.request('POST', '/api/power', {'mode': 'poweroff'})
+        self.assertEqual((status, json.loads(body)), (200, {'accepted': True}))
+        self.assertEqual(calls, [{'action': 'power', 'mode': 'poweroff'}])
+        class Broken:
+            def dispatch(self, request):
+                raise NetworkError('unavailable')
+        self.state.network = Broken()
+        self.assertEqual(self.request('POST', '/api/power', {'mode': 'reboot'})[0], 503)
 
     def install(self):
         self.assertEqual(self.request('POST', '/api/install', {'id': 'line-cutter'})[0], 202)

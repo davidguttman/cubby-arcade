@@ -1,3 +1,5 @@
+// Smokes answer the settings question the way an adult does.
+const passGate=String.raw`root=>{const q=root.querySelector('.gate-question').textContent.match(/(\d) ([+×]) (\d)/),answer=String(q[2]==='+'?+q[1] + +q[3]:q[1]*q[3]);for(const digit of answer)Array.from(root.querySelectorAll('.gate-pad button')).find(b=>b.textContent===digit).click();root.querySelector('.gate-submit').click();}`;
 /* Startup selection is exercised against real DOM with deferred discovery. */
 async function checkStartup(win){
   return win.webContents.executeJavaScript(`(async()=>{
@@ -120,7 +122,7 @@ async function checkHub(win,output){
   await win.webContents.executeJavaScript(`(async()=>{
     const originalPlatform=HandheldPlatform.createPlatform,originalInput=HandheldInput.createInput;
     const host=document.createElement('main');document.body.appendChild(host);
-    let hub,action,quitCount=0;
+    let hub,action,quitCount=0;const passGate=${passGate};
     try{
       HandheldInput.createInput=options=>{if(!options.navigationShoulders)throw Error('Hub shoulder opt-in missing');action=options.onAction;return {dispose(){},captureKeyboard(){return ()=>{};}};};
       HandheldPlatform.createPlatform=()=>({capabilities:{quit:true},quit:async()=>{quitCount++;},library:async()=>[],catalog:async()=>[]});
@@ -128,7 +130,7 @@ async function checkHub(win,output){
       action({action:'previousView'});if(hub.state.view!=='options')throw Error('Left shoulder did not wrap');
       action({action:'nextView'});if(hub.state.view!=='library')throw Error('Right shoulder did not wrap');
       action({action:'nextView'});if(hub.state.view!=='store')throw Error('Right shoulder did not select Store');
-      action({action:'nextView'});
+      action({action:'nextView'});if(host.querySelector('.quit-app'))throw Error('Quit shown before the adult question');passGate(host);
       host.querySelector('.quit-app').click();if(!host.querySelector('.quit-confirm').open)throw Error('Quit confirmation missing');
       action({action:'nextView'});if(hub.state.view!=='options')throw Error('Shoulder escaped modal');
       action({action:'back'});if(host.querySelector('.quit-confirm').open||quitCount)throw Error('Cancel quit failed');
@@ -136,12 +138,12 @@ async function checkHub(win,output){
       if(quitCount!==1)throw Error('Pictorial controller Quit did not call native bridge');
       hub.dispose();host.replaceChildren();
       HandheldPlatform.createPlatform=()=>({capabilities:{quit:false},library:async()=>[],catalog:async()=>[]});
-      hub=HandheldHub.mount(host);hub.show('options');if(host.querySelector('.quit-app'))throw Error('Unsupported Quit exposed');
+      hub=HandheldHub.mount(host);hub.show('options');passGate(host);if(host.querySelector('.quit-app'))throw Error('Unsupported Quit exposed');
     }finally{hub?.dispose();host.remove();HandheldPlatform.createPlatform=originalPlatform;HandheldInput.createInput=originalInput;}
   })()`);
   const report=await win.webContents.executeJavaScript(`(async()=>{
     const assert=(ok,message)=>{if(!ok)throw Error(message);};
-    const prefs=HandheldPreferences.preferences,previous=prefs.get(),previousFavorites=localStorage.getItem('handheld:favorites:v1');
+    const prefs=HandheldPreferences.preferences,previous=prefs.get(),previousFavorites=localStorage.getItem('handheld:favorites:v1');const passGate=${passGate};
     try{
       const card=document.querySelector('.game-card');assert(card,'Grid card missing');
       assert(!document.querySelector('.detail').hidden&&document.querySelector('.play-game'),'Default Library selection must show preview and Play');
@@ -153,7 +155,7 @@ async function checkHub(win,output){
       document.querySelector('.favorite').click();assert(document.querySelector('.favorite').getAttribute('aria-pressed')==='true','Favorite did not toggle');
       document.querySelector('.detail-close').click();assert(!document.querySelector('.detail').hidden&&document.querySelector('.play-game'),'Back hid Library actions');assert(document.querySelector('.detail video')===video&&document.activeElement===card,'Back replaced trailer or lost shelf focus');card.click();assert(document.querySelector('.favorite').getAttribute('aria-pressed')==='true','Favorite lost on returning to shelf');
       document.querySelector('[aria-label="store"]').click();assert(document.querySelector('[aria-current]').getAttribute('aria-label')==='store','Store not selected');assert(document.querySelector('.game-card'),'Catalog missing');
-      document.querySelector('[aria-label="options"]').click();assert(!document.querySelector('.touch-settings,[data-mode]'),'Manual touch options must not exist');
+      document.querySelector('[aria-label="options"]').click();assert(document.querySelector('.settings-gate')&&!document.querySelector('.adult-entry'),'Settings shown before the adult question');passGate(document);assert(!document.querySelector('.touch-settings,[data-mode]'),'Manual touch options must not exist');
       prefs.set({touchOverlay:'on'});assert(!prefs.showTouchControls({navigator:{maxTouchPoints:0}}),'Legacy on override forced desktop controls');
       prefs.set({touchOverlay:'off'});assert(prefs.showTouchControls({navigator:{maxTouchPoints:1}}),'Legacy off override hid touch controls');assert(prefs.get().touchOverlay==='auto','Touch mode must remain automatic');
       document.querySelector('[aria-label="Adult keyboard setup"]').click();assert(document.querySelector('dialog').open,'Adult setup did not open');
@@ -170,7 +172,8 @@ async function checkHub(win,output){
   if(output){const fs=require('node:fs/promises'),path=require('node:path');await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'library.png'),(await win.webContents.capturePage()).toPNG());
     const capture=async(name,script)=>{await win.webContents.executeJavaScript(script);await new Promise(resolve=>setTimeout(resolve,500));await fs.writeFile(path.join(output,name+'.png'),(await win.webContents.capturePage()).toPNG());};
     await capture('detail',"document.querySelector('.game-card').click()");
-    await capture('options',"document.querySelector('[aria-label=options]').click()");
+    await capture('settings-gate',"document.querySelector('[aria-label=options]').click()");
+    await capture('options',`(${passGate})(document)`);
     await capture('quit-confirm',"document.querySelector('.quit-app').click()");
     await win.webContents.executeJavaScript("document.querySelector('[aria-label=\"Cancel quit\"]').click()");
     await capture('adult',"document.querySelector('[aria-label=\"Adult keyboard setup\"]').click()");
@@ -183,4 +186,4 @@ async function checkHub(win,output){
   }
   return {...report,startup};
 }
-module.exports={checkHub,checkStartup};
+module.exports={passGate,checkHub,checkStartup};
