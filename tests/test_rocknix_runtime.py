@@ -256,3 +256,36 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(self.request('POST', '/api/uninstall', {'id': 'line-cutter'})[0], 409)
             finally:
                 release.set()
+
+class CatalogWatchTests(unittest.TestCase):
+    def test_poll_retries_after_startup_and_keeps_last_valid_catalog(self):
+        from rocknix import server
+        with tempfile.TemporaryDirectory() as directory:
+            state = State(ROOT, directory)
+            first = list(state.catalog)
+            with patch.object(server.catalog, 'load', side_effect=[[], ValueError('bad'), first]):
+                self.assertTrue(state.refresh_catalog())
+                self.assertEqual(state.catalog, [])
+                self.assertFalse(state.refresh_catalog())
+                self.assertEqual(state.catalog, [])
+                self.assertEqual(json.loads((state.data / 'catalog.json').read_text()), [])
+                self.assertTrue(state.refresh_catalog())
+                self.assertEqual(state.catalog, first)
+            restarted = State(ROOT, directory)
+            self.assertEqual(restarted.catalog, first)
+
+    def test_watch_polls_repeatedly_but_not_during_game_or_network_setup(self):
+        from rocknix import server
+        with tempfile.TemporaryDirectory() as directory:
+            state = State(ROOT, directory)
+            calls, waits = [], []
+            def wait(seconds):
+                waits.append(seconds)
+                if len(waits) == 1: state.active_game = 'demo'
+                elif len(waits) == 2: state.active_game = None; state.network_busy = True
+                elif len(waits) == 3: state.network_busy = False
+                else: raise InterruptedError('test finished')
+            with patch.object(state, 'refresh_catalog', side_effect=lambda: calls.append(True)):
+                with self.assertRaises(InterruptedError): server.watch_catalog(state, wait=wait)
+            self.assertEqual(calls, [True, True])
+            self.assertEqual(waits, [300, 300, 300, 300])

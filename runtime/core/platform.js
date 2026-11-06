@@ -94,9 +94,9 @@
         if (!Array.isArray(entries)) throw Error('Invalid library');
         return entries;
       },
-      async catalog() {
-        if (native.catalog) return native.catalog();
-        const response = await fetcher(options.catalogURL || '/catalog');
+      async catalog(requestOptions = {}) {
+        if (native.catalog) return native.catalog(requestOptions);
+        const response = await fetcher(options.catalogURL || '/catalog', {...requestOptions, cache: 'no-store'});
         if (!response.ok) throw Error('Catalog unavailable');
         const entries = await response.json();
         if (!Array.isArray(entries)) throw Error('Invalid catalog');

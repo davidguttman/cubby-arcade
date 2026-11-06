@@ -242,3 +242,23 @@ test('device save tile uses shared gate; reset errors retain retry and cancel',a
  host.querySelector('.choose-save').click();host.querySelector('.confirm-reset').click();await settle();
  assert.match(host.querySelector('.save-feedback').textContent,/could not/i);assert.equal(host.querySelector('.confirm-reset').disabled,false);assert.equal(host.querySelector('.cancel-reset').disabled,false);
 });
+
+test('catalog polling catches up online/visible, coalesces, and stops with document',async()=>{
+ const events=new Map(),docEvents=new Map();let tick,reads=0,resolve,stopped=0;
+ const win={document:{hidden:false,addEventListener:(n,f)=>docEvents.set(n,f),removeEventListener:n=>docEvents.delete(n)},navigator:{onLine:true},setInterval:(f,ms)=>{assert.equal(ms,300000);tick=f;return 7;},clearInterval:id=>{assert.equal(id,7);stopped++;},addEventListener:(n,f)=>events.set(n,f),removeEventListener:n=>events.delete(n)};
+ const stop=Hub.startCatalogChecks(win,()=>{reads++;return new Promise(r=>resolve=r);});
+ tick();tick();assert.equal(reads,1);resolve();await settle();win.document.hidden=true;tick();assert.equal(reads,1);
+ win.document.hidden=false;win.navigator.onLine=false;docEvents.get('visibilitychange')();assert.equal(reads,1);
+ win.navigator.onLine=true;events.get('online')();assert.equal(reads,2);stop();resolve();await settle();tick();assert.equal(reads,2);assert.equal(stopped,1);assert.equal(events.size,0);assert.equal(docEvents.size,0);
+});
+
+test('catalog refresh adds/removes Store offers without restarting preview or losing focus; failure keeps shelf',async()=>{
+ let catalog=games;
+ const {host,hub}=mountedHub([],[],{install:true},{catalog:async()=>catalog});await settle();
+ const selected=host.querySelector('[data-game-id="one"]');selected.focus();const media=host.querySelector('.preview-media');
+ catalog=[games[0],{...games[1],id:'three'}];await hub.refreshCatalog();
+ assert.deepEqual(shelfIds(host),['one','three']);assert.equal(host.querySelector('.preview-media'),media);assert.equal(host.ownerDocument.activeElement.dataset.gameId,'one');
+ catalog=[{...games[1],id:'three'}];await hub.refreshCatalog();assert.deepEqual(shelfIds(host),['three']);assert.equal(hub.state.detail.id,'three');
+ catalog=Promise.reject(Error('offline'));await hub.refreshCatalog();assert.deepEqual(shelfIds(host),['three']);
+ catalog=[];await hub.refreshCatalog();assert.deepEqual(shelfIds(host),[]);assert.equal(hub.state.detail,null);hub.dispose();
+});

@@ -68,3 +68,29 @@ test('landing page cannot replace native launcher; native route and legacy host 
   hub=new CloudHub(root,{fetch:transport(good)});await hub.refresh();assert.equal(hub.source,'cloud');assert.equal((await hub.read('/')).toString(),'native arcade');
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+
+test('catalog changes independently of shell; invalid/offline retain last-known-good including empty',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'live-catalog-'));
+ const entry=id=>({id,title:id,manifest_url:`https://games.example/${id}/manifest.json`,artwork:`https://games.example/${id}/cover.png`});
+ try{
+  const shell=fixture('unchanged');let offers=[],requests=[];
+  const fetch=async(url,options)=>{requests.push([new URL(url).pathname,options]);return new URL(url).pathname==='/catalog'?new Response(JSON.stringify(offers)):transport(shell)(url);};
+  const hub=new CloudHub(root,{fetch});await hub.refresh();const directory=hub.directory;requests=[];offers=[entry('one')];
+  assert.deepEqual(await hub.catalog([]),offers);
+  offers=[entry('two')];assert.deepEqual(await hub.catalog([]),offers);
+  offers=[{...entry('bad'),manifest_url:'file:///bad'}];assert.deepEqual(await hub.catalog([]),[entry('two')]);
+  offers=[];assert.deepEqual(await hub.catalog([entry('fallback')]),[]);
+  assert.equal(hub.directory,directory);assert.equal((await hub.read('/')).toString(),'unchanged');assert.equal((await hub.read('/catalog')).toString(),'[]');
+  assert.ok(requests.every(([name,opts])=>name==='/catalog'&&opts.cache==='no-store'&&opts.redirect==='error'));
+  const offline=new CloudHub(root,{fetch:async()=>{throw Error('offline');}});assert.deepEqual(await offline.catalog([entry('fallback')]),[]);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('independent catalog bounds responses and coalesces concurrent fetches',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'live-catalog-'));let count=0,release;
+ try{
+  const hub=new CloudHub(root,{fetch:()=>{count++;return new Promise(resolve=>release=resolve);}});
+  const a=hub.catalog([]),b=hub.catalog([]);while(!release)await new Promise(setImmediate);release(new Response('[]'));assert.deepEqual(await a,[]);assert.deepEqual(await b,[]);assert.equal(count,1);
+  hub.fetch=async()=>new Response('x'.repeat(2*1024*1024+1));assert.deepEqual(await hub.catalog([]),[]);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});

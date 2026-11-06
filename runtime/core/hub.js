@@ -45,6 +45,19 @@ function challenge(random=Math.random){
  if(op==='×'){n1=int(3,9);n2=int(3,9);}else{n1=int(12,49);n2=int(12,49);if(op==='−'&&n2>n1)[n1,n2]=[n2,n1];}
  return {text:"What's "+n1+' '+op+' '+n2+'?',answer:String(op==='+'?n1+n2:op==='−'?n1-n2:n1*n2)};
 }
+// Catalog data can change while the launcher code and installed games stay put.
+function startCatalogChecks(win,refresh){
+ if(!win.setInterval)return ()=>{};
+ const controller=new AbortController();let stopped=false,running=false;
+ async function check(){
+  if(stopped||running||win.document?.hidden||win.navigator?.onLine===false)return;
+  running=true;try{await refresh({signal:controller.signal});}catch{}finally{running=false;}
+ }
+ const timer=win.setInterval(check,5*60*1000);
+ function stop(){if(stopped)return;stopped=true;controller.abort();win.clearInterval(timer);win.document?.removeEventListener?.('visibilitychange',check);win.removeEventListener('online',check);win.removeEventListener('pagehide',stop);}
+ win.document?.addEventListener?.('visibilitychange',check);win.addEventListener('online',check);win.addEventListener('pagehide',stop);
+ return stop;
+}
 function mount(host){
  const doc=host.ownerDocument,win=doc.defaultView;let storage;try{storage=win.localStorage;}catch{}
  const state=createState(storage),prefs=win.HandheldPreferences.preferences,platform=win.HandheldPlatform.createPlatform(win.HandheldPlatformOptions);
@@ -215,6 +228,26 @@ function mount(host){
  // hands off to its Play button; otherwise the selection moves to the next offer.
  function settleStore(){if(!state.detail||!ownedInStore(state.detail.id))return;if(requested===state.detail.id){requested=null;show('library');primaryAction()?.focus();}else{hideDetail();renderGrid();}}
  async function refreshLibrary(){try{const entries=await platform.library();if(disposed)return;const changed=JSON.stringify(entries)!==JSON.stringify(library);library=entries;settleStore();if(changed&&state.view==='library'){const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)shelf.querySelector('[data-game-id="'+focusedId+'"]')?.focus();}refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
+ let catalogChecking=null;
+ function refreshCatalog(options={}){
+  if(disposed||loading.store)return Promise.resolve();
+  if(catalogChecking)return catalogChecking;
+  catalogChecking=(async()=>{
+   try{
+    const entries=await platform.catalog(options);if(disposed||options.signal?.aborted)return;
+    const changed=failed.store||JSON.stringify(entries)!==JSON.stringify(catalog);catalog=entries;failed.store=false;
+    if(!changed||state.view!=='store')return;
+    const active=doc.activeElement,focusedId=active?.classList.contains('game-card')?active.dataset.gameId:null;
+    const removed=state.detail&&!catalog.some(game=>game.id===state.detail.id);
+    const detailFocused=!!active?.closest('.detail');
+    if(removed)hideDetail();else if(state.detail)state.detail=catalog.find(game=>game.id===state.detail.id);
+    renderGrid();refreshOwnership();
+    if(focusedId)(shelf.querySelector('[data-game-id="'+focusedId+'"]:not(:disabled)')||primaryAction()||tabs.store).focus();
+    else if(removed&&detailFocused)(primaryAction()||tabs.store).focus();
+   }catch{/* Keep the existing shelf usable until the next poll succeeds. */}
+  })().finally(()=>catalogChecking=null);return catalogChecking;
+ }
+ const stopCatalog=startCatalogChecks(win,refreshCatalog);
  async function installGame(id){if(disposed)return;requested=id;installStates[id]={phase:'checking'};refreshOwnership();try{await platform.install(id);await refreshLibrary();}catch{installStates[id]={phase:'error'};refreshOwnership();}}
  const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(installedChanged)refreshLibrary();});
  platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
@@ -255,7 +288,7 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;stopBattery();win.clearInterval?.(noticeTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;stopCatalog();stopBattery();win.clearInterval?.(noticeTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
@@ -265,7 +298,7 @@ function mount(host){
  function openSettingsFromHash(){if(win.location?.hash!=='#options'||gate.open)return;initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
  show(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
- return {state,show,dispose};
+ return {state,show,dispose,refreshCatalog};
 }
-return {createState,mount,challenge,startBattery};
+return {createState,mount,challenge,startBattery,startCatalogChecks};
 });
