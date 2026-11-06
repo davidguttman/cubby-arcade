@@ -65,3 +65,25 @@ the press that wakes the device can't also put it back to sleep.
 `idle_seconds` and `sleep_on_external_power`. Unknown keys and wrong types are
 ignored. `power_supply_dir` and `poweroff_dry_run` exist for hardware tests. Every
 sleep, measurement and wake is logged to `/storage/cubby/state/power.log`.
+
+## Hardware validation
+
+On 2026-11-06 an RG353V on USB power ran this on the 0.22.0 release, with a fake
+battery for the drain:
+
+- A power key event injected at the kernel input device slept from a running game. The
+  game heard `handheld:sleep` with the reason, and its `waitUntil` finished first.
+- The idle timer slept on time, and on a real charger with default rules it didn't.
+- The display stayed disabled, the sink muted and Cog stopped through every dark wake.
+- Drain measurements and a dry-run power-off at 9% ran through real suspends, and the
+  real battery read correctly through them.
+- A wake earlier than the alarm lit up in under a second. A helper replaced while dark
+  restored the display and sound.
+- Music and input came back after every real wake.
+
+**Not yet proven:** real drain on battery power, a physical power button press, a real
+power-off, whether the panel shows any light to the eye during a dark wake, and long sleeps.
+
+When testing, cap `max_wake_seconds`: a fake battery that never drains backs off for
+hours, and the device looks dead. The kernel refuses to overwrite an armed wake alarm
+without clearing it first.
