@@ -454,10 +454,18 @@ class ControllerTests(unittest.TestCase):
         self.idle(3 * HOUR)
         self.assertNotIn('suspend', self.host.calls)
         self.host.reading = battery(50)
-        self.idle(1)
+        self.idle(power.EXTERNAL_CHECK)
         self.assertNotIn('suspend', self.host.calls)
         self.idle(601)
         self.assertEqual(self.host.calls, ['suspend'])
+
+    def test_the_fuel_gauge_is_not_read_every_tick(self):
+        reads = []
+        real = self.host.battery
+        self.host.battery = lambda: reads.append(1) or real()
+        for _ in range(20):
+            self.idle(1)
+        self.assertLessEqual(len(reads), 5)
 
     def test_the_external_power_rule_can_be_turned_off(self):
         self.controller.settings['sleep_on_external_power'] = True

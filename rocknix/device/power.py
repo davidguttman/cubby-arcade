@@ -49,6 +49,7 @@ RESUME_TIMEOUT = 30
 POWEROFF_TIMEOUT = 60
 POWER_KEY_GRACE = 2
 BUSY_RETRY = 5
+EXTERNAL_CHECK = 5
 INPUT_RESCAN = 5
 RUNTIME_DIR = '/run/0-runtime-dir'
 MARKER = '/run/cubby-power-dark'
@@ -406,6 +407,8 @@ class Controller:
         self.counts = None
         self.next_wake = None
         self.poweroff_at = None
+        self.external_checked_at = None
+        self.on_external = False
         host.take_delay_lock()
 
     def input_activity(self):
@@ -533,8 +536,12 @@ class Controller:
             self.input_activity()
             return
         if not self.settings['sleep_on_external_power']:
-            reading = self.host.battery()
-            if reading and reading.external:
+            # The fuel gauge is on a slow bus, so don't read it every tick.
+            if self.external_checked_at is None or now - self.external_checked_at >= EXTERNAL_CHECK:
+                self.external_checked_at = now
+                reading = self.host.battery()
+                self.on_external = bool(reading and reading.external)
+            if self.on_external:
                 self.input_activity()
                 return
         if now - self.activity < self.settings['idle_seconds'] or now < self.busy_until:
