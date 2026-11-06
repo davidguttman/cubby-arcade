@@ -78,7 +78,7 @@ ln -s "releases/$DIGEST" "$BASE/current.new-$$"
 mv -Tf "$BASE/current.new-$$" "$BASE/current"
 printf '%s\n[Service]\nExecStart=\nExecStart=/storage/cubby/current/device/launch.sh\n' "$MARKER" > "$DROP.tmp-$$"
 mv "$DROP.tmp-$$" "$DROP"
-# Baseline coordinator is deliberately not part of future app replacements.
+# First coordinator only. Updates install the guarded boot entry over it and keep this copy.
 mkdir -p "$BASE/updater"
 if [ ! -e "$BASE/updater/coordinator.py" ] && [ -f "$FINAL/app/rocknix/updates.py" ]; then
   cp "$FINAL/app/rocknix/updates.py" "$BASE/updater/coordinator.py"

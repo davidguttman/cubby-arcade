@@ -51,7 +51,7 @@ def publish(tag, repository, directory, package, gh=github, extra_files=()):
             expected[path.name] = {'size': path.stat().st_size, 'digest': 'sha256:' + digest(path)}
 
     for name in extra_files:
-        if name not in ('app.zip', 'manifest.json', 'manifest.json.sig'):
+        if name not in ('app.zip', 'manifest.json', 'manifest.json.sig', 'platform.zip', 'update.json', 'update.json.sig'):
             raise ValueError('Unexpected additional release asset')
         path = directory / name
         if not path.is_file() or path.is_symlink() or not path.stat().st_size:

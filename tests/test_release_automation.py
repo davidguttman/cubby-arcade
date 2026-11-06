@@ -52,7 +52,9 @@ class UnifiedPublicationTests(unittest.TestCase):
         for name in ['runtime/index.html','rocknix/server.py','rocknix/session.sh']:
             p=self.source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('fixture')
         (self.source/'package.json').write_text('{"version":"0.11.1"}')
-        self.private=self.root/'private.pem';self.public=self.source/'rocknix/device/release-key.pem';self.public.parent.mkdir()
+        for name in update_release.DEVICE_REQUIRED:
+            p=self.source/'rocknix/device'/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('#!/bin/sh\n');p.chmod(0o755)
+        self.private=self.root/'private.pem';self.public=self.source/'rocknix/device/release-key.pem'
         subprocess.run(['openssl','genpkey','-algorithm','ED25519','-out',str(self.private)],check=True,capture_output=True)
         subprocess.run(['openssl','pkey','-in',str(self.private),'-pubout','-out',str(self.public)],check=True,capture_output=True)
         prepare_device(self.source,self.output,self.private)
@@ -60,12 +62,13 @@ class UnifiedPublicationTests(unittest.TestCase):
             p=self.output/name;p.write_bytes(name.encode())
             (self.output/(name+'.sha256')).write_text(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+name+'\n')
     def feed(self):
-        gh=FeedGitHub();gh.releases['v0.11.1']={n:(self.output/n).read_bytes() for n in ('app.zip','manifest.json','manifest.json.sig')}
+        gh=FeedGitHub();gh.releases['v0.11.1']={n:(self.output/n).read_bytes() for n in ('app.zip','manifest.json','manifest.json.sig','platform.zip','update.json','update.json.sig')}
         return gh
     def test_signed_artifact_uses_package_version_unified_url_and_legacy_sequence_upgrade(self):
         manifest=verify_device(self.output,self.public,'0.11.1')
         self.assertEqual(manifest['sequence'],110002)
-        self.assertIn('/v0.11.1/app.zip',manifest['archive']['url'])
+        self.assertIn('/v0.11.1/platform.zip',manifest['archive']['url'])
+        self.assertIn('/v0.11.1/app.zip',json.loads((self.output/'manifest.json').read_bytes())['archive']['url'])
         gh=self.feed();old=self.root/'old'
         update_release.build(self.source,old,'0.2.0',4,update_publish.archive_url('0.2.0'),self.private)
         gh.releases[update_publish.CHANNEL]={name:(old/name).read_bytes() for name in update_publish.PAIR}
@@ -102,7 +105,7 @@ class UnifiedPublicationTests(unittest.TestCase):
             return gh(args,document)
         def feed(*args):
             self.assertFalse(gh.release['draft'])
-            self.assertEqual(len(gh.release['assets']),7)
+            self.assertEqual(len(gh.release['assets']),10)
         with mock.patch('release_automation.advance_feed',side_effect=feed) as call:
             publish_all(self.source,self.output,'a'*40,api)
             call.assert_called_once()

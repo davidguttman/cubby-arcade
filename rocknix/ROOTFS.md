@@ -78,7 +78,7 @@ gesture, so the runtime's Cog holds game audio until a touch. The extra
 
 The launcher is a separate file so that a Cog fix can ship in a normal release
 without changing the pinned runtime. It lives under `runtime/` because the
-baseline updater's allowlist cannot change on installed devices, and the
+legacy `app.zip` has to carry it to devices on the baseline coordinator, and the
 servers' explicit allowlists keep it from being served to pages. Rebuild it with
 `rocknix/build-bundled-cog.sh COG_SOURCE.tar.gz`. Accept it on hardware: from a
 cold game launch with only gamepad input, `pactl list short sink-inputs` must
@@ -100,7 +100,8 @@ is bounded to ten minutes per phase.
 
 The reviewed live-tested archive currently has SHA256
 `e1859403acf7593e5b2ad9b932092258302f415a093959de24fd402b7475ee92`.
-Both image composition and the updater require that exact runtime. The Linux
+Image composition requires that exact runtime, and it stays on every device. A
+newer one ships through `rocknix/runtime.json`; see `docs/rg353v-updates.md`. The Linux
 payload packager follows the same pin; the old baseline is rejected.
 
 At launch the private chroot namespace self-binds its root and preserves the

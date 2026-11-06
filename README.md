@@ -331,7 +331,7 @@ builds on native Windows and Linux runners, runs packaged
 install/update/play/offline and uninstall/save-retention smokes, and signs the
 handheld app update from the same commit and version.
 Only after **both** platform jobs succeed does its publishing job create the
-matching `vX.Y.Z` tag and draft GitHub Release, upload all seven assets, verify
+matching `vX.Y.Z` tag and draft GitHub Release, upload all ten assets, verify
 every remote asset's size and SHA-256 digest, then publish the complete release
 and advance the signed handheld feed. The landing-page download links follow
 the latest release without source edits or manual uploads. Independently,

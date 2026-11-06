@@ -6,6 +6,7 @@ is root-only and is bind-mounted into the chroot; no TCP listener is opened.
 """
 from __future__ import annotations
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.request
 import uuid
 
@@ -287,10 +289,8 @@ def run_power(mode):
 def request_power(request, delay=.3):
     """Power off or restart the host.
 
-    This helper is the only process outside the chroot that an app update can
-    change: device/chroot-run.sh is a baseline file and update packages can't add
-    new rocknix files, so a separate host helper would never reach a shipped
-    handheld. Shutdown stops this service at once, so answer before starting it.
+    This helper runs outside the chroot, from the running release. Shutdown stops
+    this service at once, so answer before starting it.
     """
     if set(request) != {'action', 'mode'} or request['mode'] not in POWER_MODES:
         raise NetworkError('invalid_request')
@@ -326,6 +326,28 @@ class HostServer(socketserver.ThreadingUnixStreamServer):
     daemon_threads = True
 
 
+def bridge_to_guarded_updates(wait=60, sleep=time.sleep):
+    """Carry a device installed by the old baseline coordinator onto signed whole-device updates.
+
+    This is the only code from an update that such a device runs outside its
+    chroot, and it runs from the release, so it waits for that release to pass
+    its own trial. updates.py sits beside this file. Network setup must keep
+    working whatever happens here.
+    """
+    try:
+        here = Path(__file__).resolve()
+        release, base = here.parents[2], here.parents[4]
+        if release.parent.name != 'releases':
+            return
+        spec = importlib.util.spec_from_file_location('cubby_updates', here.with_name('updates.py'))
+        updates = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(updates)
+        while updates.bridge(base, release) == 'waiting':
+            sleep(wait)
+    except Exception as error:  # Retried from the next session; never breaks this helper.
+        print('Cubby update bridge did not finish:', error, file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--socket', default=SOCKET)
@@ -342,6 +364,7 @@ def main():
         os.chmod(path, 0o600)
         server.allowed_uid = 0
         server.manager = Onboarding(NetworkManager(), args.state)
+        threading.Thread(target=bridge_to_guarded_updates, daemon=True).start()
         server.serve_forever()
 
 

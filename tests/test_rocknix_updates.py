@@ -55,7 +55,10 @@ class UpdateTests(unittest.TestCase):
         (release/'rootfs/usr/bin/cog').write_text('# runtime')
         self.responses={'https://updates.example/manifest.json':raw,'https://updates.example/manifest.json.sig':signature,
                         'https://updates.example/app.zip':(self.output/'app.zip').read_bytes()}
-        return mock.patch.object(updates,'fetch',side_effect=lambda url,*a,**kw:self.responses[url])
+        def fetch(url,*a,**kw):
+            if url not in self.responses:raise updates.urllib.error.HTTPError(url,404,'missing',None,None)
+            return self.responses[url]
+        return mock.patch.object(updates,'fetch',side_effect=fetch)
     def test_interrupted_device_copy_is_recovered_on_recreated_manager_retry(self):
         with self.prepare_stage():
             self.manager.check()

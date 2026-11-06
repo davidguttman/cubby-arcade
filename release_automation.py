@@ -11,7 +11,9 @@ from desktop.release import github, GitHubError, digest, publish as publish_rele
 from rocknix import update_publish, update_release
 
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
-DEVICE_FILES = ('app.zip', 'manifest.json', 'manifest.json.sig')
+LEGACY_FILES = ('app.zip', 'manifest.json', 'manifest.json.sig')
+PLATFORM_FILES = ('platform.zip', 'update.json', 'update.json.sig')
+PLATFORM_PAIR = ('update.json', 'update.json.sig')
 
 
 def sequence(version):
@@ -96,17 +98,29 @@ def prepare_device(source, output, key):
     return update_release.build(source, output, version, sequence(version), device_url(version), key)
 
 
+def device_files(directory):
+    """The platform trio always; the legacy trio unless this release needs a new runtime."""
+    directory = Path(directory)
+    legacy = LEGACY_FILES if (directory / 'manifest.json').is_file() else ()
+    return (*legacy, *PLATFORM_FILES)
+
+
 def verify_device(directory, public_key, version):
     directory = Path(directory)
-    raw = (directory / 'manifest.json').read_bytes()
-    manifest = update_publish.verify(raw, (directory / 'manifest.json.sig').read_bytes(), public_key)
-    archive = directory / 'app.zip'
-    if (manifest['version'] != version or manifest['sequence'] != sequence(version)
-            or manifest['archive']['url'] != device_url(version)
-            or not archive.is_file() or archive.is_symlink()
-            or archive.stat().st_size != manifest['archive']['size']
-            or digest(archive) != manifest['archive']['sha256']):
-        raise ValueError('Signed device artifact/version does not match unified release')
+    manifest = None
+    for name, archive_name in (('manifest.json', 'app.zip'), ('update.json', 'platform.zip')):
+        if name == 'manifest.json' and not (directory / name).is_file():
+            continue
+        raw = (directory / name).read_bytes()
+        signed = update_publish.verify(raw, (directory / (name + '.sig')).read_bytes(), public_key)
+        archive = directory / archive_name
+        if (signed['version'] != version or signed['sequence'] != sequence(version)
+                or signed['archive']['url'] != device_url(version).rsplit('/', 1)[0] + '/' + archive_name
+                or not archive.is_file() or archive.is_symlink()
+                or archive.stat().st_size != signed['archive']['size']
+                or digest(archive) != signed['archive']['sha256']):
+            raise ValueError('Signed device artifact/version does not match unified release')
+        manifest = signed
     return manifest
 
 
@@ -114,39 +128,52 @@ def advance_feed(directory, public_key, source, gh=None):
     """Only advertise already-published, byte-verified unified release assets."""
     gh = gh or update_publish.GitHub()
     directory = Path(directory)
-    raw = (directory / 'manifest.json').read_bytes()
-    manifest = update_publish.verify(raw, (directory / 'manifest.json.sig').read_bytes(), public_key)
-    verify_device(directory, public_key, manifest['version']); commit(source)
-    tag = 'v' + manifest['version']
+    files = device_files(directory)
+    version = update_publish.verify((directory / 'update.json').read_bytes(), (directory / 'update.json.sig').read_bytes(), public_key)['version']
+    manifest = verify_device(directory, public_key, version); commit(source)
+    tag = 'v' + version
     assets = gh.assets(tag)
-    if assets is None or not all(name in assets for name in DEVICE_FILES):
+    if assets is None or not all(name in assets for name in files):
         raise ValueError('Complete published unified release required before feed update')
-    local = {name: (directory / name).read_bytes() for name in DEVICE_FILES}
-    if any(gh.download(tag, name) != local[name] for name in DEVICE_FILES):
+    local = {name: (directory / name).read_bytes() for name in files}
+    if any(gh.download(tag, name) != local[name] for name in files):
         raise ValueError('Published unified device assets differ')
-    old_assets = gh.assets(update_publish.CHANNEL); old = None
+    # Legacy first: a device on the old coordinator can always reach a bridge release.
+    pairs = [pair for pair in (update_publish.PAIR, PLATFORM_PAIR) if pair[0] in local]
+    old_assets = gh.assets(update_publish.CHANNEL); old = {}
     if old_assets is not None:
         if not all(name in old_assets for name in update_publish.PAIR):
             raise ValueError('Stable feed incomplete; explicitly repair from immutable release')
-        old = {name: gh.download(update_publish.CHANNEL, name) for name in update_publish.PAIR}
-        previous = update_publish.verify(old['manifest.json'], old['manifest.json.sig'], public_key)
-        if old == {name: local[name] for name in update_publish.PAIR}:
+        for pair in (update_publish.PAIR, PLATFORM_PAIR):
+            if not all(name in old_assets for name in pair):
+                continue
+            old[pair] = {name: gh.download(update_publish.CHANNEL, name) for name in pair}
+        pairs = [pair for pair in pairs if old.get(pair) != {name: local[name] for name in pair}]
+        for pair in pairs:
+            if pair in old:
+                previous = update_publish.verify(old[pair][pair[0]], old[pair][pair[1]], public_key)
+                if previous['sequence'] >= manifest['sequence']:
+                    raise ValueError('Stable feed cannot go backwards or reuse a sequence')
+        if not pairs:
             return manifest
-        if previous['sequence'] >= manifest['sequence']:
-            raise ValueError('Stable feed cannot go backwards or reuse a sequence')
     else:
         gh.create(update_publish.CHANNEL, source)
+    finished = []
     try:
-        gh.upload(update_publish.CHANNEL, [directory / name for name in update_publish.PAIR], clobber=True)
-        if any(gh.download(update_publish.CHANNEL, name) != local[name] for name in update_publish.PAIR):
-            raise ValueError('Published stable metadata differs')
+        for pair in pairs:
+            finished.append(pair)
+            gh.upload(update_publish.CHANNEL, [directory / name for name in pair], clobber=True)
+            if any(gh.download(update_publish.CHANNEL, name) != local[name] for name in pair):
+                raise ValueError('Published stable metadata differs')
     except BaseException:
-        if old is not None:
+        for pair in finished:
+            if pair not in old:
+                continue  # A retry replaces it, and devices reject a mismatched pair meanwhile.
             with tempfile.TemporaryDirectory(prefix='cubby-restore-feed-') as temp:
                 root = Path(temp)
-                for name, body in old.items(): (root / name).write_bytes(body)
-                gh.upload(update_publish.CHANNEL, [root / name for name in update_publish.PAIR], clobber=True)
-                if any(gh.download(update_publish.CHANNEL, name) != old[name] for name in update_publish.PAIR):
+                for name, body in old[pair].items(): (root / name).write_bytes(body)
+                gh.upload(update_publish.CHANNEL, [root / name for name in pair], clobber=True)
+                if any(gh.download(update_publish.CHANNEL, name) != old[pair][name] for name in pair):
                     raise RuntimeError('Feed restoration failed; repair from immutable release')
         raise
     return manifest
@@ -164,8 +191,8 @@ def publish_all(root, directory, source, gh=github):
     elif existing != source:
         raise ValueError('Release tag source differs')
     publish_release(tag, update_publish.REPO, directory, root / 'package.json', gh,
-                    extra_files=DEVICE_FILES)
-    # The release is public only after all seven assets were verified. This is last.
+                    extra_files=device_files(directory))
+    # The release is public only after all its assets were verified. This is last.
     return advance_feed(directory, key, source)
 
 

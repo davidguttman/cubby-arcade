@@ -2,7 +2,7 @@
 
 `package.json` is the single Cubby product-version source. Windows, Linux, and
 handheld app artifacts share `vX.Y.Z` and the same source commit. Games, the
-immutable WPE runtime, and ROCKNIX retain their own independent versions.
+pinned WPE runtime, and ROCKNIX retain their own independent versions.
 
 ## Normal release
 
@@ -12,12 +12,14 @@ immutable WPE runtime, and ROCKNIX retain their own independent versions.
 2. **Cubby builds and releases** validates the version and runs regressions,
    builds and smoke-tests Windows/Linux, and signs the handheld app package.
 3. After both platform jobs succeed, the same workflow creates the exact-commit
-   `vX.Y.Z` tag, uploads all seven assets to a draft release, verifies their
+   `vX.Y.Z` tag, uploads all ten assets to a draft release, verifies their
    uploaded sizes and SHA256 digests, and publishes the complete release.
 4. Only then does it verify the published handheld bytes and advance
-   `cubby-device-stable/manifest.json` and its detached signature. Existing
-   handhelds keep using their configured feed and trust key, and update through
-   the gear tab → updates tile. No reinstall, reflash, or save reset.
+   `cubby-device-stable/manifest.json`, `update.json` and their detached signatures.
+   Existing handhelds keep using their configured feed and trust key, and update
+   through the gear tab → updates tile. No reinstall, reflash, or save reset.
+   A version that changes `rocknix/runtime.json` publishes only the platform trio;
+   see [device updates](rg353v-updates.md).
 5. Independently of those release gates, Render's Static Site in **Superstruct**
    tracks `main` with auto-deploy **On Commit**, managed in the dashboard/API.
    It builds with `python3 -m pip install -r requirements.txt && python3 hosting/build.py`

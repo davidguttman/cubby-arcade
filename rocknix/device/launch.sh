@@ -1,11 +1,11 @@
 #!/bin/bash
 # Runs as essway.service's client, leaving ROCKNIX's Sway/GPU/audio services intact.
 set -eu
-BASE=/storage/cubby
-STOCK=/usr/bin/start_es.sh
+BASE=${CUBBY_BASE:-/storage/cubby}
+STOCK=${CUBBY_STOCK:-/usr/bin/start_es.sh}
 fallback() { exec "$STOCK"; }
 [ ! -e "$BASE/DISABLED" ] || fallback
-# The updater coordinator is a baseline file outside replaceable app releases.
+# The boot entry. Updates can replace everything behind it; see docs/rg353v-updates.md.
 if [ -f "$BASE/updater/coordinator.py" ]; then
   exec /usr/bin/python3 "$BASE/updater/coordinator.py" supervise
 fi

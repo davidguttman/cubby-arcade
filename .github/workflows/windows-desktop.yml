@@ -112,6 +112,9 @@ jobs:
             dist/device/app.zip
             dist/device/manifest.json
             dist/device/manifest.json.sig
+            dist/device/platform.zip
+            dist/device/update.json
+            dist/device/update.json.sig
           if-no-files-found: error
       - name: Upload portable app
         uses: actions/upload-artifact@v4

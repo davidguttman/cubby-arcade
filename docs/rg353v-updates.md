@@ -1,8 +1,91 @@
-# Cubby app updates on ROCKNIX
+# Cubby updates on ROCKNIX
 
-This is an **app-only** update mechanism. It does not update ROCKNIX, kernels,
-bootloaders, WPE, device supervisors, or games. Those require separately reviewed
-release surfaces. Games and saves remain under `/storage/cubby/state`.
+A signed update can replace everything Cubby owns under `/storage/cubby`: the app,
+Cog, the WPE/WebKit runtime, the coordinator, the device files and the trusted key
+and feed. No reflash is needed. ROCKNIX, its kernel and bootloader, and Cubby's
+files on the boot partition (`/flash`: Wi-Fi recovery, USB diagnostics, boot
+splash) are not covered. Games update through the catalog, and saves remain under
+`/storage/cubby/state` and are never touched.
+
+## How one update replaces everything
+
+A release directory is the unit of update:
+
+```
+releases/app-N-<hash>/
+  app/       the signed files, including rocknix/updates.py (the coordinator) and Cog
+  device ->  app/runtime/native/rg353v/device (chroot-run.sh, launch.sh, guard.py, ...)
+  rootfs ->  ../../runtimes/<sha256 of the runtime archive>
+  trust/     config.json and release-key.pem
+  release.json
+```
+
+Flipping `current` therefore swaps all of it at once, and flipping back restores
+all of it. Three things sit outside releases, on purpose:
+
+- `boot/guard.py` starts the current release and backs out of a bad one, including
+  one whose coordinator cannot start or hangs. `boot/guard.previous.py` is the
+  guard before the last change.
+- `updater/coordinator.py` is the boot entry every `launch.sh` already runs. It is
+  a few lines that reach the guard, then the previous guard, then the baseline.
+- `updater/coordinator.baseline.py`, `updater/device` and the `fallback` release are
+  the last resort. The baseline runtime is never collected.
+
+### A normal update
+
+1. `update.json` (schema 2) beside the legacy feed is fetched and checked: Ed25519
+   signature, compatibility, strictly increasing sequence, not previously rejected.
+2. A new runtime, if the manifest names one, streams to disk with its own limits
+   (2 GiB archive, 6 GiB unpacked, free space checked first), is verified by SHA-256,
+   unpacked at low priority and probed in a private mount namespace before anything
+   can point at it. An existing runtime is reused.
+3. `platform.zip` is checked file by file and staged as a new release directory.
+   `launch.sh` and `chroot-run.sh` must parse, and `guard.py` and `updates.py` must
+   compile, or the release is refused.
+4. **Install** journals `updates/pending.json`, flips `current`, and the coordinator
+   exits so the guard can start the new release's own coordinator.
+5. The guard proves the path systemd will take at the next boot, then gives the
+   release one trial: browser ready and server healthy for ten seconds, within two
+   minutes. A trial that fails, crashes, hangs (four minutes) or is interrupted by a
+   reboot flips back. The older coordinator records the rejection.
+6. On confirmation the sequence advances, the guard and boot entry are refreshed if
+   they changed, a rotated key reaches the baseline too, and runtimes that nothing
+   could still start from are removed.
+
+### If a confirmed release stops working later
+
+Two failed coordinator runs in a row step `current` down to `previous`, then
+`fallback`, rejecting the release that failed. Stock ROCKNIX is the end of that
+line, with Cubby's files intact and SSH available. A newer signed update is still
+accepted after any of this.
+
+### Carrying a device from the old coordinator
+
+Devices installed before this design run a coordinator that accepts only the legacy
+`manifest.json` and `app.zip`, so every release publishes those too:
+
+1. The old coordinator installs the release normally, with its normal trial.
+2. `rocknix/network.py` runs from that release, outside the chroot. Once the release
+   is confirmed it calls `updates.bridge()`, which checks the files against the
+   signed inventory and builds a new-format copy of the release (`-p2`), arms
+   `boot/activate.json`, keeps the old coordinator as
+   `updater/coordinator.baseline.py`, and installs the guard and boot entry last.
+   `current` does not move and the running session is untouched.
+3. At the next boot the entry reaches the guard, which starts the `-p2` release's
+   coordinator in a trial. Failure returns to the release from step 1 and the old
+   coordinator, which can take the next update and bridge again. A rejected `-p2` is
+   not retried.
+
+Images and installs made from this source start on this checkout's coordinator
+without a guard, and gain the guard on their first update.
+
+### Shipping a new runtime
+
+Build and audit it as described in `rocknix/ROOTFS.md`, upload the archive to its
+own immutable release, and put its SHA-256, URL, size and unpacked size in
+`rocknix/runtime.json`. That version publishes only the platform trio, so old
+coordinators stay on the last release they can run, which bridges them. A device
+whose `-p2` trial failed needs a later release published on the baseline runtime.
 
 ## Adult experience
 
@@ -50,8 +133,9 @@ provision root-owned `/storage/cubby/updater/release-key.pem` and `config.json`:
 ```
 
 This is an explicit baseline trust operation, not a caller-supplied URL in the UI.
-Existing devices require this one-time baseline trust provisioning. Subsequent
-app releases cannot replace the coordinator, public key, or configured feed.
+After that, a signed release can change the key and feed through its `trust` field:
+the current key must sign that manifest, the new trust applies only after the
+release's trial passes, and rollback restores the old one.
 
 ## Maintainer release
 
@@ -122,23 +206,30 @@ uploads, repair explicitly from the intended immutable release:
 
 The stable feed carries no private key or ROCKNIX image. Signature verification,
 compatibility, monotonic sequence, archive size/hash and every file's hash/mode
-are checked by the baseline coordinator outside the replaceable app. Games,
-WPE, and ROCKNIX have separate update/release surfaces.
+are checked before anything is activated. Games and ROCKNIX have separate
+update/release surfaces.
 
 ## Storage and recovery
 
-`updater/coordinator.py` is the baseline supervisor. The existing runtime is moved
-once to `runtimes/<digest>` without copying its contents. Releases reference that
-runtime and baseline device scripts. Candidate ZIPs cannot replace those scripts.
+The existing runtime is moved once to `runtimes/<digest>` without copying its
+contents. Releases reference a runtime by digest and carry their own device files.
+Old releases staged by the baseline coordinator keep using `updater/device`.
 
 `updates/pending.json` is fsynced before atomically changing `current`.
 `previous` is retained after health confirmation. No updater routine deletes saves,
 installed games, browser profile, previous app releases, or the Android backup.
+Only runtimes that `current`, `previous`, `fallback` or a pending or staged release
+do not use are removed, and never the baseline runtime.
 A power interruption during activation may reject an otherwise-good release; it
 must not leave an unconfirmed release in a reboot loop. Retention cleanup is
 intentionally not automatic yet.
 
 ## Verification boundary
+
+Whole-device updates, the guard and the bridge are tested off-device against the
+exact 0.11.0 baseline coordinator (`tests/test_update_everything.py`); the session
+itself is a stub there, because it needs root and the GPU. They have not yet run on
+hardware.
 
 On 2026-11-05 the physical RG353V downloaded the signed production feed and app
 over Wi-Fi, rejected modified signed metadata, staged and activated 0.1.1, and

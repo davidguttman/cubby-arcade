@@ -24,8 +24,9 @@
 - The hub's gear tab is the only settings screen, on every host, and it shows the math question until answered. Leaving the tab locks it again; returning from a worded page does not. On the device, add a page by listing it in `settings` in `rocknix/bridge.js`. Never add a second entry point or skip the question.
 - To flag something an adult should act on, use the shimmer: the `has-notice` class on a button (`runtime/core/hub.css`). Things look normal and a glint of light sweeps across them. No dots, badges, or color changes: David rejected those.
 - The update notice is wired through `updateAttention` in `rocknix/bridge.js` and `update_attention()` in `rocknix/server.py`; `notice: true` on a `settings` entry marks its tile. `check_for_update()` runs in the background, and only from idle or a past failure.
-- `rocknix/updates.py` runs on the device as a baseline coordinator that app updates cannot replace. Changes to it reach new images only, so put new behavior in `rocknix/server.py` where possible.
-- App updates ship only the files `app_path()` in `updates.py` allows and never touch `device/`, so a new `rocknix/*.py` or a `chroot-run.sh` edit won't reach an existing handheld. Work that needs the host outside the chroot goes through `rocknix/network.py`, the one updatable host process (power off and restart do).
+- A signed update can replace everything Cubby owns under `/storage/cubby`: app, Cog, runtime, coordinator (`rocknix/updates.py`), device files (`rocknix/device/`) and trust. Don't work around the update path or present it as a limit; see `docs/rg353v-updates.md`.
+- `rocknix/device/guard.py` runs outside every release and is what rolls back a bad one. Keep it small and stdlib-only, and keep every older coordinator able to read what newer ones leave behind (`tests/test_update_everything.py` runs the 0.11.0 baseline).
+- Legacy `app.zip` still only carries what `app_path()` allows, because the baseline coordinator refuses anything else. A device on that coordinator bridges with the files under `runtime/native/rg353v/`, so that release must keep working on the baseline runtime.
 - Releasing: bump `package.json` and `package-lock.json`, then push `main` (see `docs/releases.md`). That only publishes; a device installs it from the updates tile.
 
 ## Scope
