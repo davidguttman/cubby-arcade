@@ -141,3 +141,12 @@ The installation contract was inspected against ROCKNIX tag `20261101`, commit
 The installer owns only
 `/storage/.config/system.d/essway.service.d/90-cubby.conf`; it refuses to replace
 an unmanaged file at that path. No stock unit is masked, deleted or overwritten.
+
+## Cubby boot artwork
+
+New Cubby images include a custom boot screen derived from the Steam artwork.
+Existing compatible Cubby cards can install it without rewriting firmware or
+saves using the [offline boot-artwork installer and exact restore procedure](../rocknix/splash/README.md).
+It changes boot-partition files, not the app-update payload. Framebuffer layouts
+outside the documented guard retain the stock screen. The linked guide records
+physical RG353V framebuffer and warm-reboot evidence, plus untested cold-boot limits.
