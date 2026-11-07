@@ -34,8 +34,10 @@ async function run(win,launcher,library,userData,options={}){
  const second=registry.profiles[1].id;
  // A new player is named next, on desktop with an ordinary text field.
  assert(await evaluate(`document.querySelector('.player-name-field')===document.activeElement`),'Name field not focused');
- await evaluate(`document.querySelector('.player-name-field').value='Maya'`);await capture('adult-name-entry');
- await evaluate(`document.querySelector('.save-name').click();document.querySelector('.rename-player').click();document.querySelector('.player-name-field').value='Theo';document.querySelector('.save-name').click()`);
+ const typeName=name=>`(f=>{f.value=${JSON.stringify(name)};f.dispatchEvent(new Event('input'));})(document.querySelector('.player-name-field'))`;
+ await evaluate(`document.querySelector('.player-name-field').select()`);await win.webContents.insertText('Maya');
+ assert(await evaluate(`document.querySelector('.player-name-field').value==='Maya'&&!document.querySelector('.save-name').disabled`),'Typed name not accepted');await capture('adult-name-entry');
+ await evaluate(`document.querySelector('.save-name').click();document.querySelector('.rename-player').click();${typeName('Theo')};document.querySelector('.save-name').click()`);
  const named=await evaluate('JSON.parse(localStorage.getItem("cubby:profiles:v1")).profiles.map(p=>p.name)');
  assert(JSON.stringify(named)===JSON.stringify(['Theo','Maya']),'Names were not saved: '+JSON.stringify(named));report.namesSaved=true;
  await capture('adult-players');

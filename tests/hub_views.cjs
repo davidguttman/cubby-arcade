@@ -464,7 +464,7 @@ test('adults add, re-picture and remove players behind the gear question; the on
  host.querySelector('.add-player').click();const choices=host.querySelectorAll('.avatar-choice');assert.equal(choices.length,7,'A used picture is not offered');
  choices[0].click();assert.ok(host.querySelector('.player-name-field'),'A new player is named next');host.querySelector('.cancel-player').click();let registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.deepEqual(registry.profiles.map(p=>p.avatar),['fox','frog']);
  assert.equal(host.querySelector('.player-button').hidden,false,'The hub now shows who is playing');
- host.querySelectorAll('.change-picture')[1].click();host.querySelectorAll('.avatar-choice').find(b=>b.children.some(c=>c.textContent==='Owl')).click();
+ host.querySelectorAll('.change-picture')[1].click();host.querySelectorAll('.avatar-choice').find(b=>b.getAttribute('aria-label')==='Owl').click();
  registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.equal(registry.profiles[1].avatar,'owl');
  host.querySelectorAll('.remove-player')[1].click();host.querySelector('.cancel-player').click();assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,2);
  host.querySelectorAll('.remove-player')[1].click();host.querySelector('.remove-confirm').click();await settle();
@@ -494,17 +494,24 @@ test('a child sees their own name under their face and beside it on the hub',asy
  host.querySelectorAll('.picker-face')[0].click();await settle();
  assert.equal(host.querySelector('.player-label').textContent,'Theo');assert.equal(host.querySelector('.player-button').hidden,false);
 });
-test('adults name a player with a text field; bad and duplicate names are refused with a reason',async()=>{
+test('adults name a player with a text field; a bad or taken name is refused with a red shake, not words',async()=>{
  const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'}];
  const {host,hub,localStorage}=playersHub({list,pin:Profiles.FIRST});await settle();hub.show('options');passGate(host);host.querySelector('.manage-players').click();
- assert.deepEqual(host.querySelectorAll('.player-name').map(n=>n.children.length?n.textContent:n.textContent),['Theo','Fox']);
- host.querySelectorAll('.rename-player')[1].click();const field=host.querySelector('.player-name-field');
+ assert.deepEqual(host.querySelectorAll('.player-name').map(n=>n.textContent),['Theo','Fox']);
+ assert.ok(host.querySelectorAll('.player-row')[0].classList.contains('is-playing'),'The player playing now wears the ring');
+ host.querySelectorAll('.rename-player')[1].click();const field=host.querySelector('.player-name-field'),save=host.querySelector('.save-name');
  assert.equal(field.value,'Fox');assert.equal(field.maxLength,12);assert.equal(host.querySelector('.name-keyboard'),null,'Desktop and browser type on a real keyboard');
- assert.equal(host.ownerDocument.activeElement,field);
+ assert.equal(host.ownerDocument.activeElement,field);assert.equal(save.disabled,false);
  const stopped=[];for(const type of ['keydown','keyup'])field.listeners[type][0]({key:'x',stopPropagation:()=>stopped.push(type)});assert.deepEqual(stopped,['keydown','keyup'],'Typed keys never drive the hub');
- for(const [value,reason] of [['  ',/^Name needed$/],['theo',/^Name taken$/],['Maya!',/^Letters only$/]]){field.value=value;host.querySelector('.save-name').click();assert.match(host.querySelector('.save-feedback').textContent,reason);}
- field.value=' Maya ';host.querySelector('.save-name').click();
- assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Maya');assert.equal(host.querySelector('.save-feedback').textContent,'','Success needs no words: the row shows the name');
+ const enter=()=>field.listeners.keydown[0]({key:'Enter',stopPropagation(){}});
+ for(const [value,outlined] of [['theo',true],['Maya!',true],['  ',false]]){
+  field.value=value;field.listeners.input[0]();
+  assert.equal(save.disabled,true,value+': ✓ stays dim');assert.equal(field.classList.contains('invalid'),outlined,value+': red outline');
+  enter();assert.ok(field.classList.contains('refused')&&field.classList.contains('invalid'),value+': trying anyway shakes it red');
+ }
+ assert.equal(host.querySelector('.save-feedback'),null,'No error words');
+ field.value=' Maya ';field.listeners.input[0]();assert.equal(save.disabled,false);assert.equal(field.classList.contains('invalid'),false);save.click();
+ assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Maya');
  assert.ok(host.querySelectorAll('.player-name').some(n=>n.textContent==='Maya'));
 });
 test('on the handheld a name is typed with the controller on Cubby’s shared keyboard',async()=>{
@@ -520,11 +527,20 @@ test('on the handheld a name is typed with the controller on Cubby’s shared ke
  action('pause');assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Mia','Start saves the name');
  assert.equal(host.querySelector('.name-keyboard'),null);
 });
-test('player screens carry no explainer text: titles, names, buttons and one- or two-word errors',()=>{
- const source=require('node:fs').readFileSync('runtime/core/hub.js','utf8'),start=source.indexOf("const playerButton="),end=source.indexOf('function openPlayers(');
- const players=source.slice(start,end);
- for(const gone of ['Each player has','Shown under','Up to ','This deletes','Choose a','Keep \'+','Rename them','Cubby asks','could not be fully','Try again'])assert.ok(!players.includes(gone),gone);
- const shown=[...players.matchAll(/feedback\.textContent=([^;]*);/g)].flatMap(([,statement])=>[...statement.matchAll(/(?:^|[:?|])\s*\(?'([^']+)'/g)].map(m=>m[1]));
- assert.ok(shown.includes('Name taken')&&shown.includes('Not removed'),shown.join());
- for(const text of shown)assert.ok(text.split(' ').length<=2,text);
+test('player screens show no words but players’ names and keyboard letters',async()=>{
+ const Keyboard=require('../runtime/core/keyboard.js');
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog',name:'Josephine'}],names=new Set(['Theo','Fox','Josephine','Bunny']);
+ const {host,hub}=playersHub({list,windowOverrides:{CubbyDeviceProfile:'rg353v',HandheldKeyboard:Keyboard,AbortController,fetch:()=>Promise.reject(Error('offline'))}});await settle();
+ const shown=[];
+ function collect(screen){const walk=e=>{if(typeof e.textContent==='string'&&e.textContent&&!e.children?.length)shown.push([screen,e.textContent,!!e.parent?.classList.contains('cubby-keyboard')]);(e.children||[]).forEach(walk);};walk(host.querySelector('.player-picker'));walk(host.querySelector('.brand'));walk(host.querySelector('.player-management'));const saves=host.querySelector('.save-management');if(saves.querySelector('.choose-player'))walk(saves);}
+ collect('picker');host.querySelectorAll('.picker-face')[0].click();await settle();collect('hub');
+ hub.show('options');passGate(host);host.querySelector('.manage-players').click();collect('players');
+ host.querySelectorAll('.rename-player')[0].click();collect('name');host.querySelector('.cancel-player').click();
+ host.querySelectorAll('.change-picture')[0].click();collect('picture');host.querySelector('.cancel-player').click();
+ host.querySelectorAll('.remove-player')[1].click();collect('remove');host.querySelector('.cancel-player').click();
+ host.querySelector('.add-player').click();host.querySelectorAll('.avatar-choice')[0].click();collect('new player');
+ host.querySelector('.close-players-page')||host.querySelector('.cancel-player').click();host.querySelector('.close-players-page').click();
+ host.querySelector('.manage-saves').click();collect('whose saves');
+ assert.ok(shown.some(([screen,text])=>screen==='whose saves'&&text==='Josephine'),'Names are shown');
+ for(const [screen,text,key] of shown)assert.ok(names.has(text)||(key&&[...text].length===1),screen+' shows words: '+text);
 });

@@ -9,7 +9,7 @@ function createState(storage){
  // Favorites belong to a player: switching player loads theirs.
  return {view:'library',detail:null,load,show(view){if(!['library','store','options'].includes(view))throw Error('Unknown view');this.view=view;this.detail=null;},select(game){this.detail=game;},isFavorite:id=>favorites.includes(id),favorite(id){favorites=favorites.includes(id)?favorites.filter(x=>x!==id):[...favorites,id];try{storage?.setItem(favoriteKey,JSON.stringify(favorites));}catch{}return favorites.includes(id);}};
 }
-const paths={controller:'M7 7h10q4 0 5 11l-2 2-5-4H9l-5 4-2-2Q3 7 7 7ZM6 10v5M3.5 12.5h5M16 11h.01M19 14h.01',trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6.6l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5Z',library:'M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v7H3zM14 15h7v7h-7z',store:'M4 8h16l1 14H3ZM8 8V6a4 4 0 0 1 8 0v2',options:'M10.2 4.51 10.07 1.58h3.86L13.8 4.51l2.22.92 1.98-2.17L20.74 6l-2.17 1.98.92 2.22 2.93-.13v3.86l-2.93-.13-.92 2.22L20.74 18 18 20.74l-1.98-2.17-2.22.92.13 2.93h-3.86l.13-2.93-2.22-.92L6 20.74 3.26 18l2.17-1.98-.92-2.22-2.93.13v-3.86l2.93.13.92-2.22L3.26 6 6 3.26l1.98 2.17ZM12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z',wifi:'M2 9.5a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0M12 20h.01',update:'M3 11 12 3l9 8v10H3ZM12 18v-7M8.5 14.5 12 11l3.5 3.5',retry:'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',play:'m8 4 13 8-13 8Z',back:'m14 4-8 8 8 8M6 12h16',star:'m12 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1Z',check:'m4 12 5 5L21 5',players:'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2 21v-1.5A5.5 5.5 0 0 1 7.5 14h3a5.5 5.5 0 0 1 5.5 5.5V21M16 4.3a3.5 3.5 0 0 1 0 6.4M19 14.4a5.5 5.5 0 0 1 3 4.9V21',keyboard:'M2 5h20v14H2ZM5 9h2m2 0h2m2 0h2m2 0h2M5 13h2m2 0h2m2 0h2m2 0h2M7 16h10',adult:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM5 23v-5a7 7 0 0 1 14 0v5',empty:'M3 9h18v12H3ZM3 9l3-5h12l3 5M9 13h6',error:'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9ZM9.5 12.5h.01M14.5 12.5h.01M9.5 16.2q2.5-2 5 0',quit:'M12 2v10M6 5a9 9 0 1 0 12 0',cancel:'m5 5 14 14M19 5 5 19',loading:'M12 3a9 9 0 1 1-9 9',down:'M12 2v13m-5-5 5 5 5-5M3 18v4h18v-4',pick:'m6 9 6 6 6-6',alert:'m12 2 11 20H1ZM12 8v6m0 3v1',backspace:'M9 5h12v14H9l-6-7ZM12 9.5l5 5M17 9.5l-5 5'};
+const paths={controller:'M7 7h10q4 0 5 11l-2 2-5-4H9l-5 4-2-2Q3 7 7 7ZM6 10v5M3.5 12.5h5M16 11h.01M19 14h.01',trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6.6l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5Z',library:'M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v7H3zM14 15h7v7h-7z',store:'M4 8h16l1 14H3ZM8 8V6a4 4 0 0 1 8 0v2',options:'M10.2 4.51 10.07 1.58h3.86L13.8 4.51l2.22.92 1.98-2.17L20.74 6l-2.17 1.98.92 2.22 2.93-.13v3.86l-2.93-.13-.92 2.22L20.74 18 18 20.74l-1.98-2.17-2.22.92.13 2.93h-3.86l.13-2.93-2.22-.92L6 20.74 3.26 18l2.17-1.98-.92-2.22-2.93.13v-3.86l2.93.13.92-2.22L3.26 6 6 3.26l1.98 2.17ZM12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z',wifi:'M2 9.5a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0M12 20h.01',update:'M3 11 12 3l9 8v10H3ZM12 18v-7M8.5 14.5 12 11l3.5 3.5',retry:'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',play:'m8 4 13 8-13 8Z',back:'m14 4-8 8 8 8M6 12h16',star:'m12 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1Z',check:'m4 12 5 5L21 5',pencil:'M15.5 4.5l4 4L8 20H4v-4ZM13 7l4 4',swap:'M4 9a8 8 0 0 1 14-4l2 2M20 3v4h-4M20 15a8 8 0 0 1-14 4l-2-2M4 21v-4h4',plus:'M12 5v14M5 12h14',players:'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2 21v-1.5A5.5 5.5 0 0 1 7.5 14h3a5.5 5.5 0 0 1 5.5 5.5V21M16 4.3a3.5 3.5 0 0 1 0 6.4M19 14.4a5.5 5.5 0 0 1 3 4.9V21',keyboard:'M2 5h20v14H2ZM5 9h2m2 0h2m2 0h2m2 0h2M5 13h2m2 0h2m2 0h2m2 0h2M7 16h10',adult:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM5 23v-5a7 7 0 0 1 14 0v5',empty:'M3 9h18v12H3ZM3 9l3-5h12l3 5M9 13h6',error:'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9ZM9.5 12.5h.01M14.5 12.5h.01M9.5 16.2q2.5-2 5 0',quit:'M12 2v10M6 5a9 9 0 1 0 12 0',cancel:'m5 5 14 14M19 5 5 19',loading:'M12 3a9 9 0 1 1-9 9',down:'M12 2v13m-5-5 5 5 5-5M3 18v4h18v-4',pick:'m6 9 6 6 6-6',alert:'m12 2 11 20H1ZM12 8v6m0 3v1',backspace:'M9 5h12v14H9l-6-7ZM12 9.5l5 5M17 9.5l-5 5'};
 function icon(name){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+paths[name]+'"/></svg>';}
 // Picture-only brand mark: a smiling cubby house.
 const brand='<svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><path class="brand-roof" d="M24 3.5 44 18.5V39a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V18.5Z"/><rect class="brand-door" x="11" y="20" width="26" height="18" rx="6"/><g class="brand-face"><circle cx="19" cy="27.5" r="2.4"/><circle cx="29" cy="27.5" r="2.4"/><path d="M19.5 32.5q4.5 3.4 9 0"/></g></svg>';
@@ -210,10 +210,10 @@ function mount(host){
  function playerFace(parent,id){const p=profiles.list().find(x=>x.id===id),face=element(parent,'span','player-face');face.innerHTML=Avatars.svg(p.avatar);return face;}
  function saveHeading(){saveDialog.replaceChildren();const heading=saveText(saveDialog,'h1','Game saves');if(saveProfile&&manyPlayers()){heading.textContent=playerName(saveProfile);heading.prepend?.(playerFace(heading,saveProfile));heading.classList.add('player-heading');}}
  function renderSavePlayers(){
-  saveProfile=undefined;saveHeading();
+  saveProfile=undefined;saveDialog.replaceChildren();button(saveDialog,'back','Back',closeSaveManagement,'close-players dialog-back');
   const rows=element(saveDialog,'div','save-rows');
   for(const p of profiles.list()){const b=saveButton(rows,p.name,()=>loadSaves(p.id),'choose-player');b.prepend?.(playerFace(b,p.id));}
-  saveButton(saveDialog,'Back',closeSaveManagement,'close-players');rows.querySelector('.choose-player').focus();
+  rows.querySelector('.choose-player').focus();
  }
  function renderSaveList(message=''){
   saveHeading();saveText(saveDialog,'p','Delete a game’s saved progress to start it fresh. The game stays installed.');
@@ -289,81 +289,81 @@ function mount(host){
  let playerBusy=false;
  function closePlayers(){if(playerBusy)return;playerDialog.close();adult=false;tabs.options.focus();}
  function playersBack(){if(playerBusy)return;if(playerDialog.querySelector('.cancel-player'))renderPlayers();else closePlayers();}
- function renderPlayers(message=''){
-  playerDialog.replaceChildren();saveText(playerDialog,'h1','Players');
-  const feedback=saveText(playerDialog,'p',message,'save-feedback');feedback.setAttribute('role','status');
+ // Players screens have no words but the players' names: faces, names and picture buttons.
+ function iconButton(parent,name,label,fn,cls){return button(parent,name,label,fn,'icon-button '+(cls||''));}
+ function refuse(target){target.classList.remove('refused');void target.offsetWidth;target.classList.add('refused');}
+ function renderPlayers(){
+  playerDialog.replaceChildren();iconButton(playerDialog,'back','Back',closePlayers,'close-players-page dialog-back');
   const rows=element(playerDialog,'div','player-rows'),list=profiles.list();
   for(const p of list){
-   const row=element(rows,'div','player-row');playerFace(row,p.id);
-   const label=saveText(row,'span',p.name,'player-name');if(list.length>1&&p.id===profile)saveText(label,'small','Playing now','player-note');
-   saveButton(row,'Name',()=>renamePlayer(p),'rename-player');
-   saveButton(row,'Picture',()=>choosePicture(p),'change-picture');
-   if(list.length>1)saveButton(row,'Remove',()=>confirmRemovePlayer(p),'remove-player');
+   // The player playing now wears the picker's ring.
+   const row=element(rows,'div','player-row'+(list.length>1&&p.id===profile?' is-playing':''));playerFace(row,p.id);
+   saveText(row,'span',p.name,'player-name');
+   iconButton(row,'pencil','Rename '+p.name,()=>renamePlayer(p),'rename-player');
+   iconButton(row,'swap','Change picture',()=>choosePicture(p),'change-picture');
+   if(list.length>1)iconButton(row,'trash','Remove '+p.name,()=>confirmRemovePlayer(p),'remove-player');
   }
-  const actions=element(playerDialog,'div','save-actions');
-  const add=saveButton(actions,'Add a player',()=>choosePicture(null),'add-player');add.disabled=list.length>=Avatars.ids.length;
-  const back=saveButton(actions,'Back',closePlayers,'close-players-page');(add.disabled?back:add).focus();
+  const add=iconButton(playerDialog,'plus','Add a player',()=>choosePicture(null),'add-player');add.disabled=list.length>=Avatars.ids.length;
+  (add.disabled?playerDialog.querySelector('.dialog-back'):add).focus();
  }
  function choosePicture(p){
-  playerDialog.replaceChildren();saveText(playerDialog,'h1',p?'Picture':'New player');
-  const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
+  playerDialog.replaceChildren();
   const grid=element(playerDialog,'div','avatar-choices'),used=new Set(profiles.list().map(x=>x.avatar));
   for(const avatar of Avatars.ids){
    if(used.has(avatar)&&avatar!==p?.avatar)continue;
-   const choice=element(grid,'button','avatar-choice');choice.type='button';choice.innerHTML=Avatars.svg(avatar);saveText(choice,'span',Avatars.name(avatar));
+   const choice=element(grid,'button','avatar-choice');choice.type='button';choice.innerHTML=Avatars.svg(avatar);choice.setAttribute('aria-label',Avatars.name(avatar));
    if(avatar===p?.avatar)choice.setAttribute('aria-current','true');
    choice.addEventListener('click',()=>{
     let added;
+    // A picture whose animal name another player has is refused with a shake.
     try{if(!p)added=profiles.add(avatar);else if(avatar!==p.avatar)profiles.setAvatar(p.id,avatar);}
-    catch(error){feedback.textContent=/Name already used/.test(error.message)?'Name taken':'Not saved';return;}
+    catch{refuse(choice);return;}
     renderPlayer();
-    // A new player is named next; Skip keeps their animal's name.
+    // A new player is named next; ✕ there keeps their animal's name.
     if(added)renamePlayer(added,true);else renderPlayers();
    });
   }
-  saveButton(element(playerDialog,'div','save-actions'),'Cancel',()=>renderPlayers(),'cancel-player');
+  iconButton(element(playerDialog,'div','icon-actions'),'cancel','Cancel',()=>renderPlayers(),'cancel-player');
   (grid.querySelector('.avatar-choice[aria-current]')||grid.querySelector('.avatar-choice'))?.focus();
  }
  function confirmRemovePlayer(p){
-  const name=p.name;playerDialog.replaceChildren();
-  const heading=saveText(playerDialog,'h1','Remove '+name+'?','player-heading');heading.prepend?.(playerFace(heading,p.id));
-  const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
-  const actions=element(playerDialog,'div','save-actions');
-  const cancel=saveButton(actions,'Cancel',()=>renderPlayers(),'cancel-player cancel-reset');
-  saveButton(actions,'Remove',async()=>{
-   if(playerBusy)return;playerBusy=true;feedback.textContent='Removing…';for(const b of playerDialog.querySelectorAll('button'))b.disabled=true;
+  playerDialog.replaceChildren();
+  const picture=element(playerDialog,'div','remove-picture');playerFace(picture,p.id);element(picture,'span','remove-symbol').innerHTML=icon('trash');
+  const actions=element(playerDialog,'div','icon-actions');
+  const cancel=iconButton(actions,'cancel','Cancel',()=>renderPlayers(),'cancel-player');
+  const confirm=iconButton(actions,'trash','Remove '+p.name,async()=>{
+   if(playerBusy)return;playerBusy=true;for(const b of playerDialog.querySelectorAll('button'))b.disabled=true;
    try{await profiles.remove(p.id);try{profiles.storageFor(p.id).removeItem(favoriteKey);}catch{}}
-   catch{playerBusy=false;if(disposed)return;feedback.textContent='Not removed';for(const b of playerDialog.querySelectorAll('button'))b.disabled=false;cancel.focus();return;}
+   catch{playerBusy=false;if(disposed)return;for(const b of playerDialog.querySelectorAll('button'))b.disabled=false;refuse(confirm);cancel.focus();return;}
    playerBusy=false;if(disposed)return;
    if(profiles.list().some(x=>x.id===profile))renderPlayer();else usePlayer(profiles.current());
    renderPlayers();
-  },'confirm-reset remove-confirm');cancel.focus();
+  },'remove-confirm');cancel.focus();
  }
  // Naming: a text field everywhere; on the handheld, which has only a controller, Cubby's
  // shared on-screen keyboard (keyboard.js, the same one the Wi-Fi password uses) types it.
- let nameBoard=null;
+ // ✓ stays dim until the name is one this player can have; trying anyway shakes the field.
+ let nameBoard=null,nameSave=null;
  function renamePlayer(p,added=false){
   playerDialog.replaceChildren();nameBoard=null;
-  const heading=saveText(playerDialog,'h1','Name','player-heading');heading.prepend?.(playerFace(heading,p.id));
-  const entry=element(playerDialog,'div','name-entry'),field=element(entry,'input','player-name-field');
+  const entry=element(playerDialog,'div','name-entry');playerFace(entry,p.id);
+  const field=element(entry,'input','player-name-field');
   field.type='text';field.value=p.name;field.maxLength=win.HandheldProfiles.NAME_LENGTH;field.setAttribute('aria-label','Player name');field.autocomplete='off';field.spellcheck=false;
-  const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
-  function save(){
-   try{profiles.rename(p.id,field.value);}
-   catch(error){feedback.textContent=({'Name required':'Name needed','Name too long':'Too long','Name already used':'Name taken','Use letters in a name':'Letters only'})[error.message]||'Not saved';return;}
-   renderPlayer();renderPlayers();
-  }
+  let ok,saveKey=null;
+  // A red outline marks a name that can't be used; an empty field is just unfinished.
+  function check(){ok=!profiles.nameProblem(p.id,field.value);field.classList.toggle('invalid',!ok&&!!field.value.trim());if(saveKey)saveKey.disabled=!ok;}
+  nameSave=()=>{check();if(!ok){field.classList.add('invalid');refuse(field);return;}try{profiles.rename(p.id,field.value);}catch{refuse(field);return;}renderPlayer();renderPlayers();};
   // Typed keys belong to the field, not to the hub's controls.
-  for(const type of ['keydown','keyup'])field.addEventListener(type,event=>{event.stopPropagation();if(type==='keydown'&&event.key==='Enter')save();if(type==='keydown'&&event.key==='Escape')renderPlayers();});
-  field.addEventListener('input',()=>{feedback.textContent='';});
+  for(const type of ['keydown','keyup'])field.addEventListener(type,event=>{event.stopPropagation();if(type==='keydown'&&event.key==='Enter')nameSave();if(type==='keydown'&&event.key==='Escape')renderPlayers();});
+  field.addEventListener('input',check);
   if(win.CubbyDeviceProfile==='rg353v'&&win.HandheldKeyboard){
    // Start a name over: the field selects nothing on a controller, so begin empty.
    if(added)field.value='';
    nameBoard=win.HandheldKeyboard.create({container:element(playerDialog,'div','name-keyboard'),field,layout:'name',capitalizeFirst:true});
   }
-  const actions=element(playerDialog,'div','save-actions');
-  saveButton(actions,added?'Skip':'Cancel',()=>renderPlayers(),'cancel-player');
-  saveButton(actions,'Save',save,'save-name');
+  const actions=element(playerDialog,'div','icon-actions');
+  iconButton(actions,'cancel',added?'Keep animal name':'Cancel',()=>renderPlayers(),'cancel-player');
+  saveKey=iconButton(actions,'check','Save name',()=>nameSave(),'save-name');check();
   if(nameBoard)nameBoard.focus();else{field.focus();field.select?.();}
  }
  function openPlayers(){if(adult||!profiles)return;adult=true;playerDialog.replaceChildren();playerDialog.showModal();renderPlayers();}
@@ -520,7 +520,7 @@ function mount(host){
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeAdult(false);});
  const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(picking){const nodes=Array.from(picker.querySelectorAll('button'));if(a==='back'||a==='exit'){if(profiles.pinned())closePicker();}else if(a==='confirm'||a==='pause')(nodes.includes(doc.activeElement)?doc.activeElement:picker.querySelector('.picker-face'))?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||picker.querySelector('.picker-face'))?.focus();return;}if(playerDialog.open){if(playerBusy)return;const nodes=Array.from(playerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);
   // Keys are a grid: the D-pad moves across it, a shoulder changes case and Start saves.
-  if(nameBoard&&playerDialog.querySelector('.name-keyboard')){if(a==='back'||a==='exit')playersBack();else if(a==='nextView'||a==='previousView')nameBoard.toggleCase();else if(a==='pause')playerDialog.querySelector('.save-name')?.click();else if(a==='confirm')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||nodes[0])?.focus();return;}
+  if(nameBoard&&playerDialog.querySelector('.name-keyboard')){if(a==='back'||a==='exit')playersBack();else if(a==='nextView'||a==='previousView')nameBoard.toggleCase();else if(a==='pause')nameSave?.();else if(a==='confirm')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||nodes[0])?.focus();return;}
   if(a==='back'||a==='exit')playersBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')saveBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
  if(a==='exit'||a==='back'){if(!detail.hidden)returnToGames(doc.activeElement?.classList.contains('game-card')||doc.activeElement===tabs[state.view]);else activateView('library');return;}
  if(a==='select'||a==='nextView'||a==='previousView'){activateView(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);return;}

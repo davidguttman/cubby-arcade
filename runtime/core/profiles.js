@@ -157,6 +157,10 @@
         freeName(nameOf(next), id);
         write(registry.profiles.map(p => p.id === id ? next : p), registry.active);
       },
+      // Why a name can't be this player's, or null when it can: the hub checks as an adult types.
+      nameProblem(id, raw) {
+        try { if (!find(id)) throw Error('Unknown player'); freeName(cleanName(raw), id); return null; } catch (error) { return error.message; }
+      },
       // An adult names a player; their animal's name means no name of their own.
       rename(id, raw) {
         const current = find(id);

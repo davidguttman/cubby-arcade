@@ -19,7 +19,8 @@ test('the password layout is exactly the Wi-Fi keyboard it replaced',()=>{
 test('the name layout has letters and name marks, starts each name with a capital, and caps the length',()=>{
  const d=dom(),field={value:'',maxLength:12},board=create({container:d.container,field,layout:'name',capitalizeFirst:true});
  assert.equal(d.container.dataset.layout,'name');
- assert.deepEqual(d.labels(d.container),[...'QWERTYUIOP',...'ASDFGHJKL','Backspace','abc',...'ZXCVBNM','-',"'",'.','Space']);
+ assert.deepEqual(d.labels(d.container),[...'QWERTYUIOP',...'ASDFGHJKL','Backspace','Shift',...'ZXCVBNM','-',"'",'.','Space']);
+ assert.equal(d.container.children.filter(b=>b.textContent.length>1).length,0,'Shift and space are pictures, not words');
  d.press(d.container,'M');assert.equal(field.value,'M');assert.equal(board.shifted,false,'After the first letter, lower case');
  for(const c of 'aya')d.press(d.container,c);assert.equal(field.value,'Maya');
  for(let i=0;i<4;i++)d.press(d.container,'Backspace');assert.equal(board.shifted,true,'An empty name starts with a capital again');
