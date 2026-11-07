@@ -182,7 +182,7 @@ input for both WPE and ordinary browsers. Actions are `confirm`, `back`, `pause`
 `select`, directions and `exit`; events also carry the logical game button
 (`a`, `b`, `start`, etc.) and source. Analog dead zones, directional repeat,
 reconnect/neutral latching and listener teardown live here, not in individual
-screens. A/Start confirms in launcher/title; Escape or L1+R1 exits gameplay.
+screens. A/Start confirms in launcher/title; Escape or L1+R1 opens the game menu.
 
 `runtime/core/preferences.js` supplies `HandheldPreferences.preferences` (one
 shared instance per page). Preferences live under `handheld:preferences:v1` in
@@ -666,12 +666,20 @@ Games do not need a Quit button or SDK to return to the library. Every host
 injects `/runtime/core/game-shell.js` into served game HTML **before game
 scripts**, leaving installed archives and their checksums unchanged.
 
-- **Keyboard:** Escape opens the wordless menu. Escape again resumes; arrows
-  select the play/resume or grid/library picture, Enter confirms.
-- **Controller:** Select + Start opens the menu (L1 + R1 is also supported).
-  Release the shortcut, choose with left/right, A confirms, B resumes.
-- **Touch:** the pictorial menu button follows Options → touch visibility.
-  It remains outside the game's UI; no reading is required.
+Every game opens at a wordless start menu: the play triangle begins the game,
+and the grid returns to the library. After playing, the triangle resumes instead.
+Escape or B cannot accidentally dismiss the initial menu and start gameplay.
+
+- **Keyboard:** Escape opens the menu during play. Arrows select the play/resume
+  or grid/library picture; A/Space, Enter or the mapped Start key confirms.
+  Escape resumes only after gameplay has begun.
+- **Controller:** Select + Start or L1 + R1 opens the menu. Release the shortcut,
+  choose with left/right, A/Start confirms, B resumes only after gameplay has
+  begun. Held confirmation input cannot leak into play. Start alone remains
+  available to games for their own actions.
+- **Mouse/touch:** the pictorial menu button is always visible, independent of
+  the on-screen controller preference. It remains outside the game's UI;
+  no reading is required.
 
 SDK games pause while this menu is open, and resume only when dismissed.
 Non-SDK games still have blocked keyboard/pointer/controller input and a reliable

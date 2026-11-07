@@ -63,7 +63,10 @@ for (const heldFromLastPage of [false, true]) for (const virtual of [true, false
     navigator: {getGamepads: () => pads}, location: {pathname: '/games/demo/main.html', href: ''},
     addEventListener() {}, removeEventListener() {}, requestAnimationFrame: fn => { frames.shell = fn; return 1; }, cancelAnimationFrame() {},
     dispatchEvent() {}, CustomEvent: class {}, setTimeout: fn => fn()};
-  install(env);
+  const shell = install(env);
+  // This matrix exercises gameplay polling after the player explicitly chose Play.
+  // Initial-menu suspension and confirmation are covered in game_shell.cjs.
+  shell.resume();
   const actions = [];
   createInput({target: {addEventListener() {}, removeEventListener() {}}, document: null,
     preferences: {get: () => ({keyboard: {}}), subscribe: () => () => {}}, navigator: env.navigator,
