@@ -231,7 +231,7 @@
     // unchanged. This is the same trusted-game model as native HTML delivery.
     if(/\.html?$/i.test(path)){
       let html=await response.text();
-      const tag='<script src="/runtime/core/preferences.js"></script><script data-cubby-controller src="/runtime/core/host-osd.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script>';
+      const tag='<script src="/runtime/core/preferences.js"></script><script data-cubby-controller src="/runtime/core/host-osd.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script><script data-cubby-profile src="/runtime/core/profiles.js"></script>';
       if(!html.includes(tag)){const match=/<!doctype[^>]*>/i.exec(html),at=match?match.index+match[0].length:0;html=html.slice(0,at)+tag+html.slice(at);}
       response=new Response(html,{headers:response.headers});
     }
