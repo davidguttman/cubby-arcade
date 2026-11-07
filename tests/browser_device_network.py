@@ -112,9 +112,11 @@ async def exercise(cdp, origin, manager, screenshots):
             await page.get_by_role('button', name='options', exact=True).click()
             await answer(await question_answer())
             await tiles.first.wait_for()
-            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Game saves'
-            assert await tiles.count() == 5
+            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Cubby updates'
+            # Most used first, power last; all six fit the handheld screen without scrolling.
+            assert await tiles.evaluate_all('ts=>ts.map(t=>t.getAttribute("aria-label"))') == ['Cubby updates', 'Wi-Fi settings', 'Game saves', 'Adult controller setup', 'Restart', 'Power off']
             assert await page.evaluate('document.documentElement.scrollHeight') <= 480
+            assert await page.evaluate("(p=>p.scrollHeight<=p.clientHeight)(document.querySelector('.options-panel'))")
             await page.wait_for_timeout(400)
             await screenshot('settings-tab')
             await button(15)  # D-pad moves across the tiles.
@@ -136,7 +138,7 @@ async def exercise(cdp, origin, manager, screenshots):
             await button(1)  # B returns to the settings tab, not the library, without asking again.
             await page.locator('.settings-tile').first.wait_for()
             assert page.url == origin + '/'
-            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Game saves'
+            assert await page.evaluate("document.activeElement.getAttribute('aria-label')") == 'Cubby updates'
             manager.adapter.online = True
             await page.goto(origin + '/adult/network')
             await page.get_by_text('Internet is working.', exact=False).wait_for()

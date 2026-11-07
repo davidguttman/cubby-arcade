@@ -43,9 +43,9 @@
   // The hub's gear tab is the only settings screen. It asks an adult math question,
   // then these picture tiles open the worded pages kept out of the wordless child hub.
   win.HandheldPlatformOptions = {kind: 'kiosk', bridge, settings: [
-    {icon: 'trash', label: 'Game saves', href: '#adult-saves'},
+    {icon: 'update', label: 'Cubby updates', href: '/adult/updates', notice: true},
     {icon: 'wifi', label: 'Wi-Fi settings', href: '/adult/network'},
-    {icon: 'update', label: 'Cubby updates', href: '/adult/updates', notice: true}
+    {icon: 'trash', label: 'Game saves', href: '#adult-saves'}
   ]};
   // Controller shortcut to the gear tab, which still asks the question:
   // hold L+R+Start for two seconds.
