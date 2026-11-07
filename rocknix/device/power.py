@@ -52,6 +52,9 @@ PRESSED_WAKE = 3
 BUSY_RETRY = 5
 EXTERNAL_CHECK = 5
 INPUT_RESCAN = 5
+AUDIO_CHECK = 1
+AUDIO_TIMEOUT = .3
+STOCK_SLEEP_MARKERS = ('/var/run/power-fake-suspend-active.flag', '/var/run/lid-closed.flag')
 RUNTIME_DIR = '/run/0-runtime-dir'
 MARKER = '/run/cubby-power-dark'
 FROZEN = ('cog', 'WPEWebProcess', 'WPENetworkProce', 'WPEGPUProcess')
@@ -216,12 +219,19 @@ class EventHub:
 
 class Host:
     """Everything that touches the device, so the controller can be tested without one."""
-    def __init__(self, settings):
+    def __init__(self, settings, state_dir='/storage/cubby/state', log=None):
         self.settings = settings
+        self.log = log or (lambda message: None)
+        self.recovery_reported = False
+        # Compatibility only: new sleeps no longer write a durable mute state.
+        self.audio_marker = Path(state_dir) / 'power-audio.json'
+        self.recovery_pending = False
         self.delay = self.block = None
         self.frozen = []
-        self.was_muted = False
-        self.env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME_DIR, SWAYSOCK=RUNTIME_DIR + '/sway-ipc.0.sock')
+        self.audio_checked_at = None
+        self.audio_reported = False
+        self.env = dict(os.environ, LC_ALL='C', XDG_RUNTIME_DIR=RUNTIME_DIR,
+                        SWAYSOCK=RUNTIME_DIR + '/sway-ipc.0.sock')
 
     def run(self, *command, timeout=10):
         return subprocess.run(command, env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -268,33 +278,88 @@ class Host:
 
     def go_dark(self):
         """True when the display really is off, which is what makes a dark wake possible."""
+        self.recovery_pending = False
         try:
-            muted = self.run('pactl', 'get-sink-mute', '@DEFAULT_SINK@').stdout
-            self.was_muted = 'yes' in muted
-            Path(MARKER).write_text(json.dumps({'muted': self.was_muted}))
-            self.run('pactl', 'set-sink-mute', '@DEFAULT_SINK@', 'true')
+            Path(MARKER).write_text('dark\n')
+            if self.run('pactl', 'set-sink-mute', '@DEFAULT_SINK@', 'true').returncode:
+                return False
             return self.run('swaymsg', 'output * power off').returncode == 0
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, ValueError, subprocess.SubprocessError):
             return False
 
     def light_up(self):
-        for command in (('swaymsg', 'output * power on'),
-                        ('pactl', 'set-sink-mute', '@DEFAULT_SINK@', 'true' if self.was_muted else 'false')):
-            try:
-                self.run(*command)
-            except (OSError, subprocess.SubprocessError):
-                pass
-        Path(MARKER).unlink(missing_ok=True)
+        self.recovery_pending = True
+        self.retry_recovery()
+
+    def recovery_failed(self, reason):
+        if not self.recovery_reported:
+            self.log(f'audio/display restore pending: {reason}; retrying while awake')
+            self.recovery_reported = True
+
+    def retry_recovery(self):
+        """Retry only while awake; a failed restore must keep its recovery record."""
+        if not self.recovery_pending or self.stock_sleeping():
+            return
+        try:
+            display = self.run('swaymsg', 'output * power on')
+            if not self.unmute_sink():
+                self.recovery_failed('audio unmute not verified')
+                return
+            if display.returncode:
+                self.recovery_failed('display command failed')
+                return
+            Path(MARKER).unlink(missing_ok=True)
+            self.audio_marker.unlink(missing_ok=True)
+            self.recovery_pending = False
+            self.log('audio/display restored muted=False')
+            self.recovery_reported = False
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self.recovery_failed(str(error))
+
+    def unmute_sink(self):
+        """Never touch volume: zero is the user's silent setting."""
+        if self.run('pactl', 'set-sink-mute', '@DEFAULT_SINK@', 'false', timeout=AUDIO_TIMEOUT).returncode:
+            return False
+        result = self.run('pactl', 'get-sink-mute', '@DEFAULT_SINK@', timeout=AUDIO_TIMEOUT)
+        return result.returncode == 0 and result.stdout.strip() == 'Mute: no'
+
+    def awake_audio(self):
+        """One check per second, even with a flood of input events. Awake callers only."""
+        if self.stock_sleeping():
+            return
+        now = self.monotonic()
+        if self.audio_checked_at is not None and now - self.audio_checked_at < AUDIO_CHECK:
+            return
+        self.audio_checked_at = now
+        self.retry_recovery()
+        try:
+            result = self.run('pactl', 'get-sink-mute', '@DEFAULT_SINK@', timeout=AUDIO_TIMEOUT)
+            if result.returncode or result.stdout.strip() not in ('Mute: yes', 'Mute: no'):
+                raise ValueError('audio state unavailable')
+            muted = result.stdout.strip() == 'Mute: yes'
+            if muted and not self.unmute_sink():
+                raise ValueError('audio unmute not verified')
+            if muted or self.audio_reported:
+                self.log('awake audio verified unmuted')
+            self.audio_reported = False
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            if not self.audio_reported:
+                self.log(f'awake audio check pending: {error}; retrying')
+                self.audio_reported = True
+
+    @staticmethod
+    def stock_sleeping():
+        # ROCKNIX fake suspend keeps the CPU running. These flags are set before
+        # its suspend actions (including mute) and removed before resume actions.
+        return any(Path(marker).exists() for marker in STOCK_SLEEP_MARKERS)
 
     def recover_from_crash(self):
-        """A previous helper died while dark. Nothing else would ever turn the screen back on."""
-        try:
-            saved = json.loads(Path(MARKER).read_text())
-        except (OSError, ValueError):
-            return
-        self.was_muted = bool(saved.get('muted')) if isinstance(saved, dict) else False
-        self.thaw()
-        self.light_up()
+        """Startup always unmutes; old markers only request display recovery too."""
+        if Path(MARKER).exists() or self.audio_marker.exists():
+            self.thaw()
+            self.light_up()
+        else:
+            self.awake_audio()
 
     def session_pids(self):
         pids = []
@@ -527,6 +592,7 @@ class Controller:
             self.log('poweroff did not happen; waking')
             self.wake('other')
         elif self.state == AWAKE:
+            self.host.awake_audio()
             self.check_idle(now)
 
     def check_idle(self, now):
@@ -683,15 +749,24 @@ def deep_sleep_available():
         return False
 
 
+def watch_audio(host):
+    """Keep the audio policy when stock sleep owns all power handling."""
+    while True:
+        host.awake_audio()
+        time.sleep(1)
+
+
 def run(hub, state_dir):
     """Runs for the life of the session. If anything here fails, stock ROCKNIX sleep remains."""
     settings = load_settings(state_dir)
     log = file_logger(state_dir)
+    host = Host(settings, state_dir, log)
+    host.recover_from_crash()
     if not deep_sleep_available():
         log('deep sleep unavailable; leaving stock behaviour')
-        return
-    host = Host(settings)
-    host.recover_from_crash()
+        # No inhibitors or sleep hooks: flags guard stock fake suspend, and
+        # hardware suspend pauses this loop naturally.
+        return watch_audio(host)
     events = queue.Queue()
     threading.Thread(target=watch_sleep_signals, args=(events,), daemon=True).start()
     time.sleep(1)   # Let the monitor subscribe before taking the lock it serves.
@@ -713,7 +788,7 @@ def run(hub, state_dir):
                     controller.wake('other')
                 host.release_delay_lock()
                 host.unblock_power_key()
-                return
+                break
             if event:
                 handlers[event]()
             controller.tick()
@@ -721,3 +796,4 @@ def run(hub, state_dir):
             log(f'error: {error!r}')
             if controller.state != AWAKE:
                 controller.wake('other')
+    watch_audio(host)

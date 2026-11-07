@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import socket
 import struct
+import subprocess
 import tempfile
 import threading
 import time
@@ -216,6 +217,7 @@ class FakeHost:
     def poweroff(self): self.calls.append('poweroff')
     def idle_allowed(self): return self.allowed
     def recover_from_crash(self): pass
+    def awake_audio(self): pass
 
 
 class ControllerTests(unittest.TestCase):
@@ -230,6 +232,23 @@ class ControllerTests(unittest.TestCase):
 
     def sleep_now(self):
         self.controller.prepare_for_sleep()
+
+    def test_audio_watchdog_only_runs_while_awake(self):
+        self.host.awake_audio = lambda: self.host.calls.append('audio-check')
+        self.controller.tick()
+        self.assertIn('audio-check', self.host.calls)
+        self.sleep_now()
+        self.host.calls.clear()
+        self.controller.tick()
+        self.assertNotIn('audio-check', self.host.calls)
+        self.alarm_fires()
+        self.controller.tick()
+        self.assertNotIn('audio-check', self.host.calls)
+        self.host.reading = battery(9)
+        self.controller.prepare_for_sleep()
+        self.alarm_fires()
+        self.controller.tick()
+        self.assertNotIn('audio-check', self.host.calls)
 
     def alarm_fires(self):
         self.host.slept += self.host.alarm
@@ -628,6 +647,321 @@ class DeliveryTests(unittest.TestCase):
                 self.assertEqual(server.events.acked, 1)
                 with self.assertRaises(network.NetworkError):
                     client.dispatch({'action': 'system-ack', 'seq': 'x'})
+
+
+class HostAudioRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.directory = Path(self.temp.name)
+        self.legacy = self.directory / 'run-marker'
+        self.stock_markers = (str(self.directory / 'power-fake-suspend-active.flag'),
+                              str(self.directory / 'lid-closed.flag'))
+        self.stock_patch = patch.object(power, 'STOCK_SLEEP_MARKERS', self.stock_markers, create=True)
+        self.stock_patch.start()
+        self.addCleanup(self.stock_patch.stop)
+        self.marker_patch = patch.object(power, 'MARKER', str(self.legacy))
+        self.marker_patch.start()
+        self.addCleanup(self.marker_patch.stop)
+        self.muted = False
+        self.fail_restore = False
+        self.fail_query = False
+        self.display_ok = True
+        self.commands = []
+        self.clock = 1000.0
+        self.host = self.make_host()
+
+    def make_host(self):
+        host = power.Host(SETTINGS, state_dir=self.directory)
+        host.run = self.command
+        host.thaw = lambda: None
+        host.monotonic = lambda: self.clock
+        return host
+
+    def command(self, *args, **kwargs):
+        import subprocess
+        self.commands.append(args)
+        code, output = 0, ''
+        if args[:2] == ('pactl', 'get-sink-mute'):
+            code = int(self.fail_query)
+            output = 'Mute: ' + ('yes' if self.muted else 'no')
+        elif args[:2] == ('pactl', 'set-sink-mute'):
+            if self.fail_restore and args[-1] == 'false':
+                code = 1
+            else:
+                self.muted = args[-1] == 'true'
+        elif args[0] == 'swaymsg':
+            code = 0 if self.display_ok else 1
+        return subprocess.CompletedProcess(args, code, output, '')
+
+    def test_reboot_recovers_sleep_mute_without_volatile_marker(self):
+        self.assertTrue(self.host.go_dark())
+        self.assertTrue(self.muted)
+        self.legacy.unlink(missing_ok=True)
+        self.make_host().recover_from_crash()
+        self.assertFalse(self.muted)
+
+    def test_failed_unmute_retains_record_and_retries(self):
+        self.host.go_dark()
+        self.fail_restore = True
+        self.host.light_up()
+        self.assertTrue(self.legacy.exists())
+        self.assertTrue(self.host.recovery_pending)
+        self.fail_restore = False
+        self.host.retry_recovery()
+        self.assertFalse(self.muted)
+        self.assertFalse(self.legacy.exists())
+        self.assertFalse(self.host.recovery_pending)
+
+    def test_successful_command_with_wrong_readback_keeps_record(self):
+        self.host.go_dark()
+        command = self.command
+        def ignored_restore(*args, **kwargs):
+            if args[:2] == ('pactl', 'set-sink-mute') and args[-1] == 'false':
+                return __import__('subprocess').CompletedProcess(args, 0, '', '')
+            return command(*args, **kwargs)
+        self.host.run = ignored_restore
+        self.host.light_up()
+        self.assertTrue(self.legacy.exists())
+        self.assertTrue(self.host.recovery_pending)
+        self.host.run = command
+        self.host.retry_recovery()
+        self.assertFalse(self.muted)
+
+    def test_restore_exception_keeps_record_for_later(self):
+        self.host.go_dark()
+        with patch.object(self.host, 'run', side_effect=OSError('not ready')):
+            self.host.light_up()
+        self.assertTrue(self.legacy.exists())
+        self.make_host().recover_from_crash()
+        self.assertFalse(self.muted)
+
+    def test_unreadable_legacy_record_does_not_block_recovery(self):
+        self.host.go_dark()
+        with patch.object(Path, 'read_text', side_effect=PermissionError('unreadable')):
+            self.host.light_up()
+        self.assertFalse(self.legacy.exists())
+        self.assertFalse(self.host.recovery_pending)
+        self.assertFalse(self.muted)
+
+    def test_corrupt_legacy_record_is_removed_after_verified_recovery(self):
+        self.host.go_dark()
+        self.host.audio_marker.write_text('{bad json')
+        self.host.light_up()
+        self.assertFalse(self.host.audio_marker.exists())
+        self.assertFalse(self.host.recovery_pending)
+        self.assertFalse(self.muted)
+
+    def test_repeated_dark_does_not_capture_our_temporary_mute(self):
+        self.host.go_dark()
+        self.host.go_dark()
+        self.make_host().recover_from_crash()
+        self.assertFalse(self.muted)
+
+    def test_legacy_muted_state_is_cleared_after_reboot(self):
+        self.muted = True
+        self.host.audio_marker.write_text('{"muted": true}')
+        self.host.go_dark()
+        self.make_host().recover_from_crash()
+        self.assertFalse(self.muted)
+
+    def test_sleep_needs_no_query_of_previous_user_mute(self):
+        self.fail_query = True
+        self.assertTrue(self.host.go_dark())
+        self.assertTrue(self.muted)
+        self.assertTrue(self.legacy.exists())
+
+    def test_wake_unmutes_even_without_a_saved_record(self):
+        self.muted = True
+        self.fail_query = True
+        self.host.light_up()
+        self.assertFalse(self.muted)
+
+    def test_failed_dark_marker_write_never_introduces_temporary_mute(self):
+        with patch.object(Path, 'write_text', side_effect=OSError('read-only')):
+            self.assertFalse(self.host.go_dark())
+        self.assertFalse(self.muted)
+
+    def test_legacy_volatile_marker_still_recovers(self):
+        self.muted = True
+        self.legacy.write_text('{"muted": false}')
+        self.host.recover_from_crash()
+        self.assertFalse(self.muted)
+        self.assertFalse(self.legacy.exists())
+
+    def test_startup_retries_late_audio_even_without_deep_sleep(self):
+        self.muted = True
+        self.fail_restore = True
+        def audio_ready(_seconds):
+            self.fail_restore = False
+            self.clock += 1
+        class StopWatchdog(Exception): pass
+        sleeps = [audio_ready, lambda _: (_ for _ in ()).throw(StopWatchdog())]
+        def sleep_once(seconds):
+            sleeps.pop(0)(seconds)
+        with patch.object(power, 'Host', return_value=self.host), \
+             patch.object(power, 'deep_sleep_available', return_value=False), \
+             patch.object(power, 'file_logger', return_value=lambda message: None), \
+             patch.object(power.time, 'sleep', side_effect=sleep_once), \
+             self.assertRaises(StopWatchdog):
+            power.run(power.EventHub(), self.directory)
+        self.assertFalse(self.muted)
+        self.assertFalse(self.legacy.exists())
+
+    def test_fallback_respects_stock_sleep_flags_then_unmutes_on_resume(self):
+        class StopWatchdog(Exception): pass
+        for marker_name in self.stock_markers:
+            with self.subTest(marker=marker_name):
+                host = self.make_host()
+                marker = Path(marker_name)
+                marker.touch()
+                self.muted = True
+                self.commands.clear()
+                sleeps = 0
+                def resume_then_stop(_seconds):
+                    nonlocal sleeps
+                    sleeps += 1
+                    if sleeps == 1:
+                        self.assertTrue(self.muted)
+                        self.assertEqual(self.commands, [])
+                        marker.unlink()
+                        self.clock += 1
+                    else:
+                        raise StopWatchdog()
+                with patch.object(power, 'Host', return_value=host), \
+                     patch.object(power, 'deep_sleep_available', return_value=False), \
+                     patch.object(power, 'file_logger', return_value=lambda message: None), \
+                     patch.object(power.time, 'sleep', side_effect=resume_then_stop), \
+                     self.assertRaises(StopWatchdog):
+                    power.run(power.EventHub(), self.directory)
+                self.assertFalse(self.muted)
+
+    def test_stock_sleep_also_defers_pending_display_audio_recovery(self):
+        self.host.go_dark()
+        Path(self.stock_markers[0]).touch()
+        self.commands.clear()
+        self.host.light_up()
+        self.host.awake_audio()
+        self.assertEqual(self.commands, [])
+        self.assertTrue(self.muted)
+        self.assertTrue(self.host.recovery_pending)
+        Path(self.stock_markers[0]).unlink()
+        self.host.awake_audio()
+        self.assertFalse(self.muted)
+        self.assertFalse(self.host.recovery_pending)
+
+    def test_lost_sleep_signals_releases_locks_and_keeps_fallback_watchdog(self):
+        host = FakeHost()
+        host.awake_audio = lambda: host.calls.append('audio-check')
+        events = power.queue.Queue()
+        events.put('signals-lost')
+        def fallback(actual_host):
+            self.assertIs(actual_host, host)
+            self.assertFalse(host.delay)
+            self.assertFalse(host.blocked)
+            actual_host.awake_audio()
+        with patch.object(power, 'Host', return_value=host), \
+             patch.object(power, 'deep_sleep_available', return_value=True), \
+             patch.object(power, 'file_logger', return_value=lambda message: None), \
+             patch.object(power.queue, 'Queue', return_value=events), \
+             patch.object(power.threading, 'Thread'), \
+             patch.object(power.time, 'sleep'), \
+             patch.object(power, 'watch_audio', side_effect=fallback, create=True) as watchdog:
+            power.run(power.EventHub(), self.directory)
+        watchdog.assert_called_once_with(host)
+        self.assertIn('audio-check', host.calls)
+
+    def test_restore_logs_failure_once_and_eventual_success(self):
+        messages = []
+        self.host.log = messages.append
+        self.host.go_dark()
+        self.fail_restore = True
+        self.host.light_up()
+        self.host.retry_recovery()
+        self.assertEqual(len(messages), 1)
+        self.fail_restore = False
+        self.host.retry_recovery()
+        self.assertEqual(len(messages), 2)
+        self.assertIn('restored', messages[-1])
+
+    def test_failed_restore_then_reboot_recovers_without_any_record(self):
+        self.host.go_dark()
+        self.fail_restore = True
+        self.host.light_up()
+        self.assertTrue(self.legacy.exists())
+        self.legacy.unlink()  # /run disappears on reboot.
+        self.fail_restore = False
+        self.make_host().recover_from_crash()
+        self.assertFalse(self.muted)
+
+    def test_no_marker_startup_clears_mute(self):
+        self.muted = True
+        self.host.recover_from_crash()
+        self.assertFalse(self.muted)
+
+    def test_watchdog_clears_later_mute_without_changing_volume(self):
+        self.host.recover_from_crash()
+        self.muted = True
+        self.clock += 1
+        self.host.awake_audio()
+        self.assertFalse(self.muted)
+        self.assertFalse(any('volume' in part for command in self.commands for part in command))
+
+    def test_watchdog_is_throttled_during_input_event_flood(self):
+        self.host.awake_audio()
+        self.commands.clear()
+        self.muted = True
+        for _ in range(100):
+            self.clock += .001
+            self.host.awake_audio()
+        self.assertEqual(self.commands, [])
+        self.clock += 1
+        self.host.awake_audio()
+        self.assertFalse(self.muted)
+
+    def test_watchdog_retries_missing_audio_service(self):
+        self.muted = True
+        with patch.object(self.host, 'run', side_effect=OSError('not ready')):
+            self.host.awake_audio()
+        self.clock += 1
+        self.host.awake_audio()
+        self.assertFalse(self.muted)
+
+    def test_timed_out_audio_check_does_not_skip_power_tick_and_retries(self):
+        with patch.object(self.host, 'take_delay_lock'):
+            controller = power.Controller(self.host, power.EventHub(), dict(SETTINGS))
+        with patch.object(self.host, 'run', side_effect=subprocess.TimeoutExpired('pactl', .3)) as run, \
+             patch.object(controller, 'check_idle') as check_idle:
+            controller.tick()
+        run.assert_called_once_with('pactl', 'get-sink-mute', '@DEFAULT_SINK@', timeout=.3)
+        check_idle.assert_called_once_with(self.clock)
+        self.clock += 1
+        self.muted = True
+        self.host.awake_audio()
+        self.assertFalse(self.muted)
+
+    def test_watchdog_bounds_query_set_and_readback_timeouts(self):
+        self.muted = True
+        with patch.object(self.host, 'run', wraps=self.command) as run:
+            self.host.awake_audio()
+        self.assertEqual([call.args[1] for call in run.call_args_list],
+                         ['get-sink-mute', 'set-sink-mute', 'get-sink-mute'])
+        self.assertEqual([call.kwargs for call in run.call_args_list], [{'timeout': .3}] * 3)
+
+    def test_corrupt_recovery_record_cannot_block_unmute_watchdog(self):
+        self.host.audio_marker.write_text('{bad json')
+        self.muted = True
+        self.host.awake_audio()
+        self.assertFalse(self.muted)
+
+    def test_failed_display_restore_keeps_marker_for_retry(self):
+        self.host.go_dark()
+        self.display_ok = False
+        self.host.light_up()
+        self.assertTrue(self.legacy.exists())
+        self.display_ok = True
+        self.host.retry_recovery()
+        self.assertFalse(self.legacy.exists())
 
 
 if __name__ == '__main__':

@@ -56,6 +56,23 @@ a dark wake, when the next suspend is already on its way, brings it straight bac
 stopped, the display off and the sink muted until then. A step that stalls also ends
 lit, and a marker in `/run` restores the display if the helper dies while dark.
 
+Mute is not a user setting: silence means volume zero. At startup and once per
+second while awake, the existing power helper checks the default speaker and clears
+any mute without changing volume. It retries if audio starts late or a command fails,
+and verifies the unmute by reading it back. Input events cannot make the check run
+more often. The check never runs during managed sleep, dark wakes or power-off.
+Wake restoration always unmutes; only the temporary internal sleep mute is allowed.
+On devices using stock fake suspend, ROCKNIX's power-suspend and lid-closed flags
+also defer audio/display recovery until resume. If the sleep-signal monitor exits,
+the helper releases its power locks and keeps this stock-sleep-aware audio check.
+
+There is no saved user mute state or new durable audio recovery record. Startup
+unmutes even after a reboot erased `/run`. Legacy `power-audio.json` records, including
+ones saying `muted: true`, are treated only as a request for display/audio recovery
+and removed after verified recovery; their contents cannot block unmuting. Failed
+wake restoration keeps the dark marker and retries while awake. `power.log` records
+the first failure (without repeating every second) and verified recovery.
+
 The power key stays blocked in logind while asleep and for 2 seconds after waking, so
 the press that wakes the device can't also put it back to sleep.
 
