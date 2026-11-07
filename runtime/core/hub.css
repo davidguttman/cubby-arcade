@@ -105,17 +105,21 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .hub .player-button:hover{background:transparent;transform:translateY(-2px)}
 .hub .player-button:focus{outline:none;box-shadow:0 0 0 3px #fff4e6,0 0 0 6px #ffc94d,0 0 22px 5px rgba(255,184,56,.55)}
 .player-picker{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,4vh,34px);padding:16px;background:radial-gradient(110% 70% at 8% -12%,#6a3d5d 0,rgba(106,61,93,0) 60%),radial-gradient(90% 70% at 105% 115%,#283a6a 0,rgba(40,58,106,0) 62%),linear-gradient(180deg,#2a1f3d,#150f22);animation:rise .28s ease-out}
-.picker-faces{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:clamp(18px,4vw,44px);max-width:min(1200px,96vw)}
-.hub .picker-face{--size:clamp(104px,min(25vh,20vw),210px);width:var(--size);height:var(--size);padding:0;border-radius:50%;background:transparent;box-shadow:0 8px 0 rgba(10,4,20,.45),0 14px 26px rgba(0,0,0,.35);transition:transform .22s cubic-bezier(.3,1.5,.5,1),box-shadow .2s,opacity .2s,filter .2s}
-.picker-faces:is([data-count="2"],[data-count="3"]) .picker-face{--size:clamp(130px,min(40vh,27vw),280px)}
-.picker-faces[data-count="4"] .picker-face{--size:clamp(110px,min(32vh,20vw),240px)}
-.hub .picker-face svg{width:100%;height:100%}
-.hub .picker-face:hover{background:transparent;transform:translateY(-4px)}
+/* Faces sit in rows of a set width: 2-4 in one row, 5-6 as three a row, 7-8 as four.
+   A light rim and a soft shadow keep every face's round edge readable on the dark
+   background; a hard dark drop shadow there made the bottom edge look cut off. */
+.picker-faces{--size:clamp(104px,min(25vh,20vw),210px);--gap:clamp(18px,4vw,44px);display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:var(--gap);max-width:calc(var(--size) * 4 + var(--gap) * 3 + 1px)}
+.picker-faces:is([data-count="2"],[data-count="3"]){--size:clamp(130px,min(40vh,27vw),280px)}
+.picker-faces[data-count="4"]{--size:clamp(110px,min(32vh,20vw),240px)}
+.picker-faces:is([data-count="5"],[data-count="6"]){--size:clamp(110px,min(30vh,24vw),230px);max-width:calc(var(--size) * 3 + var(--gap) * 2 + 1px)}
+.hub .picker-face{width:var(--size);height:var(--size);padding:0;border-radius:50%;background:transparent;box-shadow:0 0 0 3px rgba(255,244,230,.16),0 12px 28px rgba(0,0,0,.45);transition:transform .22s cubic-bezier(.3,1.5,.5,1),box-shadow .2s,opacity .2s}
+.hub .picker-face:hover{background:transparent;transform:scale(1.04)}
 /* A cream ring inside the gold one keeps the focus clear on a yellow face too. */
-.hub .picker-face:focus{outline:none;transform:translateY(-8px) scale(1.08);box-shadow:0 0 0 5px #fff4e6,0 0 0 10px #ffc94d,0 0 40px 12px rgba(255,184,56,.5),0 18px 30px rgba(0,0,0,.5)}
+.hub .picker-face:focus{outline:none;transform:scale(1.1);box-shadow:0 0 0 5px #fff4e6,0 0 0 10px #ffc94d,0 0 40px 12px rgba(255,184,56,.5),0 14px 30px rgba(0,0,0,.5)}
+.picker-faces:focus-within .picker-face:not(:focus){opacity:.8}
+.hub .picker-face svg{width:100%;height:100%}
 .hub .picker-face:focus svg{animation:wiggle 1.8s ease-in-out infinite}
 @keyframes wiggle{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(-7deg)}85%{transform:rotate(6deg)}}
-.picker-faces:focus-within .picker-face:not(:focus){opacity:.72;filter:saturate(.75)}
 .hub .picker-back{position:absolute;top:14px;left:14px;width:54px;height:54px;border-radius:50%;background:#2e2248;box-shadow:0 4px 0 rgba(8,4,16,.5),inset 0 0 0 2px rgba(255,255,255,.16)}
 .hub .picker-back:focus{outline:none;box-shadow:0 0 0 4px #ffc94d,0 0 22px 4px rgba(255,184,56,.45)}
 /* The adult players page shares the worded save page's look. */
