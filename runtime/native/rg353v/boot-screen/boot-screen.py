@@ -9,12 +9,16 @@ handheld shows black, then a white window. Two surfaces cover that time:
 - Once Sway runs: an overlay layer surface above every window, so Cog's blank
   window never shows. The overlay takes no input and is gone when this exits.
 
+The stars twinkle on both surfaces. Each one is a few small rows redrawn from levels
+worked out once at the start, so the animation costs little while the system boots.
+
 Stdlib only: it runs on the host, outside the chroot, early in boot. Any failure
 just leaves the screen to whatever is underneath. It must never hold up boot.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import math
 import mmap
 import os
@@ -36,6 +40,45 @@ ARGB8888 = 0
 OVERLAY_LAYER = 3
 DEFAULT_SECONDS = 28.0  # Measured kernel start to hub paint on an RG353V.
 FRAME_SECONDS = 0.1
+BAR_BOX = (BAR_X, BAR_Y, BAR_W, BAR_H)
+
+# The art lives on /flash, outside updates, so a device can hold art other than this.
+# The stars below only fit this exact art. Other art just stays still.
+# Both come from `rocknix/boot_splash.py stars rocknix/splash/splash-32.raw`.
+STARS_ART_SHA256 = '8e63b06b54ea253f5216037b3e7ee9c2522b7bd33c3eee51d7fc2c634402c5cc'
+STARS = (
+    (536, 7, 4, 3), (89, 8, 4, 4), (282, 10, 3, 4), (385, 10, 6, 7), (477, 10, 7, 7),
+    (152, 11, 4, 4), (201, 11, 5, 4), (33, 13, 3, 4), (510, 16, 4, 3), (61, 18, 7, 7),
+    (453, 19, 4, 4), (617, 20, 4, 4), (173, 21, 3, 4), (265, 22, 4, 4), (413, 22, 7, 7),
+    (497, 22, 4, 3), (585, 23, 10, 9), (131, 24, 9, 8), (106, 27, 3, 3), (536, 27, 4, 4),
+    (19, 29, 5, 5), (512, 29, 8, 8), (40, 33, 4, 3), (62, 37, 29, 30), (542, 37, 29, 29),
+    (116, 44, 3, 3), (483, 44, 4, 3), (623, 44, 3, 4), (29, 56, 5, 5), (611, 58, 6, 5),
+    (503, 68, 4, 3), (18, 70, 4, 4), (122, 71, 4, 4), (580, 72, 4, 4), (105, 75, 4, 3),
+    (520, 81, 7, 8), (17, 82, 4, 5), (619, 84, 4, 4), (566, 86, 3, 4), (111, 91, 4, 4),
+    (588, 94, 8, 8), (52, 98, 11, 10), (548, 99, 4, 4), (79, 102, 3, 4), (122, 103, 4, 4),
+    (20, 105, 4, 4), (516, 105, 4, 3), (106, 113, 8, 8), (528, 115, 10, 11), (558, 119, 3, 3),
+    (621, 121, 4, 4), (584, 123, 4, 4), (21, 124, 3, 4), (498, 127, 3, 4), (128, 133, 22, 22),
+    (77, 135, 4, 4), (621, 135, 3, 3), (35, 137, 4, 4), (451, 138, 3, 4), (564, 138, 5, 5),
+    (180, 139, 3, 4), (609, 143, 4, 3), (95, 147, 5, 5), (437, 148, 4, 3), (472, 148, 18, 17),
+    (521, 150, 4, 4), (238, 151, 4, 4), (114, 157, 4, 4), (24, 159, 5, 5), (543, 161, 4, 4),
+    (603, 161, 5, 5), (158, 167, 3, 3), (52, 173, 4, 4), (459, 174, 4, 4), (76, 175, 11, 10),
+    (577, 179, 12, 11), (509, 181, 3, 4), (527, 182, 4, 4), (618, 185, 4, 4), (555, 188, 4, 3),
+    (133, 189, 3, 4), (173, 192, 5, 4), (30, 193, 5, 5), (492, 196, 4, 3), (65, 201, 4, 4),
+    (604, 207, 4, 4), (113, 208, 4, 4), (504, 208, 3, 3), (477, 211, 4, 4), (13, 213, 4, 3),
+    (56, 217, 4, 4), (171, 218, 4, 4), (414, 218, 8, 8), (567, 218, 5, 5), (142, 221, 3, 4),
+    (91, 223, 4, 4), (545, 224, 4, 3), (492, 231, 3, 3), (615, 232, 4, 4), (590, 234, 4, 5),
+    (200, 235, 4, 4), (527, 235, 11, 10), (76, 243, 4, 5), (193, 243, 3, 4), (476, 244, 3, 3),
+    (117, 247, 10, 10), (36, 251, 4, 4), (553, 251, 3, 3), (507, 255, 4, 4), (487, 260, 3, 4),
+    (56, 264, 3, 4), (619, 264, 4, 4), (18, 266, 3, 4), (518, 276, 6, 5), (601, 277, 8, 8),
+    (40, 282, 11, 10), (560, 282, 4, 4), (139, 289, 4, 4), (537, 294, 4, 4), (512, 303, 3, 4),
+    (66, 306, 5, 4), (28, 309, 3, 4), (605, 314, 4, 5), (572, 317, 4, 5), (495, 319, 10, 10),
+    (50, 321, 4, 4), (99, 322, 11, 11), (472, 330, 3, 4), (66, 336, 4, 3), (482, 341, 3, 3),
+    (535, 343, 11, 10), (459, 348, 4, 4),
+)
+TWINKLE_LEVELS = 8
+TWINKLE_DEPTH = 0.65  # How far a star fades at the bottom of a twinkle.
+TWINKLE_SHARE = 0.35  # How much of its cycle a star spends twinkling. It rests for the rest.
+TWINKLE_SOFT = 16  # Light this close to the sky fades less, so a star's box never shows.
 
 
 def fraction_at(elapsed, expected):
@@ -75,6 +118,80 @@ class Bar:
             split = max(0, filled - inset) * 4
             rows.append((offset, fill[:split] + track[split:]))
         return rows
+
+
+def twinkle_at(index, elapsed):
+    """A star's brightness, 1 at rest. Each has its own pace, so they never pulse together."""
+    pace = 3.0 + (index * 0.381966 % 1) * 4.0
+    phase = (elapsed / pace + index * 0.618034) % 1
+    if phase >= TWINKLE_SHARE:
+        return 1.0
+    return 1 - TWINKLE_DEPTH * math.sin(math.pi * phase / TWINKLE_SHARE) ** 2
+
+
+def stars_for(art):
+    """The star boxes, if this is the art they were found in."""
+    return STARS if hashlib.sha256(art).hexdigest() == STARS_ART_SHA256 else ()
+
+
+class Star:
+    """One star's box, with its rows at each brightness worked out the first time they're needed."""
+
+    def __init__(self, art, box):
+        x, y, width, height = self.box = box
+        self.offsets = [(y + row) * STRIDE + x * 4 for row in range(height)]
+        self.rows = [art[offset:offset + width * 4] for offset in self.offsets]
+        edge = self.rows[0] + self.rows[-1] + b''.join(row[:4] + row[-4:] for row in self.rows)
+        self.sky = [sorted(edge[channel::4])[len(edge) // 8] for channel in range(3)]
+        self.levels = {}
+
+    def at(self, level):
+        if level not in self.levels:
+            self.levels[level] = list(zip(self.offsets, self.faded(level)))
+        return self.levels[level]
+
+    def faded(self, level):
+        """Fade towards the sky around the star. Dim light goes first, so its points draw in."""
+        brightness = (1 - TWINKLE_DEPTH) + TWINKLE_DEPTH * level / (TWINKLE_LEVELS - 1)
+        sky = self.sky
+        lit = max(1, max(max(row[index] - sky[index % 4] for index in range(len(row)) if index % 4 != 3)
+                         for row in self.rows))
+        rows = []
+        for row in self.rows:
+            pixels = bytearray(row)
+            for offset in range(0, len(row), 4):
+                glow = max(row[offset + channel] - sky[channel] for channel in range(3))
+                if glow <= 0:
+                    continue
+                keep = brightness ** (1 + 2 * (1 - glow / lit))
+                keep = 1 - min(1, glow / TWINKLE_SOFT) * (1 - keep)
+                for channel in range(3):
+                    pixels[offset + channel] = round(sky[channel] + (row[offset + channel] - sky[channel]) * keep)
+            rows.append(bytes(pixels))
+        return rows
+
+
+class Twinkle:
+    """The stars, drawn only when one has changed brightness."""
+
+    def __init__(self, art, boxes):
+        self.stars = [Star(art, box) for box in boxes]
+        self.forget()
+
+    def forget(self):
+        """A fresh copy of the art went up, so every star is back to full brightness."""
+        self.shown = [TWINKLE_LEVELS - 1] * len(self.stars)
+
+    def at(self, elapsed):
+        """(rows, boxes) for the stars that changed since the last call."""
+        rows, boxes = [], []
+        for index, star in enumerate(self.stars):
+            level = round((twinkle_at(index, elapsed) - (1 - TWINKLE_DEPTH)) / TWINKLE_DEPTH * (TWINKLE_LEVELS - 1))
+            if self.shown[index] != level:
+                self.shown[index] = level
+                rows += star.at(level)
+                boxes.append(star.box)
+        return rows, boxes
 
 
 class Framebuffer:
@@ -207,21 +324,21 @@ class Overlay:
         elif obj == self.layer and opcode == 0:
             serial = struct.unpack_from('<I', body)[0]
             self.send(message(self.layer, 6, struct.pack('<I', serial)))
-            self.commit_frame(0, HEIGHT)
+            self.commit_frame([(0, 0, WIDTH, HEIGHT)])
             self.mapped = True
         elif obj == self.layer and opcode == 1:
             self.closed = True  # No output yet. The caller connects again.
 
-    def commit_frame(self, y, height):
+    def commit_frame(self, boxes):
         self.send(message(self.surface, 1, struct.pack('<Iii', self.buffer, 0, 0))
-                  + message(self.surface, 2, struct.pack('<iiii', 0, y, WIDTH, height))
+                  + b''.join(message(self.surface, 2, struct.pack('<iiii', *box)) for box in boxes)
                   + message(self.surface, 6))
 
-    def draw(self, rows):
+    def draw(self, rows, boxes):
         for offset, pixels in rows:
             self.pixels[offset:offset + len(pixels)] = pixels
         if self.mapped:
-            self.commit_frame(BAR_Y, BAR_H)
+            self.commit_frame(boxes)
 
     def close(self):
         self.sock.close()
@@ -232,12 +349,14 @@ def run(args, now=None, sleep=time.sleep):
     art = Path(args.art).read_bytes()
     if len(art) != STRIDE * HEIGHT:
         raise ValueError('Unexpected art size')
+    stars = stars_for(art)
     art = opaque(art)
     try:
         expected = float(Path(args.seconds_file).read_text())
     except (OSError, ValueError):
         expected = DEFAULT_SECONDS
     bar = Bar(art)
+    twinkle = Twinkle(art, stars)
     begin = now() if args.relative else 0.0
     socket_path = Path(args.runtime_dir) / 'wayland-1'
     ready = Path(args.runtime_dir) / 'cubby-ui-ready'
@@ -281,14 +400,18 @@ def run(args, now=None, sleep=time.sleep):
                         fb.close()
                         fb = None
                         drawn = -1  # The overlay's buffer has no bar on it yet.
+                        twinkle.forget()
             filled = round(BAR_W * fraction_at(elapsed, expected))
+            rows, boxes = twinkle.at(elapsed)
             if filled != drawn:
-                rows = bar.at(filled)
+                rows += bar.at(filled)
+                boxes.append(BAR_BOX)
+                drawn = filled
+            if rows:
                 if fb is not None:
                     fb.draw(rows)
                 if overlay is not None and overlay.mapped:
-                    overlay.draw(rows)
-                drawn = filled
+                    overlay.draw(rows, boxes)
             if overlay is not None:
                 select.select([overlay.sock], [], [], FRAME_SECONDS)
             else:
@@ -296,7 +419,7 @@ def run(args, now=None, sleep=time.sleep):
         if finished:
             rows = bar.at(BAR_W)
             if overlay is not None and overlay.mapped:
-                overlay.draw(rows)
+                overlay.draw(rows, [BAR_BOX])
             elif fb is not None:
                 fb.draw(rows)
             sleep(0.15)

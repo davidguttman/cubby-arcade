@@ -12,7 +12,7 @@ import threading
 import unittest
 from unittest import mock
 
-from rocknix import network, update_release
+from rocknix import boot_splash, network, update_release
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / 'runtime/native/rg353v/boot-screen'
@@ -156,6 +156,74 @@ class ProgressTests(unittest.TestCase):
             self.assertEqual(len(top[1]), (boot_screen.BAR_W - 2) * 4)
 
 
+class TwinkleTests(unittest.TestCase):
+    REAL_RAW = (ROOT / 'rocknix/splash/splash-32.raw').read_bytes()
+    REAL_ART = boot_screen.opaque(REAL_RAW)
+
+    def test_star_table_matches_the_checked_in_art(self):
+        checksum = (ROOT / 'rocknix/splash/splash-32.sha256').read_text().split()[0]
+        self.assertEqual(boot_screen.STARS_ART_SHA256, checksum,
+                         'Art changed: run rocknix/boot_splash.py stars rocknix/splash/splash-32.raw')
+        self.assertEqual(list(boot_screen.STARS), boot_splash.find_stars(self.REAL_RAW))
+        self.assertGreater(len(boot_screen.STARS), 50)
+
+    def test_stars_stay_in_the_sky_and_apart(self):
+        stars = boot_screen.STARS
+        for x, y, width, height in stars:
+            self.assertLessEqual(x + width, boot_screen.WIDTH)
+            self.assertLess(y + height, boot_screen.BAR_Y)
+            self.assertFalse(x + width > 230 and x < 410 and y + height > 170, 'on the handheld')
+            self.assertFalse(x + width > 180 and x < 465 and y + height > 30 and y < 115, 'on the wordmark')
+        for index, (x, y, width, height) in enumerate(stars):
+            for other_x, other_y, other_width, other_height in stars[index + 1:]:
+                self.assertFalse(x < other_x + other_width and other_x < x + width
+                                 and y < other_y + other_height and other_y < y + height)
+
+    def test_other_art_stays_still(self):
+        self.assertEqual(boot_screen.stars_for(self.REAL_RAW), boot_screen.STARS)
+        self.assertEqual(boot_screen.stars_for(ART), ())
+        twinkle = boot_screen.Twinkle(boot_screen.opaque(ART), boot_screen.stars_for(ART))
+        self.assertEqual(twinkle.at(3.0), ([], []))
+
+    def test_every_star_rests_at_the_exact_art_and_fades_opaque(self):
+        for box in boot_screen.STARS:
+            star = boot_screen.Star(self.REAL_ART, box)
+            for offset, pixels in star.at(boot_screen.TWINKLE_LEVELS - 1):
+                self.assertEqual(pixels, self.REAL_ART[offset:offset + len(pixels)])
+            # Alpha must stay set: anything else would show the window underneath.
+            for _, pixels in star.at(0):
+                self.assertEqual(set(pixels[3::4]), {255})
+            self.assertNotEqual(star.at(0), star.at(boot_screen.TWINKLE_LEVELS - 1))
+
+    def test_a_fading_star_leaves_the_sky_around_it_alone(self):
+        x, y, width, height = box = max(boot_screen.STARS, key=lambda star: star[2] * star[3])
+        star = boot_screen.Star(self.REAL_ART, box)
+        offset, pixels = star.at(0)[0]
+        original = self.REAL_ART[offset:offset + len(pixels)]
+        # The top row of a box is bare sky beside the star's top point.
+        changes = [abs(a - b) for a, b in zip(pixels, original)]
+        self.assertLessEqual(sorted(changes)[len(changes) // 2], 2)
+
+    def test_twinkles_rise_and_fall_and_stars_keep_their_own_time(self):
+        for index in (0, 7, 42):
+            values = [boot_screen.twinkle_at(index, second / 10) for second in range(200)]
+            self.assertEqual(max(values), 1.0)
+            self.assertAlmostEqual(min(values), 1 - boot_screen.TWINKLE_DEPTH, places=1)
+            self.assertTrue(all(abs(a - b) < .35 for a, b in zip(values, values[1:])), 'a smooth fade')
+        at_once = [sum(boot_screen.twinkle_at(index, moment) < 1 for index in range(len(boot_screen.STARS)))
+                   for moment in range(40)]
+        self.assertTrue(all(0 < count < len(boot_screen.STARS) * .6 for count in at_once), at_once)
+
+    def test_draws_only_the_stars_that_changed(self):
+        twinkle = boot_screen.Twinkle(self.REAL_ART, boot_screen.STARS)
+        rows, boxes = twinkle.at(10.0)
+        self.assertTrue(boxes)
+        self.assertLess(len(boxes), len(boot_screen.STARS))
+        self.assertEqual(twinkle.at(10.0), ([], []))
+        twinkle.forget()
+        self.assertEqual(len(twinkle.at(10.0)[1]), len(boxes))
+
+
 class FramebufferTests(unittest.TestCase):
     def sysfs(self, root, **overrides):
         values = {'virtual_size': '640,480', 'bits_per_pixel': '32', 'stride': '2560', 'pan': '0,0'}
@@ -233,6 +301,21 @@ class OverlayTests(unittest.TestCase):
         kinds = [(opcode, body) for _, opcode, body in compositor.requests if opcode == 5 and len(body) == 4]
         self.assertTrue(kinds)
         self.assertGreater(float((self.directory / 'seconds').read_text()), 8)
+
+    def test_overlay_redraws_the_stars_it_changes(self):
+        real = (ROOT / 'rocknix/splash/splash-32.raw').read_bytes()
+        (self.directory / 'art.raw').write_bytes(real)
+        compositor = FakeCompositor(self.directory / 'wayland-1')
+        self.addCleanup(compositor.close)
+        ready = self.directory / 'cubby-ui-ready'
+        self.assertTrue(self.run_screen(compositor, Clock([(9, ready.touch)])))
+        damage = {struct.unpack('<iiii', body) for _, opcode, body in compositor.requests
+                  if opcode == 2 and len(body) == 16}
+        self.assertIn(boot_screen.BAR_BOX, damage)
+        self.assertTrue(damage & set(boot_screen.STARS))
+        pixels = mmap.mmap(compositor.pool, len(real))
+        self.assertNotEqual(bytes(pixels), boot_screen.opaque(real))
+        self.assertEqual(set(pixels[3::4]), {255})
 
     def test_connects_again_if_no_output_was_ready(self):
         compositor = FakeCompositor(self.directory / 'wayland-1', close_first=True)

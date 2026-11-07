@@ -35,6 +35,12 @@ The overlay buffer must keep a format with alpha. Sway sends no frame callbacks
 to a window under an opaque surface, so an opaque overlay stops the hub painting
 and the boot screen then waits for a signal it is preventing.
 
+The stars twinkle on both surfaces. Their boxes are a table in `boot-screen.py`, found
+by `rocknix/boot_splash.py stars rocknix/splash/splash-32.raw` and tied to this exact art by its
+hash, so a card with other art just stays still. After replacing the art, run that
+command and paste the table in; a test fails until you do. Before the service starts
+(about 3.5 seconds in), only the early hook has drawn, so the stars begin there.
+
 The bar estimates from the last boot's time (`/storage/cubby/state/boot-seconds`).
 Updates deliver the unit and script: `rocknix/network.py` installs the unit once a
 release passes its trial. `load.sh` stays on `/flash` with the rest of the card's

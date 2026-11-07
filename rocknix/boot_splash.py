@@ -40,6 +40,42 @@ def pack(rgb: bytes, depth: int) -> bytes:
     return bytes(result)
 
 
+def find_stars(raster: bytes) -> list[tuple[int, int, int, int]]:
+    """Where the stars are in the 32-bit art, as (x, y, width, height) boxes around each glow.
+
+    A star is a small lit shape on the open sky. Everything else is left alone: the
+    wordmark and rings are too big, the handheld and landscape are outside the sky,
+    and the coloured pickups are filled-in and saturated.
+    """
+    width, height, threshold = 640, 480, 48
+    def luma(x, y):
+        offset = (y * width + x) * 4
+        return (raster[offset + 2] * 299 + raster[offset + 1] * 587 + raster[offset] * 114) // 1000
+    lit = {(x, y) for y in range(345 + 10) for x in range(width) if luma(x, y) >= threshold}
+    stars = []
+    while lit:
+        pending = [lit.pop()]
+        shape = []
+        while pending:
+            x, y = pending.pop()
+            shape.append((x, y))
+            for near in ((x + dx, y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
+                if near in lit:
+                    lit.remove(near)
+                    pending.append(near)
+        xs, ys = [x for x, _ in shape], [y for _, y in shape]
+        left, top, right, bottom = min(xs), min(ys), max(xs), max(ys)
+        if max(right - left, bottom - top) >= 31 or bottom >= 354 or max(luma(x, y) for x, y in shape) < 70:
+            continue
+        if right > 225 and left < 415 and bottom > 165:  # The handheld.
+            continue
+        colours = (raster[(y * width + x) * 4:(y * width + x) * 4 + 3] for x, y in shape)
+        if len(shape) > 40 and any(max(colour) - min(colour) > 90 for colour in colours):  # A pickup.
+            continue
+        stars.append((max(left - 1, 0), max(top - 1, 0), right - left + 3, bottom - top + 3))
+    return sorted(stars, key=lambda star: (star[1], star[0]))
+
+
 def prepare(source: Path) -> None:
     # ImageGen supplies the reviewed 4:3 composition. Only exact display-size
     # sampling and pixel-format conversion happen here, with no crop/redesign.
@@ -57,6 +93,17 @@ def prepare(source: Path) -> None:
         data = pack(rgb, depth)
         (target / name).write_bytes(data)
         (target / f'splash-{depth}.sha256').write_text(hashlib.sha256(data).hexdigest() + '  ' + name + '\n')
+
+
+def print_stars(raster_path: Path) -> None:
+    """Print the star table for boot-screen.py. Run this after replacing the art."""
+    raster = raster_path.read_bytes()
+    print(f"STARS_ART_SHA256 = '{hashlib.sha256(raster).hexdigest()}'")
+    stars = find_stars(raster)
+    print('STARS = (')
+    for start in range(0, len(stars), 5):
+        print('    ' + ' '.join(f'{star},' for star in stars[start:start + 5]))
+    print(')')
 
 
 def payload(source_root: Path = ROOT) -> dict[str, bytes]:
@@ -172,10 +219,13 @@ def remove(path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'install', 'remove'))
+    parser.add_argument('action', choices=('prepare', 'install', 'remove', 'stars'))
     parser.add_argument('path', type=Path)
     args = parser.parse_args()
     try:
+        if args.action == 'stars':
+            print_stars(args.path)
+            return
         {'prepare': prepare, 'install': install, 'remove': remove}[args.action](args.path)
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.exit(1, f'Splash operation stopped: {error}\n')
