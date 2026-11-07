@@ -10,7 +10,8 @@ protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,se
 const tokenSmoke=process.argv.includes('--token-smoke');
 const installSmoke=process.argv.includes('--install-smoke');
 const uninstallSmoke=process.argv.includes('--uninstall-smoke');
-const smoke=process.argv.includes('--smoke')||installSmoke||tokenSmoke||uninstallSmoke;
+const playersSmoke=process.argv.includes('--players-smoke');
+const smoke=process.argv.includes('--smoke')||installSmoke||tokenSmoke||uninstallSmoke||playersSmoke;
 let explicitSmokeExit=false;
 function exitSmoke(code){explicitSmokeExit=true;app.exit(code);}
 const env=name=>process.env['CUBBY_ARCADE_'+name]??process.env['HUB_'+name];
@@ -164,6 +165,10 @@ app.whenReady().then(async()=>{
         await installer.install(registry[0].id);
         await win.loadURL('hub://app/');
         await new Promise(resolve=>setTimeout(resolve,500));
+      }
+      if(playersSmoke){
+        await require('./players-smoke.cjs').run(win,launcher,installer.library,app.getPath('userData'),{output});
+        exitSmoke(0);return;
       }
       if(tokenSmoke){
         await require('./token-smoke.cjs').run(win,launcher,account,installer.library,{output});
