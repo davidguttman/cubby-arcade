@@ -208,15 +208,15 @@ function mount(host){
  function saveTitle(id){return [...library,...catalog].find(game=>game.id===id)?.title||id;}
  function playerName(id){return profiles?.list().find(x=>x.id===id)?.name||'';}
  function playerFace(parent,id){const p=profiles.list().find(x=>x.id===id),face=element(parent,'span','player-face');face.innerHTML=Avatars.svg(p.avatar);return face;}
- function saveHeading(){saveDialog.replaceChildren();const heading=saveText(saveDialog,'h1','Game saves');if(saveProfile&&manyPlayers()){heading.textContent=playerName(saveProfile)+'’s game saves';heading.prepend?.(playerFace(heading,saveProfile));heading.classList.add('player-heading');}}
+ function saveHeading(){saveDialog.replaceChildren();const heading=saveText(saveDialog,'h1','Game saves');if(saveProfile&&manyPlayers()){heading.textContent=playerName(saveProfile);heading.prepend?.(playerFace(heading,saveProfile));heading.classList.add('player-heading');}}
  function renderSavePlayers(){
-  saveProfile=undefined;saveHeading();saveText(saveDialog,'p','Each player has their own saved games. Choose a player.');
+  saveProfile=undefined;saveHeading();
   const rows=element(saveDialog,'div','save-rows');
   for(const p of profiles.list()){const b=saveButton(rows,p.name,()=>loadSaves(p.id),'choose-player');b.prepend?.(playerFace(b,p.id));}
   saveButton(saveDialog,'Back',closeSaveManagement,'close-players');rows.querySelector('.choose-player').focus();
  }
  function renderSaveList(message=''){
-  saveHeading();saveText(saveDialog,'p',manyPlayers()?'Delete this player’s saved progress in a game to start it fresh. Other players and the game itself do not change.':'Delete a game’s saved progress to start it fresh. The game stays installed.');
+  saveHeading();saveText(saveDialog,'p','Delete a game’s saved progress to start it fresh. The game stays installed.');
   const feedback=saveText(saveDialog,'p',message,'save-feedback');feedback.setAttribute('role','status');
   if(!saveIds.length)saveText(saveDialog,'p','No saved games.');
   const rows=element(saveDialog,'div','save-rows');
@@ -225,7 +225,7 @@ function mount(host){
  }
  function confirmSaveReset(id){
   if(saveBusy)return;saveHeading();saveText(saveDialog,'h2',saveTitle(id));
-  saveText(saveDialog,'p','Delete all saved progress for this game? This cannot be undone. Other games'+(manyPlayers()?', other players':'')+' and Cubby settings will not change.');
+  saveText(saveDialog,'p','Delete all saved progress for this game? This cannot be undone. Other games and Cubby settings will not change.');
   const feedback=saveText(saveDialog,'p','','save-feedback');feedback.setAttribute('role','status');
   const actions=element(saveDialog,'div','save-actions');
   const cancel=saveButton(actions,'Cancel',()=>renderSaveList(),'cancel-reset');
@@ -291,7 +291,6 @@ function mount(host){
  function playersBack(){if(playerBusy)return;if(playerDialog.querySelector('.cancel-player'))renderPlayers();else closePlayers();}
  function renderPlayers(message=''){
   playerDialog.replaceChildren();saveText(playerDialog,'h1','Players');
-  saveText(playerDialog,'p','Each player has their own name, game saves and favorites. With two or more, Cubby starts by showing their faces and names for a child to pick, and their face on the home screen switches player.');
   const feedback=saveText(playerDialog,'p',message,'save-feedback');feedback.setAttribute('role','status');
   const rows=element(playerDialog,'div','player-rows'),list=profiles.list();
   for(const p of list){
@@ -306,8 +305,7 @@ function mount(host){
   const back=saveButton(actions,'Back',closePlayers,'close-players-page');(add.disabled?back:add).focus();
  }
  function choosePicture(p){
-  playerDialog.replaceChildren();saveText(playerDialog,'h1',p?'Change picture':'Add a player');
-  saveText(playerDialog,'p',p?'Choose a new picture for '+p.name+'. Their saves stay with them.':'Choose a picture for the new player. They start with no saves.');
+  playerDialog.replaceChildren();saveText(playerDialog,'h1',p?'Picture':'New player');
   const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
   const grid=element(playerDialog,'div','avatar-choices'),used=new Set(profiles.list().map(x=>x.avatar));
   for(const avatar of Avatars.ids){
@@ -317,10 +315,10 @@ function mount(host){
    choice.addEventListener('click',()=>{
     let added;
     try{if(!p)added=profiles.add(avatar);else if(avatar!==p.avatar)profiles.setAvatar(p.id,avatar);}
-    catch(error){feedback.textContent=/Name already used/.test(error.message)?'Another player is already called '+Avatars.name(avatar)+'. Rename them first, or choose another picture.':'That could not be saved. Try again.';return;}
+    catch(error){feedback.textContent=/Name already used/.test(error.message)?'Name taken':'Not saved';return;}
     renderPlayer();
-    // A new player is named next; Cancel keeps their animal's name.
-    if(added)renamePlayer(added,true);else renderPlayers('Picture saved.');
+    // A new player is named next; Skip keeps their animal's name.
+    if(added)renamePlayer(added,true);else renderPlayers();
    });
   }
   saveButton(element(playerDialog,'div','save-actions'),'Cancel',()=>renderPlayers(),'cancel-player');
@@ -329,17 +327,16 @@ function mount(host){
  function confirmRemovePlayer(p){
   const name=p.name;playerDialog.replaceChildren();
   const heading=saveText(playerDialog,'h1','Remove '+name+'?','player-heading');heading.prepend?.(playerFace(heading,p.id));
-  saveText(playerDialog,'p','This deletes '+name+'’s saved games and favorites on this Cubby. Other players keep theirs. This cannot be undone.');
   const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
   const actions=element(playerDialog,'div','save-actions');
   const cancel=saveButton(actions,'Cancel',()=>renderPlayers(),'cancel-player cancel-reset');
-  saveButton(actions,'Remove player',async()=>{
+  saveButton(actions,'Remove',async()=>{
    if(playerBusy)return;playerBusy=true;feedback.textContent='Removing…';for(const b of playerDialog.querySelectorAll('button'))b.disabled=true;
    try{await profiles.remove(p.id);try{profiles.storageFor(p.id).removeItem(favoriteKey);}catch{}}
-   catch{playerBusy=false;if(disposed)return;feedback.textContent=name+' could not be fully removed. Try again.';for(const b of playerDialog.querySelectorAll('button'))b.disabled=false;cancel.focus();return;}
+   catch{playerBusy=false;if(disposed)return;feedback.textContent='Not removed';for(const b of playerDialog.querySelectorAll('button'))b.disabled=false;cancel.focus();return;}
    playerBusy=false;if(disposed)return;
    if(profiles.list().some(x=>x.id===profile))renderPlayer();else usePlayer(profiles.current());
-   renderPlayers(name+' removed.');
+   renderPlayers();
   },'confirm-reset remove-confirm');cancel.focus();
  }
  // Naming: a text field everywhere; on the handheld, which has only a controller, Cubby's
@@ -347,15 +344,14 @@ function mount(host){
  let nameBoard=null;
  function renamePlayer(p,added=false){
   playerDialog.replaceChildren();nameBoard=null;
-  const heading=saveText(playerDialog,'h1',added?'Name the new player':'Name for '+p.name,'player-heading');heading.prepend?.(playerFace(heading,p.id));
-  saveText(playerDialog,'p','Shown under their picture. Up to '+win.HandheldProfiles.NAME_LENGTH+' letters.');
+  const heading=saveText(playerDialog,'h1','Name','player-heading');heading.prepend?.(playerFace(heading,p.id));
   const entry=element(playerDialog,'div','name-entry'),field=element(entry,'input','player-name-field');
   field.type='text';field.value=p.name;field.maxLength=win.HandheldProfiles.NAME_LENGTH;field.setAttribute('aria-label','Player name');field.autocomplete='off';field.spellcheck=false;
   const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
   function save(){
-   let name;try{name=profiles.rename(p.id,field.value);}
-   catch(error){feedback.textContent=({'Name required':'Type a name first.','Name too long':'Use '+win.HandheldProfiles.NAME_LENGTH+' letters or fewer.','Name already used':'Another player already has that name.','Use letters in a name':'Use letters, spaces, hyphens or apostrophes.'})[error.message]||'That name could not be saved. Try again.';return;}
-   renderPlayer();renderPlayers(added?name+' added. Cubby asks who is playing the next time it starts.':'Name saved: '+name+'.');
+   try{profiles.rename(p.id,field.value);}
+   catch(error){feedback.textContent=({'Name required':'Name needed','Name too long':'Too long','Name already used':'Name taken','Use letters in a name':'Letters only'})[error.message]||'Not saved';return;}
+   renderPlayer();renderPlayers();
   }
   // Typed keys belong to the field, not to the hub's controls.
   for(const type of ['keydown','keyup'])field.addEventListener(type,event=>{event.stopPropagation();if(type==='keydown'&&event.key==='Enter')save();if(type==='keydown'&&event.key==='Escape')renderPlayers();});
@@ -366,8 +362,8 @@ function mount(host){
    nameBoard=win.HandheldKeyboard.create({container:element(playerDialog,'div','name-keyboard'),field,layout:'name',capitalizeFirst:true});
   }
   const actions=element(playerDialog,'div','save-actions');
-  saveButton(actions,added?'Keep '+p.name:'Cancel',()=>renderPlayers(added?p.name+' added. Cubby asks who is playing the next time it starts.':''),'cancel-player');
-  saveButton(actions,'Save name',save,'save-name');
+  saveButton(actions,added?'Skip':'Cancel',()=>renderPlayers(),'cancel-player');
+  saveButton(actions,'Save',save,'save-name');
   if(nameBoard)nameBoard.focus();else{field.focus();field.select?.();}
  }
  function openPlayers(){if(adult||!profiles)return;adult=true;playerDialog.replaceChildren();playerDialog.showModal();renderPlayers();}

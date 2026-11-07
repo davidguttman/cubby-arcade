@@ -502,9 +502,9 @@ test('adults name a player with a text field; bad and duplicate names are refuse
  assert.equal(field.value,'Fox');assert.equal(field.maxLength,12);assert.equal(host.querySelector('.name-keyboard'),null,'Desktop and browser type on a real keyboard');
  assert.equal(host.ownerDocument.activeElement,field);
  const stopped=[];for(const type of ['keydown','keyup'])field.listeners[type][0]({key:'x',stopPropagation:()=>stopped.push(type)});assert.deepEqual(stopped,['keydown','keyup'],'Typed keys never drive the hub');
- for(const [value,reason] of [['  ',/Type a name/],['theo',/already has that name/],['Maya!',/letters/]]){field.value=value;host.querySelector('.save-name').click();assert.match(host.querySelector('.save-feedback').textContent,reason);}
+ for(const [value,reason] of [['  ',/^Name needed$/],['theo',/^Name taken$/],['Maya!',/^Letters only$/]]){field.value=value;host.querySelector('.save-name').click();assert.match(host.querySelector('.save-feedback').textContent,reason);}
  field.value=' Maya ';host.querySelector('.save-name').click();
- assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Maya');assert.match(host.querySelector('.save-feedback').textContent,/Maya/);
+ assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Maya');assert.equal(host.querySelector('.save-feedback').textContent,'','Success needs no words: the row shows the name');
  assert.ok(host.querySelectorAll('.player-name').some(n=>n.textContent==='Maya'));
 });
 test('on the handheld a name is typed with the controller on Cubby’s shared keyboard',async()=>{
@@ -519,4 +519,12 @@ test('on the handheld a name is typed with the controller on Cubby’s shared ke
  action('nextView');assert.ok(key('Q'),'A shoulder changes case');action('nextView');
  action('pause');assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Mia','Start saves the name');
  assert.equal(host.querySelector('.name-keyboard'),null);
+});
+test('player screens carry no explainer text: titles, names, buttons and one- or two-word errors',()=>{
+ const source=require('node:fs').readFileSync('runtime/core/hub.js','utf8'),start=source.indexOf("const playerButton="),end=source.indexOf('function openPlayers(');
+ const players=source.slice(start,end);
+ for(const gone of ['Each player has','Shown under','Up to ','This deletes','Choose a','Keep \'+','Rename them','Cubby asks','could not be fully','Try again'])assert.ok(!players.includes(gone),gone);
+ const shown=[...players.matchAll(/feedback\.textContent=([^;]*);/g)].flatMap(([,statement])=>[...statement.matchAll(/(?:^|[:?|])\s*\(?'([^']+)'/g)].map(m=>m[1]));
+ assert.ok(shown.includes('Name taken')&&shown.includes('Not removed'),shown.join());
+ for(const text of shown)assert.ok(text.split(' ').length<=2,text);
 });
