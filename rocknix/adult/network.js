@@ -4,10 +4,8 @@
   const $ = id => document.getElementById(id);
   const token = document.querySelector('meta[name="cubby-session"]').content;
   // `settings` means the adult came from the hub; otherwise this is required first-run setup.
-  let selected = null, pending = false, shifted = false, knownComplete = false, settings = false, focusList = false;
-  const letters = [['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'], ['!@#$%^&*()', 'QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM']];
+  let selected = null, pending = false, knownComplete = false, settings = false, focusList = false, board = null;
   const ICONS = {
-    backspace: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h12v14H9l-6-7ZM12 9.5l5 5M17 9.5l-5 5"/></svg>',
     bars: '<svg class="bars" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="16" width="4" height="5" rx="1"/><rect x="8.5" y="12" width="4" height="9" rx="1"/><rect x="14" y="8" width="4" height="13" rx="1"/><rect x="19.5" y="4" width="3" height="17" rx="1"/></svg>',
     tick: '<svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L21 5"/></svg>'
   };
@@ -73,44 +71,14 @@
     else if (knownComplete) message('You are offline. Installed games still work; downloads wait for internet.', 'warn');
     else message('Internet is not available. Connect Wi-Fi, then check again.', 'warn');
   }
-  function key(label, onPress, className) {
-    const button = document.createElement('button');
-    button.textContent = label;
-    if (className) button.className = className;
-    button.onclick = onPress;
-    $('keyboard').append(button);
-    return button;
-  }
-  function type(char) { const input = $('password'); if (input.value.length < 64) input.value += char; }
-  function toggleCase() {
-    const keys = [...$('keyboard').children], index = keys.indexOf(document.activeElement);
-    shifted = !shifted; keyboard();
-    $('keyboard').children[Math.max(index, 0)]?.focus();
-  }
-  function keyboard() {
-    $('keyboard').replaceChildren();
-    const row = (chars, ...extra) => {
-      for (const char of chars) key(char, () => type(char));
-      for (const char of extra) key(char, () => type(char));
-    };
-    const [digits, top, home, bottom] = letters[shifted ? 1 : 0];
-    row(digits);
-    const backspace = key('', () => { const input = $('password'); input.value = input.value.slice(0, -1); });
-    backspace.innerHTML = ICONS.backspace; backspace.setAttribute('aria-label', 'Backspace');
-    row(top, '-');
-    row(home, ';', "'");
-    row(bottom, ',', '.', '/', '?');
-    row('', '_', '=', '+', '[', ']', '{', '}', ':', '"', '\\', '|');
-    key(shifted ? 'abc' : 'ABC', toggleCase, 'case');
-    key('Space', () => type(' '), 'space');
-    row('', '`', '~', '<', '>');
-  }
   function choose(entry) {
     if (!entry.supported) { message('Enterprise and WEP networks are not supported. Choose a home Wi-Fi network.', 'bad'); return; }
     selected = entry;
     $('password').value = '';
     $('password-panel').hidden = false;
-    chrome(); keyboard();
+    chrome();
+    // Cubby's shared on-screen keyboard (runtime/core/keyboard.js) types the password.
+    board = window.HandheldKeyboard.create({container: $('keyboard'), field: $('password'), layout: 'password'});
     if (!entry.security || entry.security === '--') message('This is an open network. Press Connect; no password is needed.');
     else message('Enter the Wi-Fi password with the controller.');
     focusDefault();
@@ -186,7 +154,7 @@
       const edge = n => down[n] && !lastButtons[n];
       if (edge(0)) document.activeElement?.click();
       if (edge(1)) back();
-      if ((edge(4) || edge(5)) && selected) toggleCase();
+      if ((edge(4) || edge(5)) && selected) board?.toggleCase();
       if (edge(9) && selected) $('connect').click();
       if (now-lastAction > 170) {
         if (down[12] || pad.axes[1] < -.6) { move(0,-1); lastAction=now; }

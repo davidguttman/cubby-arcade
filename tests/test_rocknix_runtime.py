@@ -362,7 +362,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(self.request('GET', '/runtime/core/preferences.js')[1].startswith(profile))
         # Players: the game page gets the launching player's storage, and the hub its pictures.
         self.assertIn(b'<script data-cubby-profile src="/runtime/core/profiles.js"></script>', game[1])
-        for name in ('profiles.js', 'avatars.js'):
+        # keyboard.js/.css: the one on-screen keyboard, for player names and the Wi-Fi password.
+        for name in ('profiles.js', 'avatars.js', 'keyboard.js', 'keyboard.css'):
             served = self.request('GET', '/runtime/core/' + name)
             self.assertEqual((served[0], served[1]), (200, (ROOT / 'runtime/core' / name).read_bytes()))
         self.assertLess(page.index(b'/runtime/core/profiles.js'), page.index(b'/runtime/core/platform.js'))
@@ -382,6 +383,11 @@ class RuntimeTests(unittest.TestCase):
             page = self.request('GET', '/adult/' + name)[1]
             self.assertLess(page.index(b'/rocknix/gamepad.js'),
                             page.index(('/adult/' + name + '.js').encode()))
+        # The Wi-Fi password is typed on Cubby's one shared on-screen keyboard.
+        page = self.request('GET', '/adult/network')[1]
+        self.assertLess(page.index(b'/runtime/core/keyboard.js'), page.index(b'/adult/network.js'))
+        self.assertEqual(self.request('GET', '/runtime/core/keyboard.js'),
+                         (200, (ROOT / 'runtime/core/keyboard.js').read_bytes()))
 
     def test_mutations_require_same_origin_hub_and_token_and_reviewed_id(self):
         for headers in [{'Origin': 'https://evil.invalid'}, {'Host': 'evil.invalid'},
