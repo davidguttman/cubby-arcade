@@ -360,6 +360,12 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn(b'data-handheld-system', game[1])
         self.assertIn(b'/runtime/core/preferences.js', game[1])
         self.assertTrue(self.request('GET', '/runtime/core/preferences.js')[1].startswith(profile))
+        # Players: the game page gets the launching player's storage, and the hub its pictures.
+        self.assertIn(b'<script data-cubby-profile src="/runtime/core/profiles.js"></script>', game[1])
+        for name in ('profiles.js', 'avatars.js'):
+            served = self.request('GET', '/runtime/core/' + name)
+            self.assertEqual((served[0], served[1]), (200, (ROOT / 'runtime/core' / name).read_bytes()))
+        self.assertLess(page.index(b'/runtime/core/profiles.js'), page.index(b'/runtime/core/platform.js'))
         self.assertEqual(self.request('POST', '/api/uninstall', {'id': 'line-cutter'})[0], 409)
         self.request('GET', '/')
         save = self.state.data / 'profile' / 'save'
