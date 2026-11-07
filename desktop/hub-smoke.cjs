@@ -78,6 +78,41 @@ async function checkStartup(win){
   })()`);
 }
 /* Exercised inside the real renderer by --smoke, not a mocked UI. */
+/* Controller setup in the real renderer, driven by a scripted pad: no mouse,
+   touch or keyboard after choosing the tile. Screenshots each visible state. */
+async function checkControllerSetup(win,output){
+  const fs=require('node:fs/promises'),path=require('node:path');
+  const run=script=>win.webContents.executeJavaScript(script);
+  const shot=async(name,script,delay=300)=>{await run(script);await new Promise(resolve=>setTimeout(resolve,delay));if(output)await fs.writeFile(path.join(output,name+'.png'),(await win.webContents.capturePage()).toPNG());};
+  if(output)await fs.mkdir(output,{recursive:true});
+  await run(`(()=>{
+    const buttons=Array.from({length:17},()=>({pressed:false,touched:false,value:0})),pad={id:'Smoke pad',index:0,mapping:'standard',connected:true,buttons,axes:[0,0,0,0]};
+    const values=new Map(),storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v)};
+    const calibration=HandheldHostOSD.createCalibration(()=>[pad],storage),original=window.HandheldOSD,host=document.createElement('main');
+    const press=(...indices)=>{buttons.forEach((b,i)=>{b.pressed=indices.includes(i);b.value=b.pressed?1:0;});calibration.getGamepads();};
+    window.HandheldOSD={calibration,reset(){}};document.body.appendChild(host);
+    const hub=HandheldHub.mount(host);hub.show('options');(${passGate})(host);
+    window.__controllerSmoke={host,hub,press,values,original,dialog:host.querySelector('.controller-setup')};
+    press(0);host.querySelector('.controller-settings').click();press();
+  })()`);
+  const assert=async(check,message)=>{if(!await run(`(()=>{const {host,dialog,values}=window.__controllerSmoke;return ${check};})()`))throw Error(message);};
+  try{
+    await assert(`dialog.open&&dialog.querySelector('.calibration-prompt').textContent==='A'&&!dialog.querySelector('select')`,'Controller setup did not open straight to A');
+    await shot('controller-setup-a','void 0');
+    await shot('controller-setup-progress','(()=>{const {press}=window.__controllerSmoke;press(1);press();press(0);press();})()');
+    await assert(`dialog.querySelector('.calibration-prompt').textContent==='X'`,'Controller setup did not advance to X');
+    await shot('controller-setup-rejected','window.__controllerSmoke.press(0)',120);
+    await shot('controller-setup-saved','(()=>{const {press}=window.__controllerSmoke;press();press(3);press();press(2);})()',250);
+    await assert(`dialog.open&&dialog.querySelector('.calibration-prompt').classList.contains('done')`,'Controller setup did not confirm');
+    await new Promise(resolve=>setTimeout(resolve,1200));
+    await assert(`!dialog.open&&document.activeElement===host.querySelector('.controller-settings')&&JSON.parse(values.get('cubby:controller-labels:v1'))['["Smoke pad","standard",17,4]'].join()==='1,0,3,2'`,'Controller setup did not save, close and restore focus');
+    await run(`(()=>{const {host,press}=window.__controllerSmoke;press();host.querySelector('.controller-settings').click();press();press(9);})()`);
+    await assert(`!dialog.open`,'Start did not leave controller setup');
+  }finally{
+    await run(`(()=>{const {hub,host,original,press}=window.__controllerSmoke;press();hub.dispose();host.remove();window.HandheldOSD=original;delete window.__controllerSmoke;})()`);
+  }
+  return {controllerSetup:true};
+}
 async function checkHub(win,output){
   // Keyboard capture intentionally requires a visible, focused window.
   win.show();win.focus();
@@ -184,6 +219,7 @@ async function checkHub(win,output){
     await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:640,height:480,deviceScaleFactor:1,mobile:false});await capture('handheld-library', "document.querySelector('[aria-label=library]').click()");
     await capture('handheld-detail', "document.querySelector('.game-card').click()");await win.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride');win.webContents.debugger.detach();
   }
-  return {...report,startup};
+  const controller=await checkControllerSetup(win,output);
+  return {...report,...controller,startup};
 }
-module.exports={passGate,checkHub,checkStartup};
+module.exports={passGate,checkHub,checkStartup,checkControllerSetup};
