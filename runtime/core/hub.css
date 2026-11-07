@@ -80,6 +80,21 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .save-actions{display:flex;flex-wrap:wrap;gap:16px}.hub :is(.save-management,.controller-setup) .confirm-reset{background:#854b51}
 .hub :is(.save-management,.controller-setup) .cancel-reset{background:#ffc94d;color:#3a2410}.hub :is(.save-management,.controller-setup) button:focus{outline:3px solid #ffc94d;outline-offset:3px}
 .hub :is(.save-management,.controller-setup) button:disabled{opacity:.45}.settings-tiles{flex-wrap:wrap;justify-content:center}
-.controller-choice{display:block;box-sizing:border-box;width:100%;min-height:44px;margin:8px 0;padding:10px;font:inherit;border-radius:8px;background:#1b142c;color:#fff4e6}
-.controller-feedback{overflow-wrap:anywhere}.hub .controller-setup button{min-height:44px}
-@media(max-height:540px){:is(.save-management,.controller-setup){padding:16px}:is(.save-management,.controller-setup) h1{font-size:21px}:is(.save-management,.controller-setup) p{margin:8px 0}}
+/* Controller setup is driven by the pad itself: one big face-button letter to press,
+   and the four letters below light up as each is taken. */
+.controller-setup{position:relative;width:min(420px,94vw);padding:30px 24px 26px;text-align:center}.controller-setup:focus{outline:none}
+.calibration-prompt{display:grid;place-items:center;width:clamp(112px,28vh,168px);aspect-ratio:1;margin:6px auto 0;border-radius:50%;background:linear-gradient(#ffd770,#ffb22e);color:#3a2410;font:800 clamp(60px,15vh,96px)/1 system-ui,sans-serif;box-shadow:0 8px 0 #bf690e,0 16px 28px rgba(255,160,40,.32),inset 0 3px 0 rgba(255,255,255,.6);transition:opacity .16s,transform .16s}
+.calibration-prompt.waiting{opacity:.45;transform:scale(.94)}
+.calibration-prompt.rejected{background:linear-gradient(#ff9a8a,#ef5f4e);color:#fff;box-shadow:0 8px 0 #a63a2d,inset 0 3px 0 rgba(255,255,255,.45);animation:calibration-shake .36s}
+@keyframes calibration-shake{20%,60%{transform:translateX(-10px)}40%,80%{transform:translateX(10px)}}
+.calibration-prompt.done{background:linear-gradient(#86ecc4,#3fbf8c);color:#0f3b2a;box-shadow:0 8px 0 #22825b,0 16px 28px rgba(63,191,140,.3),inset 0 3px 0 rgba(255,255,255,.55);animation:pop .35s cubic-bezier(.3,1.8,.5,1)}
+.hub .calibration-prompt svg{width:52%;height:52%;stroke-width:3.4}
+.controller-setup .calibration-hint{margin:22px 0 14px;font-size:20px;font-weight:700;color:#fff4e6}
+.calibration-row{display:flex;justify-content:center;gap:12px}
+.calibration-glyph{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.08);color:#a898c4;font:700 21px/1 system-ui,sans-serif;box-shadow:inset 0 0 0 2px rgba(255,255,255,.12);transition:background-color .16s,color .16s}
+.calibration-glyph.is-next{color:#ffc94d;box-shadow:inset 0 0 0 3px #ffc94d}
+.calibration-glyph.is-set{background:#ffc94d;color:#3a2410;box-shadow:0 3px 0 #b8650c}
+.done~.calibration-row .calibration-glyph{background:#5fd6a4;color:#0f3b2a;box-shadow:0 3px 0 #22825b}
+.hub .controller-setup .cancel-controller{position:absolute;top:12px;right:12px;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border-radius:50%;background:rgba(255,255,255,.08);color:#cdbfe6}
+.hub .controller-setup .cancel-controller svg{width:22px;height:22px}
+@media(max-height:540px){:is(.save-management,.controller-setup){padding:16px}.controller-setup .calibration-hint{margin:14px 0 10px}:is(.save-management,.controller-setup) h1{font-size:21px}:is(.save-management,.controller-setup) p{margin:8px 0}}

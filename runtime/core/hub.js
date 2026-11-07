@@ -109,30 +109,35 @@ function mount(host){
  async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.capabilities?.tokens){win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{await platform.launch(id);launched=true;}catch{await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
  const unsubscribeAccount=platform.onAccountState?.(value=>{account=value;if(!disposed)renderAccount();});
  if(platform.capabilities?.tokens)readAccount();
- const controllerDialog=element(host,'dialog','controller-setup');controllerDialog.setAttribute('aria-label','Adult controller setup');
- const calibration=win.HandheldOSD?.calibration;
- function closeController(){calibration?.cancel();controllerDialog.close();options.querySelector('.controller-settings')?.focus();}
+ const controllerDialog=element(host,'dialog','controller-setup');controllerDialog.setAttribute('aria-label','Adult controller setup');controllerDialog.tabIndex=-1;
+ const calibration=win.HandheldOSD?.calibration;let calibrationTimer=null,rejectTimer=null;
+ function closeController(){win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);calibrationTimer=rejectTimer=null;calibration?.cancel();if(controllerDialog.open)controllerDialog.close();options.querySelector('.controller-settings')?.focus();}
+ // The controller runs its own setup: press the printed A, B, X, Y and it saves
+ // and closes. Start (on a standard pad) or ten idle seconds leave it unchanged;
+ // the close button and Escape are extras for a mouse, touch or keyboard.
  function openController(){
-  if(!settingsUnlocked||!calibration)return;
-  controllerDialog.replaceChildren();element(controllerDialog,'h1').textContent='Controller button labels';
-  element(controllerDialog,'p').textContent='Use the printed A, B, X and Y labels, not their positions. Use a mouse, touch, or keyboard for these setup controls.';
-  const label=element(controllerDialog,'label');label.textContent='Controller ';const select=element(label,'select','controller-choice');
-  // Let the native selector keep its keyboard behavior instead of turning its
-  // arrow/Enter keys into hub navigation actions.
-  select.addEventListener('keydown',event=>event.stopPropagation());
-  const feedback=element(controllerDialog,'p','controller-feedback save-feedback');feedback.setAttribute('role','status');
-  const actions=element(controllerDialog,'div','save-actions');let start,save;
-  function refresh(){select.replaceChildren();for(const pad of calibration.controllers()){const option=element(select,'option');option.value=pad.key;option.textContent=pad.id;}feedback.textContent=select.children.length?'Choose a controller, then start. If Steam changes the reported identity, calibrate again.':'Press a button to connect your controller, then Refresh controllers.';}
-  function control(text,fn,cls){const b=element(actions,'button',cls);b.type='button';b.textContent=text;b.addEventListener('click',fn);return b;}
-  control('Refresh controllers',()=>{calibration.cancel();select.disabled=false;start.disabled=false;save.disabled=true;refresh();},'refresh-controllers');
-  start=control('Start calibration',()=>{
-   try{win.HandheldOSD.reset();calibration.begin(select.value,state=>{feedback.textContent=state.message;save.disabled=!state.complete;});select.disabled=true;}
-   catch(error){feedback.textContent=error.message;}
-  },'start-calibration');
-  control('Reset to default',()=>{try{calibration.begin(select.value);calibration.reset();select.disabled=true;save.disabled=false;feedback.textContent=calibration.state().message;}catch(error){feedback.textContent=error.message;}},'reset-controller');
-  control('Cancel',closeController,'cancel-controller');
-  save=control('Save',()=>{try{const persisted=calibration.save();if(persisted)closeController();else{feedback.textContent='Applied for this page only. Browser storage is unavailable; settings will not survive navigation.';save.disabled=true;}}catch(error){feedback.textContent=error.message;}},'save-controller');save.disabled=true;
-  refresh();controllerDialog.showModal();actions.querySelector('button').focus();
+  if(!settingsUnlocked||!calibration||controllerDialog.open)return;
+  controllerDialog.replaceChildren();
+  const close=element(controllerDialog,'button','cancel-controller');close.type='button';close.setAttribute('aria-label','Cancel');close.innerHTML=icon('cancel');close.addEventListener('click',closeController);
+  const prompt=element(controllerDialog,'div','calibration-prompt'),hint=element(controllerDialog,'p','calibration-hint'),row=element(controllerDialog,'div','calibration-row');
+  hint.setAttribute('role','status');
+  const glyphs=['A','B','X','Y'].map(letter=>{const glyph=element(row,'span','calibration-glyph');glyph.textContent=letter;return glyph;});
+  let rejected=0;
+  function render(step){
+   if(!controllerDialog.open)return;
+   if(step.phase==='cancelled'||step.phase==='timeout'){closeController();return;}
+   const done=step.phase==='saved';
+   glyphs.forEach((glyph,i)=>{glyph.classList.toggle('is-set',done||i<step.captured.length);glyph.classList.toggle('is-next',glyph.textContent===step.next);});
+   prompt.classList.toggle('waiting',!done&&!step.ready);prompt.classList.toggle('done',done);
+   if(step.rejected!==rejected){rejected=step.rejected;prompt.classList.add('rejected');win.clearTimeout(rejectTimer);rejectTimer=win.setTimeout(()=>prompt.classList.remove('rejected'),400);}
+   if(done){
+    prompt.innerHTML=icon('check');
+    // Storage can be denied in a browser: the mapping still applies until the page changes.
+    hint.textContent=step.persisted?'Saved':'Saved for this page only';
+    calibrationTimer=win.setTimeout(closeController,step.persisted?1000:3000);
+   }else{prompt.textContent=step.next;hint.textContent='Press '+step.next;}
+  }
+  win.HandheldOSD.reset?.();controllerDialog.showModal();controllerDialog.focus();calibration.begin(render);
  }
  controllerDialog.addEventListener('cancel',e=>{e.preventDefault();closeController();});
  const quitDialog=element(host,'dialog','quit-confirm');quitDialog.setAttribute('aria-label','Quit application?');
@@ -374,7 +379,7 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);

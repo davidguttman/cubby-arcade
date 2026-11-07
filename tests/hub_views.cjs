@@ -280,23 +280,43 @@ function typeGate(host,answer){const keys=host.querySelector('.gate-pad').queryS
 function typeAnswer(host){typeGate(host,gateAnswer(host));}
 function passGate(host){typeAnswer(host);host.querySelector('.gate-submit').click();}
 function wrongGate(host){host.querySelector('.gate-erase').click();host.querySelector('.gate-erase').click();typeGate(host,String(+gateAnswer(host)+1));host.querySelector('.gate-submit').click();}
-test('controller calibration is adult-gated, captures only physical labels, and discards or saves explicitly',async()=>{
+test('controller setup is adult-gated and runs from the pad alone: A, B, X, Y, auto-save, close',async()=>{
  const buttons=Array.from({length:17},()=>({pressed:false,value:0})),pad={id:'Steam Xbox controller',index:0,mapping:'standard',buttons,axes:[0,0]};
  const saved=new Map(),storage={getItem:k=>saved.get(k)||null,setItem:(k,v)=>saved.set(k,v)};
- const calibration=require('../runtime/core/host-osd.js').createCalibration(()=>[pad],storage);
- const {host,hub,action}=mountedHub(games,[],{},{},{HandheldOSD:{calibration,reset(){}}});await settle();hub.show('options');
- assert.equal(host.querySelector('.controller-settings'),null);passGate(host);host.querySelector('.controller-settings').click();
- const dialog=host.querySelector('.controller-setup');assert.equal(dialog.open,true);
- host.querySelector('.controller-choice').value=calibration.controllers()[0].key;
- host.querySelector('.start-calibration').click();assert.equal(host.querySelector('.save-controller').disabled,true);
+ let time=0,timers=[];const setTimeout=(fn,ms)=>timers.push({fn,ms})-1,clearTimeout=id=>{if(timers[id])timers[id].fn=null;};
+ const fire=ms=>{for(const timer of timers.splice(0))if(timer.fn&&timer.ms===ms)timer.fn();else timers.push(timer);};
+ const calibration=require('../runtime/core/host-osd.js').createCalibration(()=>[pad],storage,()=>time);
+ const {host,hub,action}=mountedHub(games,[],{},{},{HandheldOSD:{calibration,reset(){}},setTimeout,clearTimeout});await settle();hub.show('options');
+ assert.equal(host.querySelector('.controller-settings'),null);passGate(host);
+ const press=(...indices)=>{buttons.forEach((b,n)=>{b.pressed=indices.includes(n);b.value=b.pressed?1:0;});return calibration.getGamepads();};
+ const dialog=host.querySelector('.controller-setup'),prompt=()=>dialog.querySelector('.calibration-prompt'),lit=()=>dialog.querySelectorAll('.calibration-glyph').filter(g=>g.classList.contains('is-set')).map(g=>g.textContent).join('');
+ // Chosen with the pad's own A: setup opens straight into capture, with no choices to make.
+ press(0);host.querySelector('.controller-settings').click();
+ assert.equal(dialog.open,true);assert.equal(prompt().textContent,'A');assert.equal(dialog.querySelector('.calibration-hint').textContent,'Press A');
+ const tags=node=>[node.tagName,...node.children.flatMap(tags)];assert.deepEqual(tags(dialog).filter(t=>['button','select','input','label'].includes(t)),['button']);assert.equal(dialog.querySelector('button').className,'cancel-controller');
+ assert.equal(press(0)[0].buttons.some(b=>b.pressed),false);assert.equal(prompt().classList.contains('waiting'),true,'the opening press is still held');
  const focused=host.ownerDocument.activeElement;action('right','gamepad');action('confirm','gamepad');action('previousView','gamepad');assert.equal(host.ownerDocument.activeElement,focused);assert.equal(hub.state.view,'options');
- const press=i=>{buttons.forEach((b,n)=>{b.pressed=n===i;b.value=b.pressed?1:0;});return calibration.getGamepads();};
- press(-1);press(1);host.querySelector('.cancel-controller').click();assert.equal(dialog.open,false);assert.equal(saved.size,0);assert.equal(press(1)[0].buttons.some(b=>b.pressed),false);
- press(-1);host.querySelector('.controller-settings').click();host.querySelector('.controller-choice').value=calibration.controllers()[0].key;host.querySelector('.start-calibration').click();
- for(const i of [1,0,3,2]){press(-1);press(i);}assert.equal(host.querySelector('.save-controller').disabled,false);
- host.querySelector('.save-controller').click();assert.equal(dialog.open,false);assert.equal(press(2)[0].buttons.some(b=>b.pressed),false);
- press(-1);assert.equal(press(1)[0].buttons[0].pressed,true);assert.equal(saved.size,1);
+ press();assert.equal(prompt().classList.contains('waiting'),false);press(1);press();
+ assert.equal(prompt().textContent,'B');assert.equal(lit(),'A');
+ press(1);assert.equal(prompt().classList.contains('rejected'),true,'duplicate shows a cue');fire(400);assert.equal(prompt().classList.contains('rejected'),false);
+ press();press(0);press();press(3);assert.equal(lit(),'ABX');press();
+ press(2);assert.equal(lit(),'ABXY');assert.equal(prompt().classList.contains('done'),true);assert.equal(dialog.open,true,'confirmation stays briefly');
+ assert.deepEqual(JSON.parse(saved.get('cubby:controller-labels:v1')),{[JSON.stringify([pad.id,'standard',17,2])]:[1,0,3,2]});
+ fire(1000);assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,host.querySelector('.controller-settings'));
+ assert.equal(press(2)[0].buttons.some(b=>b.pressed),false,'the final press drains');press();assert.equal(press(1)[0].buttons[0].pressed,true);
+ // Start exits unchanged; so does ten seconds idle; the same A, B, X, Y as the defaults resets.
+ press();host.querySelector('.controller-settings').click();press();press(9);assert.equal(dialog.open,false);assert.equal(press(9)[0].buttons.some(b=>b.pressed),false);
+ press();host.querySelector('.controller-settings').click();press();press(0);time+=10000;press();assert.equal(dialog.open,false);assert.equal(saved.size,1);
+ press();host.querySelector('.controller-settings').click();for(const i of [0,1,2,3]){press();press(i);}fire(1000);assert.equal(dialog.open,false);
+ assert.deepEqual(JSON.parse(saved.get('cubby:controller-labels:v1')),{});press();assert.equal(press(1)[0].buttons[1].pressed,true);
+ // Desktop extras: Escape (dialog cancel) and the close button.
+ host.querySelector('.controller-settings').click();press();press(1);dialog.listeners.cancel[0]({preventDefault(){}});assert.equal(dialog.open,false);
+ press();host.querySelector('.controller-settings').click();dialog.querySelector('.cancel-controller').click();assert.equal(dialog.open,false);assert.equal(calibration.isBlocking(),true);press();assert.equal(calibration.isBlocking(),false);
  hub.show('library');hub.show('options');assert.equal(host.querySelector('.controller-settings'),null);hub.dispose();
+});
+test('controller setup never asks for a mouse, touch, or keyboard',()=>{
+ const source=require('node:fs').readFileSync('runtime/core/hub.js','utf8');
+ assert.doesNotMatch(source,/Use a mouse|controller-choice|start-calibration|save-controller|reset-controller|refresh-controllers/);
 });
 test('save deletion requires adult gate and explicit confirmation; cancel preserves saves',async()=>{
  let saves=['one','uninstalled'],resets=[];
