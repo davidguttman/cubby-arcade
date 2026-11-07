@@ -55,6 +55,14 @@ a dark wake, when the next suspend is already on its way, brings it straight bac
 3 seconds later. Cog stays
 stopped, the display off and the sink muted until then. A step that stalls also ends
 lit, and a marker in `/run` restores the display if the helper dies while dark.
+Before temporarily muting, the helper also saves the previous mute state to
+`/storage/cubby/state/power-audio.json`, because WirePlumber saves the temporary mute
+across reboot but `/run` disappears. Startup recovers that record; failed audio or
+display restoration keeps it and retries while awake. Only a verified restoration
+removes it. An already-muted speaker stays muted; a second sleep never mistakes our
+temporary mute for the original state. `power.log` records saved-state recovery,
+the first failed restore (without repeating every second), and verified success.
+Unreadable or corrupt recovery records are retained, never treated as absent.
 
 The power key stays blocked in logind while asleep and for 2 seconds after waking, so
 the press that wakes the device can't also put it back to sleep.

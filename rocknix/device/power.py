@@ -216,12 +216,17 @@ class EventHub:
 
 class Host:
     """Everything that touches the device, so the controller can be tested without one."""
-    def __init__(self, settings):
+    def __init__(self, settings, state_dir='/storage/cubby/state', log=None):
         self.settings = settings
+        self.log = log or (lambda message: None)
+        self.recovery_reported = False
+        self.audio_marker = Path(state_dir) / 'power-audio.json'
+        self.recovery_pending = False
         self.delay = self.block = None
         self.frozen = []
         self.was_muted = False
-        self.env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME_DIR, SWAYSOCK=RUNTIME_DIR + '/sway-ipc.0.sock')
+        self.env = dict(os.environ, LC_ALL='C', XDG_RUNTIME_DIR=RUNTIME_DIR,
+                        SWAYSOCK=RUNTIME_DIR + '/sway-ipc.0.sock')
 
     def run(self, *command, timeout=10):
         return subprocess.run(command, env=self.env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -266,33 +271,121 @@ class Host:
         self.release(self.block)
         self.block = None
 
+    def saved_mute(self):
+        """None means absent, never unreadable: an existing record must survive failure."""
+        for path in (self.audio_marker, Path(MARKER)):
+            try:
+                content = path.read_text()
+            except FileNotFoundError:
+                continue
+            saved = json.loads(content)
+            if not isinstance(saved, dict) or type(saved.get('muted')) is not bool:
+                raise ValueError('invalid saved audio state')
+            return saved['muted']
+        return None
+
+    def save_mute(self):
+        # WirePlumber persists the temporary mute. Record its previous state on
+        # storage BEFORE setting it, not in /run which disappears on reboot.
+        self.audio_marker.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.audio_marker.with_suffix('.tmp')
+        with temporary.open('w') as stream:
+            json.dump({'muted': self.was_muted}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(self.audio_marker)
+        descriptor = os.open(self.audio_marker.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
     def go_dark(self):
         """True when the display really is off, which is what makes a dark wake possible."""
+        self.recovery_pending = False
         try:
-            muted = self.run('pactl', 'get-sink-mute', '@DEFAULT_SINK@').stdout
-            self.was_muted = 'yes' in muted
+            saved = self.saved_mute()
+            if saved is None:
+                result = self.run('pactl', 'get-sink-mute', '@DEFAULT_SINK@')
+                muted = result.stdout.strip()
+                if result.returncode or muted not in ('Mute: yes', 'Mute: no'):
+                    return False
+                self.was_muted = muted == 'Mute: yes'
+            else:
+                # A second sleep must not capture our own still-pending mute.
+                self.was_muted = saved
+            self.save_mute()
             Path(MARKER).write_text(json.dumps({'muted': self.was_muted}))
-            self.run('pactl', 'set-sink-mute', '@DEFAULT_SINK@', 'true')
+            if self.run('pactl', 'set-sink-mute', '@DEFAULT_SINK@', 'true').returncode:
+                return False
             return self.run('swaymsg', 'output * power off').returncode == 0
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, ValueError, subprocess.SubprocessError):
             return False
 
     def light_up(self):
-        for command in (('swaymsg', 'output * power on'),
-                        ('pactl', 'set-sink-mute', '@DEFAULT_SINK@', 'true' if self.was_muted else 'false')):
-            try:
-                self.run(*command)
-            except (OSError, subprocess.SubprocessError):
-                pass
-        Path(MARKER).unlink(missing_ok=True)
+        self.recovery_pending = True
+        self.retry_recovery()
+
+    def recovery_failed(self, reason):
+        if not self.recovery_reported:
+            self.log(f'audio/display restore pending: {reason}; retrying while awake')
+            self.recovery_reported = True
+
+    def retry_recovery(self):
+        """Retry only while awake; a failed restore must keep its recovery record."""
+        if not self.recovery_pending:
+            return
+        try:
+            display = self.run('swaymsg', 'output * power on')
+            saved = self.saved_mute()
+            if saved is not None:
+                # A legacy record may become readable only on a later retry.
+                # Migrate it before restoring, not only at initial startup.
+                if not self.audio_marker.exists():
+                    self.was_muted = saved
+                    self.save_mute()
+                audio = self.run('pactl', 'set-sink-mute', '@DEFAULT_SINK@',
+                                 'true' if saved else 'false')
+                if audio.returncode:
+                    self.recovery_failed('audio command failed')
+                    return
+                # A successful command alone isn't evidence that the route restored.
+                result = self.run('pactl', 'get-sink-mute', '@DEFAULT_SINK@')
+                if result.returncode or result.stdout.strip() != ('Mute: yes' if saved else 'Mute: no'):
+                    self.recovery_failed('audio readback did not match')
+                    return
+            if display.returncode:
+                self.recovery_failed('display command failed')
+                return
+            Path(MARKER).unlink(missing_ok=True)
+            self.audio_marker.unlink(missing_ok=True)
+            self.recovery_pending = False
+            if saved is not None or self.recovery_reported:
+                self.log(f'audio/display restored muted={saved}')
+            self.recovery_reported = False
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self.recovery_failed(str(error))
 
     def recover_from_crash(self):
-        """A previous helper died while dark. Nothing else would ever turn the screen back on."""
+        """Recover our temporary mute even when reboot erased the dark-screen marker."""
         try:
-            saved = json.loads(Path(MARKER).read_text())
-        except (OSError, ValueError):
+            saved = self.saved_mute()
+        except (OSError, ValueError) as error:
+            self.recovery_pending = True
+            self.recovery_failed(str(error))
+            self.thaw()
+            self.retry_recovery()
             return
-        self.was_muted = bool(saved.get('muted')) if isinstance(saved, dict) else False
+        if saved is None:
+            return
+        self.was_muted = saved
+        # Upgrade a legacy /run-only record before a failed restore can be
+        # followed by a reboot. Saving an already-durable record is harmless.
+        try:
+            self.save_mute()
+        except OSError as error:
+            self.log(f'could not persist audio recovery: {error}')
+        self.log(f'recovering saved temporary mute muted={saved}')
         self.thaw()
         self.light_up()
 
@@ -687,11 +780,16 @@ def run(hub, state_dir):
     """Runs for the life of the session. If anything here fails, stock ROCKNIX sleep remains."""
     settings = load_settings(state_dir)
     log = file_logger(state_dir)
+    host = Host(settings, state_dir, log)
+    host.recover_from_crash()
     if not deep_sleep_available():
         log('deep sleep unavailable; leaving stock behaviour')
+        # No inhibitors or sleep hooks here: stock suspend remains in charge,
+        # but a late audio service must still get its pending recovery.
+        while host.recovery_pending:
+            time.sleep(1)
+            host.retry_recovery()
         return
-    host = Host(settings)
-    host.recover_from_crash()
     events = queue.Queue()
     threading.Thread(target=watch_sleep_signals, args=(events,), daemon=True).start()
     time.sleep(1)   # Let the monitor subscribe before taking the lock it serves.
@@ -717,6 +815,8 @@ def run(hub, state_dir):
             if event:
                 handlers[event]()
             controller.tick()
+            if controller.state == AWAKE:
+                host.retry_recovery()
         except Exception as error:  # A bug here must never leave the screen off.
             log(f'error: {error!r}')
             if controller.state != AWAKE:
