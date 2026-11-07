@@ -408,3 +408,81 @@ for(const catalogFirst of [false,true])test('empty Library fallback focuses Stor
  if(catalogFirst){resolveCatalog(offers);await settle();resolveLibrary([]);}else{resolveLibrary([]);await settle();resolveCatalog(offers);}
  await settle();assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
 });
+
+// Players in the shared hub: the real player rules and pictures, against this DOM adapter.
+const Profiles=require('../runtime/core/profiles.js'),Avatars=require('../runtime/core/avatars.js');
+function memory(entries=[]){const values=new Map(entries);return {values,get length(){return values.size;},key:i=>[...values.keys()][i]??null,getItem:k=>values.has(k)?values.get(k):null,setItem:(k,v)=>values.set(k,String(v)),removeItem:k=>values.delete(k)};}
+function playersHub({list,pin,overrides={},capabilities={},windowOverrides={},entries=[]}={}){
+ const localStorage=memory(entries),sessionStorage=memory(pin?[[Profiles.PIN_KEY,pin]]:[]),calls=[];
+ if(list)localStorage.setItem(Profiles.REGISTRY_KEY,JSON.stringify({profiles:list,active:list[0].id}));
+ const mounted=mountedHub(games,[],{profiles:true,...capabilities},{useProfile:async id=>{calls.push(['use',id]);},removeProfile:async id=>{calls.push(['remove',id]);},savedGames:async id=>{calls.push(['saved',id]);return ['one'];},resetGameSaves:async(id,player)=>{calls.push(['reset',id,player]);},...overrides},
+  {localStorage,sessionStorage,HandheldProfiles:Profiles,HandheldAvatars:Avatars,...windowOverrides});
+ return {...mounted,localStorage,sessionStorage,calls};
+}
+const three=[{id:Profiles.FIRST,avatar:'bear'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog'}];
+const picker=host=>host.querySelector('.player-picker');
+test('one player looks exactly as before: no picker, no picture, nothing written',async()=>{
+ const {host,hub,localStorage,sessionStorage}=playersHub();await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-button').hidden,true);
+ host.querySelector('.play-game').click();await settle();
+ assert.equal(localStorage.length,0,'Playing alone never writes player storage');assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),Profiles.FIRST);hub.dispose();
+});
+test('with players, Cubby asks who is playing on start; the first pick has no way around it',async()=>{
+ const {host,action,calls,sessionStorage}=playersHub({list:three});await settle();
+ assert.equal(picker(host).hidden,false);assert.equal(host.querySelector('.picker-back'),null);
+ assert.deepEqual(host.querySelectorAll('.picker-face').map(face=>face.dataset.profile),three.map(p=>p.id));
+ assert.equal(host.ownerDocument.activeElement.dataset.profile,Profiles.FIRST,'Focus starts on the last player');
+ for(const a of ['back','exit','nextView','select'])action(a);assert.equal(picker(host).hidden,false);
+ host.querySelectorAll('.picker-face')[1].focus();action('confirm');await settle();
+ assert.equal(picker(host).hidden,true);assert.deepEqual(calls,[['use','p_fixture1']]);assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),'p_fixture1');
+ const button=host.querySelector('.player-button');assert.equal(button.hidden,false);assert.equal(button.dataset.avatar,'fox');
+});
+test('coming back to the hub keeps the player; the picture reopens the picker and Back keeps them',async()=>{
+ const {host,action,hub}=playersHub({list:three,pin:'p_fixture2'});await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-button').dataset.avatar,'frog');
+ host.querySelector('.player-button').click();assert.equal(picker(host).hidden,false);assert.ok(host.querySelector('.picker-back'));
+ assert.equal(host.ownerDocument.activeElement.dataset.profile,'p_fixture2');
+ action('back');assert.equal(picker(host).hidden,true);assert.equal(hub.state.view,'library');
+});
+test('switching player switches favorites, and a game launches only once the host plays as that player',async()=>{
+ const order=[];
+ const {host,hub}=playersHub({list:three,pin:Profiles.FIRST,capabilities:{tokens:true},entries:[['handheld:favorites:v1','["one"]'],['cubby:profile:p_fixture1:handheld:favorites:v1','["two"]']],
+  overrides:{account:async()=>({available:true,balance:5}),useProfile:async id=>order.push('use '+id),launch:async id=>order.push('launch '+id)}});await settle();
+ assert.equal(hub.state.isFavorite('one'),true);assert.equal(hub.state.isFavorite('two'),false);
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[1].click();await settle();
+ assert.equal(hub.state.isFavorite('one'),false);assert.equal(hub.state.isFavorite('two'),true);
+ order.length=0;host.querySelector('.play-game').click();await settle();assert.deepEqual(order,['use p_fixture1','launch one']);
+});
+test('a host that cannot switch player does not start the game',async()=>{
+ const launched=[];const {host}=playersHub({list:three,pin:Profiles.FIRST,windowOverrides:{location:{}},overrides:{useProfile:async()=>{throw Error('ipc');}}});await settle();
+ const location=host.ownerDocument.defaultView.location;host.querySelector('.play-game').click();await settle();assert.equal(location.href,undefined);
+});
+test('adults add, re-picture and remove players behind the gear question; the only player stays',async()=>{
+ const {host,hub,localStorage,calls}=playersHub({pin:Profiles.FIRST});await settle();hub.show('options');
+ assert.equal(host.querySelector('.manage-players'),null);passGate(host);host.querySelector('.manage-players').click();
+ const dialog=host.querySelector('.player-management');assert.equal(dialog.open,true);assert.equal(host.querySelector('.remove-player'),null,'The only player cannot be removed');
+ host.querySelector('.add-player').click();const choices=host.querySelectorAll('.avatar-choice');assert.equal(choices.length,7,'A used picture is not offered');
+ choices[0].click();let registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.deepEqual(registry.profiles.map(p=>p.avatar),['fox','frog']);
+ assert.equal(host.querySelector('.player-button').hidden,false,'The hub now shows who is playing');
+ host.querySelectorAll('.change-picture')[1].click();host.querySelectorAll('.avatar-choice').find(b=>b.children.some(c=>c.textContent==='Owl')).click();
+ registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.equal(registry.profiles[1].avatar,'owl');
+ host.querySelectorAll('.remove-player')[1].click();host.querySelector('.cancel-player').click();assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,2);
+ host.querySelectorAll('.remove-player')[1].click();host.querySelector('.remove-confirm').click();await settle();
+ assert.deepEqual(calls.filter(c=>c[0]==='remove'),[['remove',registry.profiles[1].id]]);assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,1);
+ assert.equal(host.querySelector('.player-button').hidden,true);
+});
+test('with players, the adult save page asks whose saves and resets only that player’s',async()=>{
+ const {host,hub,calls,action}=playersHub({list:three,pin:Profiles.FIRST});await settle();hub.show('options');passGate(host);
+ host.querySelector('.manage-saves').click();assert.equal(host.querySelectorAll('.choose-player').length,3);
+ host.querySelectorAll('.choose-player')[2].click();await settle();assert.deepEqual(calls.at(-1),['saved','p_fixture2']);
+ host.querySelector('.choose-save').click();host.querySelector('.confirm-reset').click();await settle();assert.deepEqual(calls.at(-1),['reset','one','p_fixture2']);
+ action('back');assert.equal(host.querySelectorAll('.choose-player').length,3,'Back returns to the players');
+ action('back');assert.equal(host.querySelector('.save-management').open,false);
+});
+test('a device lists the players page among its tiles, and a host without players hides it',async()=>{
+ const settings=[{icon:'trash',label:'Game saves',href:'#adult-saves'},{icon:'players',label:'Players',href:'#adult-players'}];
+ const withPlayers=playersHub({pin:Profiles.FIRST,overrides:{settings}});await settle();withPlayers.hub.show('options');passGate(withPlayers.host);
+ assert.ok(withPlayers.host.querySelectorAll('.settings-tile').some(tile=>tile.getAttribute('aria-label')==='Players'));
+ const without=mountedHub(games,[],{},{settings});await settle();without.hub.show('options');passGate(without.host);
+ assert.equal(without.host.querySelectorAll('.settings-tile').some(tile=>tile.getAttribute('aria-label')==='Players'),false);
+});
