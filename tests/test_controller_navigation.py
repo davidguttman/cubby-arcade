@@ -30,7 +30,7 @@ async function check(file,held,expected){
     localStorage:{getItem:()=>null,setItem:noop},
     fetch:()=>Promise.resolve({ok:true,json:()=>Promise.resolve([
       {entrypoint:'/games/example/index.html',artwork:'cover.svg'}])}),
-    LineCutter:{create:()=>({wake:noop,stop:noop,press:k=>presses.push(k),
+    LineCutter:{create:()=>({wake:noop,stop:noop,release:noop,press:k=>presses.push(k),
       _debug:()=>false,width:240,height:160,state:'title'})}};
   sandbox.window=sandbox;
   vm.createContext(sandbox);

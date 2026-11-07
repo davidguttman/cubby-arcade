@@ -36,13 +36,24 @@ not outdated instructions. Inspect those modules before integrating:
   services. `platform.saves(gameId)` returns `get(name)`, `set(name, value)`
   and `remove(name)` for JSON saves. The native bridge is host supplied;
   do not invent a server-side save or wallet API.
-- `sdk.js`: `HandheldSDK.createGameHost({gameId, platform})` optionally connects
-  shared input, pause/resume and saves. Its game instance has `press(button)`,
-  `stop()`, `wake()` and optionally `start()`. Follow the actual source and its
-  tests for lifecycle details.
+- `sdk.js`: `HandheldSDK.createGameHost({gameId, platform})` connects shared
+  input, pause/resume and saves. Its game instance must have `press(button)` and
+  `release(button)`, plus `stop()`, `wake()` and optionally `start()`. Follow the
+  actual source and its tests for lifecycle details.
+
+**Input is one layer.** Your game has its own controls; something connects to
+them. In a plain browser your page connects keyboard and gamepad events to
+`press` and `release`. Under Cubby the host connects to those same two functions.
+Nothing below that line changes between the two.
+
+- `press` comes when a button goes down, `release` when it comes up. Nothing repeats,
+  so a held direction is one `press` and later one `release`: while it's down, keep
+  walking. "Hold a direction and press A" is just knowing what's down.
+- In Cubby, take input from the host, not `keydown` or `getGamepads()`. Remapping
+  happens before the host calls you, so reading devices yourself loses it.
+- `createInput({repeat:true})` is for moving through menus, which is what the hub uses.
 - Cubby's on-screen controller is host-owned, like a USB controller. Consume
-  standard `navigator.getGamepads()` input (directly or through `input.js`), not
-  OSD UI callbacks. Do not include `host-osd.js`/CSS in a game package. Legacy
+  it through the host like any other button, not through OSD UI callbacks. Do not include `host-osd.js`/CSS in a game package. Legacy
   `controls.js` is a standalone fallback; hosted `createControls` calls are
   suppressed so old packages continue working without an update.
 
