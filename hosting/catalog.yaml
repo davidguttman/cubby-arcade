@@ -13,3 +13,7 @@
   title: Fox Barrister
   manifest_url: https://foxbarrister.david.app/arcade/manifest.json
   artwork: https://foxbarrister.david.app/discovery/cover.png
+- id: small-change
+  title: Small Change
+  manifest_url: https://smallchange.david.app/arcade/manifest.json
+  artwork: https://smallchange.david.app/discovery/cover.png
