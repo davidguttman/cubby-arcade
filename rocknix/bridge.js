@@ -45,7 +45,8 @@
   win.HandheldPlatformOptions = {kind: 'kiosk', bridge, settings: [
     {icon: 'update', label: 'Cubby updates', href: '/adult/updates', notice: true},
     {icon: 'wifi', label: 'Wi-Fi settings', href: '/adult/network'},
-    {icon: 'trash', label: 'Game saves', href: '#adult-saves'}
+    {icon: 'trash', label: 'Game saves', href: '#adult-saves'},
+    {icon: 'players', label: 'Players', href: '#adult-players'}
   ]};
   // Controller shortcut to the gear tab, which still asks the question:
   // hold L+R+Start for two seconds.

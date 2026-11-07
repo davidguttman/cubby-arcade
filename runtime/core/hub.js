@@ -3,10 +3,13 @@
 'use strict';
 const favoriteKey='handheld:favorites:v1';
 function createState(storage){
- let favorites=[];try{const value=JSON.parse(storage?.getItem(favoriteKey)||'[]');if(Array.isArray(value))favorites=value.filter(x=>typeof x==='string');}catch{}
- return {view:'library',detail:null,show(view){if(!['library','store','options'].includes(view))throw Error('Unknown view');this.view=view;this.detail=null;},select(game){this.detail=game;},isFavorite:id=>favorites.includes(id),favorite(id){favorites=favorites.includes(id)?favorites.filter(x=>x!==id):[...favorites,id];try{storage?.setItem(favoriteKey,JSON.stringify(favorites));}catch{}return favorites.includes(id);}};
+ let favorites=[];
+ function load(next){storage=next;favorites=[];try{const value=JSON.parse(storage?.getItem(favoriteKey)||'[]');if(Array.isArray(value))favorites=value.filter(x=>typeof x==='string');}catch{}}
+ load(storage);
+ // Favorites belong to a player: switching player loads theirs.
+ return {view:'library',detail:null,load,show(view){if(!['library','store','options'].includes(view))throw Error('Unknown view');this.view=view;this.detail=null;},select(game){this.detail=game;},isFavorite:id=>favorites.includes(id),favorite(id){favorites=favorites.includes(id)?favorites.filter(x=>x!==id):[...favorites,id];try{storage?.setItem(favoriteKey,JSON.stringify(favorites));}catch{}return favorites.includes(id);}};
 }
-const paths={controller:'M7 7h10q4 0 5 11l-2 2-5-4H9l-5 4-2-2Q3 7 7 7ZM6 10v5M3.5 12.5h5M16 11h.01M19 14h.01',trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6.6l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5Z',library:'M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v7H3zM14 15h7v7h-7z',store:'M4 8h16l1 14H3ZM8 8V6a4 4 0 0 1 8 0v2',options:'M10.2 4.51 10.07 1.58h3.86L13.8 4.51l2.22.92 1.98-2.17L20.74 6l-2.17 1.98.92 2.22 2.93-.13v3.86l-2.93-.13-.92 2.22L20.74 18 18 20.74l-1.98-2.17-2.22.92.13 2.93h-3.86l.13-2.93-2.22-.92L6 20.74 3.26 18l2.17-1.98-.92-2.22-2.93.13v-3.86l2.93.13.92-2.22L3.26 6 6 3.26l1.98 2.17ZM12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z',wifi:'M2 9.5a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0M12 20h.01',update:'M3 11 12 3l9 8v10H3ZM12 18v-7M8.5 14.5 12 11l3.5 3.5',retry:'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',play:'m8 4 13 8-13 8Z',back:'m14 4-8 8 8 8M6 12h16',star:'m12 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1Z',check:'m4 12 5 5L21 5',keyboard:'M2 5h20v14H2ZM5 9h2m2 0h2m2 0h2m2 0h2M5 13h2m2 0h2m2 0h2m2 0h2M7 16h10',adult:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM5 23v-5a7 7 0 0 1 14 0v5',empty:'M3 9h18v12H3ZM3 9l3-5h12l3 5M9 13h6',error:'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9ZM9.5 12.5h.01M14.5 12.5h.01M9.5 16.2q2.5-2 5 0',quit:'M12 2v10M6 5a9 9 0 1 0 12 0',cancel:'m5 5 14 14M19 5 5 19',loading:'M12 3a9 9 0 1 1-9 9',down:'M12 2v13m-5-5 5 5 5-5M3 18v4h18v-4',pick:'m6 9 6 6 6-6',alert:'m12 2 11 20H1ZM12 8v6m0 3v1',backspace:'M9 5h12v14H9l-6-7ZM12 9.5l5 5M17 9.5l-5 5'};
+const paths={controller:'M7 7h10q4 0 5 11l-2 2-5-4H9l-5 4-2-2Q3 7 7 7ZM6 10v5M3.5 12.5h5M16 11h.01M19 14h.01',trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6.6l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5Z',library:'M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v7H3zM14 15h7v7h-7z',store:'M4 8h16l1 14H3ZM8 8V6a4 4 0 0 1 8 0v2',options:'M10.2 4.51 10.07 1.58h3.86L13.8 4.51l2.22.92 1.98-2.17L20.74 6l-2.17 1.98.92 2.22 2.93-.13v3.86l-2.93-.13-.92 2.22L20.74 18 18 20.74l-1.98-2.17-2.22.92.13 2.93h-3.86l.13-2.93-2.22-.92L6 20.74 3.26 18l2.17-1.98-.92-2.22-2.93.13v-3.86l2.93.13.92-2.22L3.26 6 6 3.26l1.98 2.17ZM12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z',wifi:'M2 9.5a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0M12 20h.01',update:'M3 11 12 3l9 8v10H3ZM12 18v-7M8.5 14.5 12 11l3.5 3.5',retry:'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',play:'m8 4 13 8-13 8Z',back:'m14 4-8 8 8 8M6 12h16',star:'m12 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1Z',check:'m4 12 5 5L21 5',players:'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2 21v-1.5A5.5 5.5 0 0 1 7.5 14h3a5.5 5.5 0 0 1 5.5 5.5V21M16 4.3a3.5 3.5 0 0 1 0 6.4M19 14.4a5.5 5.5 0 0 1 3 4.9V21',keyboard:'M2 5h20v14H2ZM5 9h2m2 0h2m2 0h2m2 0h2M5 13h2m2 0h2m2 0h2m2 0h2M7 16h10',adult:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM5 23v-5a7 7 0 0 1 14 0v5',empty:'M3 9h18v12H3ZM3 9l3-5h12l3 5M9 13h6',error:'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9ZM9.5 12.5h.01M14.5 12.5h.01M9.5 16.2q2.5-2 5 0',quit:'M12 2v10M6 5a9 9 0 1 0 12 0',cancel:'m5 5 14 14M19 5 5 19',loading:'M12 3a9 9 0 1 1-9 9',down:'M12 2v13m-5-5 5 5 5-5M3 18v4h18v-4',pick:'m6 9 6 6 6-6',alert:'m12 2 11 20H1ZM12 8v6m0 3v1',backspace:'M9 5h12v14H9l-6-7ZM12 9.5l5 5M17 9.5l-5 5'};
 function icon(name){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+paths[name]+'"/></svg>';}
 // Picture-only brand mark: a smiling cubby house.
 const brand='<svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><path class="brand-roof" d="M24 3.5 44 18.5V39a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V18.5Z"/><rect class="brand-door" x="11" y="20" width="26" height="18" rx="6"/><g class="brand-face"><circle cx="19" cy="27.5" r="2.4"/><circle cx="29" cy="27.5" r="2.4"/><path d="M19.5 32.5q4.5 3.4 9 0"/></g></svg>';
@@ -89,8 +92,12 @@ function startCatalogChecks(win,refresh){
  return stop;
 }
 function mount(host){
- const doc=host.ownerDocument,win=doc.defaultView;let storage;try{storage=win.localStorage;}catch{}
- const state=createState(storage),prefs=win.HandheldPreferences.preferences,platform=win.HandheldPlatform.createPlatform(win.HandheldPlatformOptions);
+ const doc=host.ownerDocument,win=doc.defaultView;let storage,session;try{storage=win.localStorage;}catch{}try{session=win.sessionStorage;}catch{}
+ const prefs=win.HandheldPreferences.preferences,platform=win.HandheldPlatform.createPlatform(win.HandheldPlatformOptions);
+ // Players: null on a host that can't keep them apart, where Cubby has one player.
+ const Avatars=win.HandheldAvatars,profiles=platform.capabilities?.profiles&&win.HandheldProfiles&&Avatars?win.HandheldProfiles.createProfiles({storage,session,platform}):null;
+ let profile=profiles?.current();
+ const state=createState(profiles?profiles.storageFor(profile):storage);
  let account=null,launchBusy=false,featured=null,initialViewPending=true,requested=null;
  const gameReturn='cubby:game-return';let returningGame=null;try{returningGame=win.sessionStorage.getItem(gameReturn);win.sessionStorage.removeItem(gameReturn);}catch{}
  let installStates={},library=[],catalog=[],loading={library:true,store:true},failed={library:false,store:false},adult=false,draft=null,cancelCapture=null,disposed=false;
@@ -106,7 +113,8 @@ function mount(host){
  function renderAccount(){if(!platform.capabilities?.tokens)return;budget.replaceChildren();budget.classList.toggle('empty-budget',account?.balance===0);budget.classList.toggle('no-budget',!account?.available);budget.setAttribute('aria-label',account?.available?account.balance+' tokens':'Tokens unavailable');
   if(account?.available&&account.balance>0){budget.style.setProperty('--coins',account.balance);for(let i=0;i<account.balance;i++){const coin=element(budget,'span','coin');coin.innerHTML=icon('token');}}else{budget.style.removeProperty('--coins');budget.innerHTML=icon(account?.available?'token':'alert');}refreshOwnership();}
  async function readAccount(){try{account=await platform.account();}catch{account={available:false};}if(!disposed)renderAccount();}
- async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.capabilities?.tokens){win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{await platform.launch(id);launched=true;}catch{await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
+ // A game runs as the player chosen here: the host has to agree before it starts.
+ async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.capabilities?.tokens){if(profiles){launchBusy=true;try{await profiles.enter(profile);}catch{return;}finally{launchBusy=false;}}win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{if(profiles)await profiles.enter(profile);await platform.launch(id);launched=true;}catch{await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
  const unsubscribeAccount=platform.onAccountState?.(value=>{account=value;if(!disposed)renderAccount();});
  if(platform.capabilities?.tokens)readAccount();
  const controllerDialog=element(host,'dialog','controller-setup');controllerDialog.setAttribute('aria-label','Adult controller setup');controllerDialog.tabIndex=-1;
@@ -189,39 +197,140 @@ function mount(host){
  }
  uninstallDialog.addEventListener('cancel',e=>{e.preventDefault();closeUninstall();});
  const saveDialog=element(host,'dialog','save-management');saveDialog.setAttribute('aria-label','Game saves');
- let saveBusy=false,saveIds=[];
+ // With more than one player, the adult first picks whose saves; saveProfile is
+ // that player, or undefined on a Cubby with one player, exactly as before players.
+ let saveBusy=false,saveIds=[],saveProfile;
+ const manyPlayers=()=>!!profiles&&profiles.list().length>1;
  function closeSaveManagement(){if(saveBusy)return;saveDialog.close();adult=false;tabs.options.focus();}
+ function saveBack(){if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else if(saveDialog.querySelector('.choose-save,.close-saves')&&saveProfile&&manyPlayers())renderSavePlayers();else closeSaveManagement();}
  function saveText(parent,tag,text,cls){const node=element(parent,tag,cls);node.textContent=text;return node;}
  function saveButton(parent,label,fn,cls){const b=saveText(parent,'button',label,cls);b.type='button';b.addEventListener('click',fn);return b;}
  function saveTitle(id){return [...library,...catalog].find(game=>game.id===id)?.title||id;}
- function saveHeading(){saveDialog.replaceChildren();saveText(saveDialog,'h1','Game saves');}
+ function playerName(id){const p=profiles?.list().find(x=>x.id===id);return p?Avatars.name(p.avatar):'';}
+ function playerFace(parent,id){const p=profiles.list().find(x=>x.id===id),face=element(parent,'span','player-face');face.innerHTML=Avatars.svg(p.avatar);return face;}
+ function saveHeading(){saveDialog.replaceChildren();const heading=saveText(saveDialog,'h1','Game saves');if(saveProfile&&manyPlayers()){heading.textContent=playerName(saveProfile)+'’s game saves';heading.prepend?.(playerFace(heading,saveProfile));heading.classList.add('player-heading');}}
+ function renderSavePlayers(){
+  saveProfile=undefined;saveHeading();saveText(saveDialog,'p','Each player has their own saved games. Choose a player.');
+  const rows=element(saveDialog,'div','save-rows');
+  for(const p of profiles.list()){const b=saveButton(rows,Avatars.name(p.avatar),()=>loadSaves(p.id),'choose-player');b.prepend?.(playerFace(b,p.id));}
+  saveButton(saveDialog,'Back',closeSaveManagement,'close-players').focus();
+ }
  function renderSaveList(message=''){
-  saveHeading();saveText(saveDialog,'p','Delete a game’s saved progress to start it fresh. The game stays installed.');
+  saveHeading();saveText(saveDialog,'p',manyPlayers()?'Delete this player’s saved progress in a game to start it fresh. Other players and the game itself do not change.':'Delete a game’s saved progress to start it fresh. The game stays installed.');
   const feedback=saveText(saveDialog,'p',message,'save-feedback');feedback.setAttribute('role','status');
   if(!saveIds.length)saveText(saveDialog,'p','No saved games.');
   const rows=element(saveDialog,'div','save-rows');
   for(const id of saveIds)saveButton(rows,saveTitle(id),()=>confirmSaveReset(id),'choose-save');
-  saveButton(saveDialog,'Back',closeSaveManagement,'close-saves').focus();
+  saveButton(saveDialog,'Back',saveBack,'close-saves').focus();
  }
  function confirmSaveReset(id){
   if(saveBusy)return;saveHeading();saveText(saveDialog,'h2',saveTitle(id));
-  saveText(saveDialog,'p','Delete all saved progress for this game? This cannot be undone. Other games and Cubby settings will not change.');
+  saveText(saveDialog,'p','Delete all saved progress for this game? This cannot be undone. Other games'+(manyPlayers()?', other players':'')+' and Cubby settings will not change.');
   const feedback=saveText(saveDialog,'p','','save-feedback');feedback.setAttribute('role','status');
   const actions=element(saveDialog,'div','save-actions');
   const cancel=saveButton(actions,'Cancel',()=>renderSaveList(),'cancel-reset');
   saveButton(actions,'Delete saves',async()=>{
    if(saveBusy)return;saveBusy=true;feedback.textContent='Deleting…';for(const b of saveDialog.querySelectorAll('button'))b.disabled=true;
-   try{await platform.resetGameSaves(id);if(disposed)return;saveIds=saveIds.filter(saved=>saved!==id);saveBusy=false;renderSaveList('Saves deleted. This game will start fresh.');}
+   try{await platform.resetGameSaves(id,saveProfile);if(disposed)return;saveIds=saveIds.filter(saved=>saved!==id);saveBusy=false;renderSaveList('Saves deleted. This game will start fresh.');}
    catch{if(disposed)return;feedback.textContent='Saves could not be fully deleted. Try again.';for(const b of saveDialog.querySelectorAll('button'))b.disabled=false;cancel.focus();}
    finally{saveBusy=false;}
   },'confirm-reset');cancel.focus();
  }
- async function openSaveManagement(){
-  if(adult)return;adult=true;saveHeading();saveText(saveDialog,'p','Loading saved games…');saveButton(saveDialog,'Back',closeSaveManagement,'close-saves');saveDialog.showModal();saveDialog.querySelector('button').focus();
-  try{const ids=await platform.savedGames();if(disposed||!saveDialog.open)return;saveIds=ids;renderSaveList();}
-  catch{if(disposed||!saveDialog.open)return;saveHeading();saveText(saveDialog,'p','Saved games could not be loaded. Close this page and try again.','save-feedback').setAttribute('role','status');saveButton(saveDialog,'Back',closeSaveManagement,'close-saves').focus();}
+ async function loadSaves(player){
+  saveProfile=player;saveHeading();saveText(saveDialog,'p','Loading saved games…');saveButton(saveDialog,'Back',saveBack,'close-saves').focus();
+  try{const ids=await platform.savedGames(saveProfile);if(disposed||!saveDialog.open||saveProfile!==player)return;saveIds=ids;renderSaveList();}
+  catch{if(disposed||!saveDialog.open||saveProfile!==player)return;saveHeading();saveText(saveDialog,'p','Saved games could not be loaded. Close this page and try again.','save-feedback').setAttribute('role','status');saveButton(saveDialog,'Back',saveBack,'close-saves').focus();}
  }
- saveDialog.addEventListener('cancel',e=>{e.preventDefault();if(saveBusy)return;if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();});
+ function openSaveManagement(){
+  if(adult)return;adult=true;saveProfile=undefined;saveDialog.replaceChildren();saveDialog.showModal();
+  if(manyPlayers())renderSavePlayers();else loadSaves(profiles?profile:undefined);
+ }
+ saveDialog.addEventListener('cancel',e=>{e.preventDefault();if(saveBusy)return;saveBack();});
+ // The child's side of players: their picture at the top of the hub, and a picker of
+ // faces with no words. With one player neither exists, so the hub looks as it always did.
+ const playerButton=element(host.querySelector('.brand'),'button','player-button');playerButton.type='button';playerButton.hidden=true;playerButton.addEventListener('click',()=>openPicker());
+ function renderPlayer(){const current=manyPlayers()&&profiles.list().find(p=>p.id===profile);playerButton.hidden=!current;if(!current)return;if(playerButton.dataset.avatar!==current.avatar){playerButton.innerHTML=Avatars.svg(current.avatar);playerButton.dataset.avatar=current.avatar;}playerButton.setAttribute('aria-label','Change player');}
+ const picker=element(host,'section','player-picker');picker.hidden=true;picker.setAttribute('aria-label','Who is playing?');
+ let picking=false,choosing=false;
+ function openPicker(){
+  if(!manyPlayers()||adult||picking)return;picking=true;pausePreview();picker.replaceChildren();
+  // The first pick after Cubby starts can't be skipped; after that Back keeps the player.
+  if(profiles.pinned())button(picker,'back','Keep player',closePicker,'picker-back');
+  const faces=element(picker,'div','picker-faces'),list=profiles.list();faces.dataset.count=String(list.length);
+  for(const p of list){const face=element(faces,'button','picker-face');face.type='button';face.dataset.profile=p.id;face.setAttribute('aria-label',Avatars.name(p.avatar));face.innerHTML=Avatars.svg(p.avatar);face.addEventListener('click',()=>choose(p.id));}
+  picker.hidden=false;
+  (Array.from(faces.querySelectorAll('.picker-face')).find(face=>face.dataset.profile===profile)||faces.querySelector('.picker-face'))?.focus();
+ }
+ function hidePicker(){picking=false;picker.hidden=true;picker.replaceChildren();}
+ function closePicker(){if(!picking)return;hidePicker();focusView();resumePreview();}
+ async function choose(id){
+  if(choosing)return;choosing=true;
+  try{await profiles.select(id);}catch{return;}finally{choosing=false;}
+  if(disposed)return;usePlayer(id);closePicker();
+ }
+ function usePlayer(id){profile=id;state.load(profiles.storageFor(id));renderPlayer();refreshOwnership();const star=detail.querySelector('.favorite');if(star&&state.detail)star.setAttribute('aria-pressed',String(state.isFavorite(state.detail.id)));}
+ // Spatial focus among a few buttons: the nearest one in the pressed direction.
+ function nearest(nodes,active,a){
+  if(!nodes.includes(active))return null;const from=active.getBoundingClientRect(),x=from.left+from.width/2,y=from.top+from.height/2,horizontal=a==='left'||a==='right',sign=a==='right'||a==='down'?1:-1;let best=active,score=Infinity;
+  for(const node of nodes){if(node===active)continue;const r=node.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=(horizontal?dx:dy)*sign,cost=primary+Math.abs(horizontal?dy:dx)*2;if(primary>4&&cost<score){score=cost;best=node;}}
+  return best;
+ }
+ // Adult players page, behind the gear tab's question like every worded page.
+ const playerDialog=element(host,'dialog','save-management player-management');playerDialog.setAttribute('aria-label','Players');
+ let playerBusy=false;
+ function closePlayers(){if(playerBusy)return;playerDialog.close();adult=false;tabs.options.focus();}
+ function playersBack(){if(playerBusy)return;if(playerDialog.querySelector('.cancel-player'))renderPlayers();else closePlayers();}
+ function renderPlayers(message=''){
+  playerDialog.replaceChildren();saveText(playerDialog,'h1','Players');
+  saveText(playerDialog,'p','Each player has their own game saves and favorites. With two or more, Cubby starts by showing their pictures for a child to pick, and tapping the picture on the home screen switches player.');
+  const feedback=saveText(playerDialog,'p',message,'save-feedback');feedback.setAttribute('role','status');
+  const rows=element(playerDialog,'div','player-rows'),list=profiles.list();
+  for(const p of list){
+   const row=element(rows,'div','player-row');playerFace(row,p.id);
+   const label=saveText(row,'span',Avatars.name(p.avatar),'player-name');if(list.length>1&&p.id===profile)saveText(label,'small','Playing now','player-note');
+   saveButton(row,'Picture',()=>choosePicture(p),'change-picture');
+   if(list.length>1)saveButton(row,'Remove',()=>confirmRemovePlayer(p),'remove-player');
+  }
+  const actions=element(playerDialog,'div','save-actions');
+  const add=saveButton(actions,'Add a player',()=>choosePicture(null),'add-player');add.disabled=list.length>=Avatars.ids.length;
+  const back=saveButton(actions,'Back',closePlayers,'close-players-page');(add.disabled?back:add).focus();
+ }
+ function choosePicture(p){
+  playerDialog.replaceChildren();saveText(playerDialog,'h1',p?'Change picture':'Add a player');
+  saveText(playerDialog,'p',p?'Choose a new picture for '+Avatars.name(p.avatar)+'. Their saves stay with them.':'Choose a picture for the new player. They start with no saves.');
+  const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
+  const grid=element(playerDialog,'div','avatar-choices'),used=new Set(profiles.list().map(x=>x.avatar));
+  for(const avatar of Avatars.ids){
+   if(used.has(avatar)&&avatar!==p?.avatar)continue;
+   const choice=element(grid,'button','avatar-choice');choice.type='button';choice.innerHTML=Avatars.svg(avatar);saveText(choice,'span',Avatars.name(avatar));
+   if(avatar===p?.avatar)choice.setAttribute('aria-current','true');
+   choice.addEventListener('click',()=>{
+    try{if(!p)profiles.add(avatar);else if(avatar!==p.avatar)profiles.setAvatar(p.id,avatar);}
+    catch{feedback.textContent='That could not be saved. Try again.';return;}
+    renderPlayer();renderPlayers(p?'Picture saved.':Avatars.name(avatar)+' added. Cubby asks who is playing the next time it starts.');
+   });
+  }
+  saveButton(element(playerDialog,'div','save-actions'),'Cancel',()=>renderPlayers(),'cancel-player');
+  (grid.querySelector('.avatar-choice[aria-current]')||grid.querySelector('.avatar-choice'))?.focus();
+ }
+ function confirmRemovePlayer(p){
+  const name=Avatars.name(p.avatar);playerDialog.replaceChildren();
+  const heading=saveText(playerDialog,'h1','Remove '+name+'?','player-heading');heading.prepend?.(playerFace(heading,p.id));
+  saveText(playerDialog,'p','This deletes '+name+'’s saved games and favorites on this Cubby. Other players keep theirs. This cannot be undone.');
+  const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
+  const actions=element(playerDialog,'div','save-actions');
+  const cancel=saveButton(actions,'Cancel',()=>renderPlayers(),'cancel-player cancel-reset');
+  saveButton(actions,'Remove player',async()=>{
+   if(playerBusy)return;playerBusy=true;feedback.textContent='Removing…';for(const b of playerDialog.querySelectorAll('button'))b.disabled=true;
+   try{await profiles.remove(p.id);try{profiles.storageFor(p.id).removeItem(favoriteKey);}catch{}}
+   catch{playerBusy=false;if(disposed)return;feedback.textContent=name+' could not be fully removed. Try again.';for(const b of playerDialog.querySelectorAll('button'))b.disabled=false;cancel.focus();return;}
+   playerBusy=false;if(disposed)return;
+   if(profiles.list().some(x=>x.id===profile))renderPlayer();else usePlayer(profiles.current());
+   renderPlayers(name+' removed.');
+  },'confirm-reset remove-confirm');cancel.focus();
+ }
+ function openPlayers(){if(adult||!profiles)return;adult=true;playerDialog.replaceChildren();playerDialog.showModal();renderPlayers();}
+ playerDialog.addEventListener('cancel',e=>{e.preventDefault();playersBack();});
  // The gear tab shows this keypad instead of settings until it is answered, and
  // locks again on leaving the tab. It is the tab's content, not a modal, so the
  // shoulder buttons and Back still move a wandering child straight on.
@@ -242,7 +351,7 @@ function mount(host){
  // A worded page is a separate document, so one marker carries the answered gate
  // back to it. It is spent on the next load whatever that load turns out to be.
  const settingsReturn='cubby:settings-return';
- function openSetting(href){if(href==='#adult-saves'){openSaveManagement();return;}try{win.sessionStorage.setItem(settingsReturn,'1');}catch{}win.location.href=href;}
+ function openSetting(href){if(href==='#adult-saves'){openSaveManagement();return;}if(href==='#adult-players'){openPlayers();return;}try{win.sessionStorage.setItem(settingsReturn,'1');}catch{}win.location.href=href;}
  function returningToSettings(){try{const marked=win.sessionStorage.getItem(settingsReturn)==='1';win.sessionStorage.removeItem(settingsReturn);return marked&&win.location?.hash==='#options';}catch{return false;}}
 
  const views=['library','store','options'],tabs={};let pendingTabFocus=null;for(const name of views)tabs[name]=button(nav,name,name,()=>activateView(name),'view-tab');
@@ -346,8 +455,11 @@ function mount(host){
  const tiles=element(options,'div','settings-tiles'),controller=()=>{if(calibration)button(tiles,'controller','Adult controller setup',openController,'controller-settings settings-tile');};
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
- if(platform.settings?.length){for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}showNotice();showVersion();return;}
+ if(platform.settings?.length){for(const entry of platform.settings){if(entry.href==='#adult-players'&&!profiles)continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}
+  // Past six tiles, a short screen takes four smaller ones a row to stay in two rows.
+  tiles.classList.toggle('many',tiles.children.length>6);showNotice();showVersion();return;}
  controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');
+ if(profiles)button(options,'players','Players',()=>openSetting('#adult-players'),'manage-players settings-tile');
  button(options,'trash','Manage game saves',()=>openSetting('#adult-saves'),'manage-saves settings-tile');
  const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
  }
@@ -369,7 +481,7 @@ function mount(host){
  for(const [label,fn,cls] of [['Cancel capture',()=>{stopCapture();feedback.textContent='';renderRows();}],['Reset keys',()=>{stopCapture();draft.reset();feedback.textContent='';renderRows();}],['Cancel',()=>closeAdult(false)],['Save',()=>closeAdult(true),'primary']]){const b=element(actions,'button',cls);b.type='button';b.textContent=label;b.addEventListener('click',fn);}
  dialog.showModal();dialog.querySelector('button').focus();}
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeAdult(false);});
- const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit'){if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();}else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
+ const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(picking){const nodes=Array.from(picker.querySelectorAll('button'));if(a==='back'||a==='exit'){if(profiles.pinned())closePicker();}else if(a==='confirm'||a==='pause')(nodes.includes(doc.activeElement)?doc.activeElement:picker.querySelector('.picker-face'))?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||picker.querySelector('.picker-face'))?.focus();return;}if(playerDialog.open){if(playerBusy)return;const nodes=Array.from(playerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')playersBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')saveBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
  if(a==='exit'||a==='back'){if(!detail.hidden)returnToGames(doc.activeElement?.classList.contains('game-card')||doc.activeElement===tabs[state.view]);else activateView('library');return;}
  if(a==='select'||a==='nextView'||a==='previousView'){activateView(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);return;}
  const padKeys=Array.from(doc.activeElement?.closest?.('.gate-pad')?.querySelectorAll('button')||[]);
@@ -386,8 +498,11 @@ function mount(host){
  // Only initial discovery may choose Store; explicit navigation always wins.
  for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length){const stayed=doc.activeElement===tabs.library;show('store');if(stayed){tabs.store.focus();focusView();if(loading.store)pendingTabFocus='store';}}else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
  // Adult pages return here so Back lands where the adult left, not on the library.
- function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
+ function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;if(picking)hidePicker();initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
  settingsUnlocked=returningToSettings();activateView(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);
+ // Who is playing is asked once each time Cubby starts; coming back from a game or an
+ // adult page keeps the player.
+ renderPlayer();if(manyPlayers()&&!profiles.pinned()&&win.location?.hash!=='#options')openPicker();
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose,refreshCatalog};
 }

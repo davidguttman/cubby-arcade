@@ -98,3 +98,43 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .hub .controller-setup .cancel-controller{position:absolute;top:12px;right:12px;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border-radius:50%;background:rgba(255,255,255,.08);color:#cdbfe6}
 .hub .controller-setup .cancel-controller svg{width:22px;height:22px}
 @media(max-height:540px){:is(.save-management,.controller-setup){padding:16px}.calibration-row{margin:16px 0 2px}:is(.save-management,.controller-setup) h1{font-size:21px}:is(.save-management,.controller-setup) p{margin:8px 0}}
+/* Players. For a child the faces are the whole interface: big, round, and lit when chosen. */
+.hub :is(.player-button,.picker-face,.player-face,.avatar-choice) svg{stroke:none}
+.hub .player-button{width:52px;height:52px;min-width:52px;min-height:52px;padding:0;border-radius:50%;background:transparent;box-shadow:0 4px 0 rgba(10,4,20,.4)}
+.hub .player-button svg{width:100%;height:100%}
+.hub .player-button:hover{background:transparent;transform:translateY(-2px)}
+.hub .player-button:focus{outline:none;box-shadow:0 0 0 3px #fff4e6,0 0 0 6px #ffc94d,0 0 22px 5px rgba(255,184,56,.55)}
+.player-picker{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,4vh,34px);padding:16px;background:radial-gradient(110% 70% at 8% -12%,#6a3d5d 0,rgba(106,61,93,0) 60%),radial-gradient(90% 70% at 105% 115%,#283a6a 0,rgba(40,58,106,0) 62%),linear-gradient(180deg,#2a1f3d,#150f22);animation:rise .28s ease-out}
+.picker-faces{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:clamp(18px,4vw,44px);max-width:min(1200px,96vw)}
+.hub .picker-face{--size:clamp(104px,min(25vh,20vw),210px);width:var(--size);height:var(--size);padding:0;border-radius:50%;background:transparent;box-shadow:0 8px 0 rgba(10,4,20,.45),0 14px 26px rgba(0,0,0,.35);transition:transform .22s cubic-bezier(.3,1.5,.5,1),box-shadow .2s,opacity .2s,filter .2s}
+.picker-faces:is([data-count="2"],[data-count="3"]) .picker-face{--size:clamp(130px,min(40vh,27vw),280px)}
+.picker-faces[data-count="4"] .picker-face{--size:clamp(110px,min(32vh,20vw),240px)}
+.hub .picker-face svg{width:100%;height:100%}
+.hub .picker-face:hover{background:transparent;transform:translateY(-4px)}
+/* A cream ring inside the gold one keeps the focus clear on a yellow face too. */
+.hub .picker-face:focus{outline:none;transform:translateY(-8px) scale(1.08);box-shadow:0 0 0 5px #fff4e6,0 0 0 10px #ffc94d,0 0 40px 12px rgba(255,184,56,.5),0 18px 30px rgba(0,0,0,.5)}
+.hub .picker-face:focus svg{animation:wiggle 1.8s ease-in-out infinite}
+@keyframes wiggle{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(-7deg)}85%{transform:rotate(6deg)}}
+.picker-faces:focus-within .picker-face:not(:focus){opacity:.72;filter:saturate(.75)}
+.hub .picker-back{position:absolute;top:14px;left:14px;width:54px;height:54px;border-radius:50%;background:#2e2248;box-shadow:0 4px 0 rgba(8,4,16,.5),inset 0 0 0 2px rgba(255,255,255,.16)}
+.hub .picker-back:focus{outline:none;box-shadow:0 0 0 4px #ffc94d,0 0 22px 4px rgba(255,184,56,.45)}
+/* The adult players page shares the worded save page's look. */
+.player-rows{display:grid;gap:10px;margin:16px 0}
+.player-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:18px;background:rgba(255,255,255,.06)}
+.player-face{flex:none;display:block;width:52px;height:52px}
+.hub .player-face svg{width:100%;height:100%}
+.player-name{flex:1;min-width:0;display:flex;flex-direction:column;font-size:19px;font-weight:700}
+.player-note{font-size:13px;font-weight:600;color:#86ecc4}
+.hub .player-management .player-row button{min-height:46px;padding:10px 14px}
+.player-heading{display:flex;align-items:center;gap:12px}
+.player-heading .player-face{width:44px;height:44px}
+.hub .save-management .choose-player{justify-content:flex-start;gap:14px;font-size:18px;font-weight:700;text-align:left}
+.choose-player .player-face{width:44px;height:44px}
+.avatar-choices{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 18px}
+.hub .player-management .avatar-choice{flex-direction:column;gap:6px;padding:10px 6px;border-radius:18px;font-weight:700}
+.hub .avatar-choice svg{width:64px;height:64px}
+@media (max-height:520px){.hub .player-button{width:44px;height:44px;min-width:44px;min-height:44px}.hub .avatar-choice svg{width:52px;height:52px}.player-rows{margin:10px 0}.player-face{width:44px;height:44px}}
+.player-management .save-feedback:empty{min-height:0;margin:0}
+@media (max-height:540px){.player-management p{margin:6px 0}.player-rows{gap:8px}.player-row{padding:6px 10px}.hub .player-management .player-row button{min-height:42px;padding:8px 14px}}
+/* A seventh settings tile: a short screen fits four smaller tiles a row, still two rows. */
+@media (max-height:520px){.settings-tiles.many{gap:16px}.hub .settings-tiles.many .settings-tile{width:128px;height:116px;border-radius:26px}.hub .settings-tiles.many .settings-tile svg{width:56px;height:56px}}
