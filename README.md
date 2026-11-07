@@ -315,7 +315,32 @@ This works with browser/device localStorage and desktop native saves. The
 published Line Cutter `linecutter_run` alias is included so old progress cannot
 reappear after reset. Standalone games on other origins and arbitrary storage
 outside Cubby's SDK namespace are not managed by this flow. Uninstall still
-keeps saves; it does not imply a reset.
+keeps saves; it does not imply a reset. With more than one player, the page
+first asks whose saves, and deletes only that player's.
+
+## Players
+
+Each player has their own game saves and favorites. Behind the gear tab's
+adult check, the people tile (**Players**) adds a player by picking an animal
+picture, changes a picture, or removes a player after a confirmation; removing
+deletes only that player's saves and favorites, and the only player can't be
+removed. With one player the hub looks as it always did. With two or more,
+Cubby starts on a wordless picker of faces, and the player's face beside the
+house on the hub reopens it. Coming back from a game or an adult page keeps
+the player; a game always runs as the player the hub launched it with.
+
+`runtime/core/profiles.js` holds the rules. The first player is exactly the
+storage every earlier Cubby used (`handheld:<game>:<key>`, `userData/saves` on
+desktop), so nothing migrates and a rolled-back device still finds those saves.
+Other players live under `cubby:profile:<id>:` in browser storage and
+`userData/profile-saves/<id>` on desktop; ids look like `p_x7k2…`, which no
+game or system id can. Hosts inject `profiles.js` into game pages after their
+own modules, where it gives the page the launching player's `localStorage` and
+`HandheldPlatformOptions.storage`, so frozen game releases, including ones
+that write `localStorage` directly, save per player without a byte changing.
+A host with native saves also supplies `useProfile` and `removeProfile`; one
+without them (an older desktop app under a newer cloud hub) keeps one player.
+`desktop/players-smoke.cjs` (`--players-smoke`) checks this end to end.
 
 ## Web host: same launcher and packages
 

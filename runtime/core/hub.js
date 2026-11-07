@@ -213,7 +213,7 @@ function mount(host){
   saveProfile=undefined;saveHeading();saveText(saveDialog,'p','Each player has their own saved games. Choose a player.');
   const rows=element(saveDialog,'div','save-rows');
   for(const p of profiles.list()){const b=saveButton(rows,Avatars.name(p.avatar),()=>loadSaves(p.id),'choose-player');b.prepend?.(playerFace(b,p.id));}
-  saveButton(saveDialog,'Back',closeSaveManagement,'close-players').focus();
+  saveButton(saveDialog,'Back',closeSaveManagement,'close-players');rows.querySelector('.choose-player').focus();
  }
  function renderSaveList(message=''){
   saveHeading();saveText(saveDialog,'p',manyPlayers()?'Delete this player’s saved progress in a game to start it fresh. Other players and the game itself do not change.':'Delete a game’s saved progress to start it fresh. The game stays installed.');
