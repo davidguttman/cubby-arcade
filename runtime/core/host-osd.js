@@ -1,10 +1,62 @@
 /* Cubby-owned virtual USB-style controller. Never included in game packages. */
 (function(root,factory){
  const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;
- else {root.HandheldHostOSD=api;if(/^\/(?:games|__cubby_games__)\//.test(root.location.pathname))root.HandheldOSD=api.install(root);}
+ else {root.HandheldHostOSD=api;root.HandheldOSD=api.install(root);}
 })(globalThis,function(){
  'use strict';
  const indices={a:0,b:1,x:2,y:3,l:4,r:5,select:8,start:9,up:12,down:13,left:14,right:15};
+ const calibrationKey='cubby:controller-labels:v1',labels=['A','B','X','Y'];
+ const controllerKey=pad=>JSON.stringify([pad.id,pad.mapping,pad.buttons.length,pad.axes.length]);
+ // Gamepad attributes are native prototype getters: copy explicitly, not with spread.
+ function copyPad(pad,buttons=pad.buttons,axes=pad.axes){return {id:pad.id,index:pad.index,mapping:pad.mapping,connected:pad.connected,timestamp:pad.timestamp,buttons,axes,vibrationActuator:pad.vibrationActuator,hapticActuators:pad.hapticActuators,pose:pad.pose};}
+ function createCalibration(read,storage){
+  let profiles={};try{const saved=JSON.parse(storage?.getItem(calibrationKey)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))profiles=saved;}catch{}
+  let session=null,draining=false;
+  function raw(){try{return Array.from(read()||[]);}catch{return [];}}
+  function valid(map,pad){return Array.isArray(map)&&map.length===4&&new Set(map).size===4&&map.every(i=>Number.isInteger(i)&&i>=0&&i<pad.buttons.length);}
+  function state(){return session?{next:labels[session.map.length]||null,complete:session.defaults||session.map.length===4,message:session.message}:null;}
+  function notify(){session?.change?.(state());}
+  function finish(){session=null;draining=true;}
+  const api={
+   controllers:()=>raw().filter(p=>p&&p.connected!==false&&p.buttons.length>=4).map(p=>({key:controllerKey(p),id:p.id,index:p.index})),
+   state,isBlocking:()=>!!session||draining,
+   begin(key,change){if(!api.controllers().some(p=>p.key===key))throw Error('Connect the controller first.');session={key,map:[],ready:false,message:'Release all buttons, then press the button labelled A.',change,defaults:false};notify();},
+   reset(){if(!session)return;session.map=[];session.defaults=true;session.message='Default mapping will be restored when saved.';notify();},
+   cancel:finish,
+   save(){if(!session||!state().complete)throw Error('Capture all four buttons first.');if(session.defaults)delete profiles[session.key];else profiles[session.key]=session.map.slice();let persisted=true;try{storage?.setItem(calibrationKey,JSON.stringify(profiles));if(!storage)persisted=false;}catch{persisted=false;}finish();return persisted;},
+   getGamepads(){
+    const pads=raw(),neutral=pads.every(p=>!p||!Array.from(p.buttons).some(b=>b.pressed||b.value>.5)&&Array.from(p.axes).every(a=>Math.abs(a)<.5));
+    if(session){
+     const pad=pads.find(p=>p&&controllerKey(p)===session.key);
+     if(!pad){session.ready=false;session.message='Controller disconnected. Reconnect it or cancel.';notify();}
+     else if(!session.defaults&&session.map.length<4){
+      const down=Array.from(pad.buttons).flatMap((b,i)=>b.pressed||b.value>.5?[i]:[]);
+      if(neutral){if(!session.ready){session.ready=true;session.message='Press the button labelled '+labels[session.map.length]+'.';notify();}}
+      else if(down.length&&session.ready){
+       session.ready=false;
+       if(down.length!==1)session.message='Press only one button. Release all buttons and try again.';
+       else if(session.map.includes(down[0]))session.message='That button is already assigned. Release it and try again.';
+       else{session.map.push(down[0]);session.message=session.map.length===4?'Captured A, B, X and Y. Release all buttons, then Save.':'Release all buttons, then press the button labelled '+labels[session.map.length]+'.';}
+       notify();
+      }
+     }
+    }
+    // Also swallow the final Save/Cancel press until every physical control is
+    // neutral. Otherwise a held capture button becomes a fresh navigation edge.
+    const blocked=!!session||draining;if(draining&&neutral)draining=false;
+    return pads.map(pad=>{
+     if(!pad)return pad;
+     if(blocked)return copyPad(pad,Array.from(pad.buttons,()=>({pressed:false,touched:false,value:0})),Array.from(pad.axes,()=>0));
+     const map=profiles[controllerKey(pad)];if(!valid(map,pad))return pad;
+     const buttons=Array.from(pad.buttons);for(const source of map)if(source>=4)buttons[source]={pressed:false,touched:false,value:0};
+     for(let i=0;i<4;i++)buttons[i]=pad.buttons[map[i]];
+     // A calibrated nonstandard pad now supplies our standard face-button slots.
+     // Other buttons and axes remain browser-reported.
+     const mapped=copyPad(pad,buttons);mapped.mapping='standard';return mapped;
+    });
+   }
+  };return api;
+ }
  function createDevice(readPhysical,now=()=>Date.now()){
   const pointers=new Map();let stamp=now();
   function reset(){pointers.clear();stamp=now();}
@@ -36,7 +88,9 @@
   if(win.HandheldOSD)return win.HandheldOSD;
   const doc=win.document,nav=win.navigator,prefs=win.HandheldPreferences?.preferences;
   const descriptor=Object.getOwnPropertyDescriptor(nav,'getGamepads'),read=nav.getGamepads?.bind(nav);
-  const device=createDevice(()=>read?.()||[],()=>win.performance?.now?.()??Date.now());
+  let storage;try{storage=win.localStorage;}catch{}
+  const calibration=createCalibration(()=>read?.()||[],storage);
+  const device=createDevice(()=>calibration.getGamepads(),()=>win.performance?.now?.()??Date.now());
   const listeners=[],pendingRelease=new Map();let host,shadow,style,disposed=false,menuOpen=false,visible=false;
   const legacyDescriptor=Object.getOwnPropertyDescriptor(win,'HandheldControls');
   const legacyGate={createControls:()=>()=>{}};
@@ -55,7 +109,7 @@
    // Stop at the window capture boundary, before a game's global pointer-A handler.
    event.preventDefault();event.stopImmediatePropagation();
    const button=event.composedPath().find(n=>n?.dataset?.button);
-   if(event.type==='pointerdown'&&button&&visible&&!menuOpen&&!doc.hidden){
+   if(event.type==='pointerdown'&&button&&visible&&!menuOpen&&!calibration.isBlocking()&&!doc.hidden){
     if(button.dataset.button==='exit'){reset();win.HandheldGameShell?.open();return;}
     try{button.setPointerCapture(event.pointerId);}catch{}
     cancelRelease(event.pointerId);device.press(event.pointerId,button.dataset.button);sync();
@@ -87,12 +141,15 @@
    style.textContent=`html[data-cubby-osd]{--cubby-size:clamp(44px,min(7vh,calc((100vw - 56px)/6)),52px);--cubby-deck:calc(5 * var(--cubby-size) + 16px);--cubby-bottom:max(8px,env(safe-area-inset-bottom))}html[data-cubby-osd] body{box-sizing:border-box!important;padding-bottom:calc(var(--cubby-deck) + var(--cubby-bottom) + 16px)!important}html[data-cubby-osd] :is(.screen,canvas#screen,canvas.library){width:min(94vw,calc((100dvh - var(--cubby-deck) - var(--cubby-bottom) - 32px)*1.5))!important;height:auto!important}.hub-controls{display:none!important}#cubby-host-osd{all:initial!important;position:fixed!important;inset:0!important;z-index:2147483645!important;pointer-events:none!important}#cubby-host-osd[hidden]{display:none!important}`;
    doc.body.appendChild(style);update();
   }
-  if(doc.readyState==='loading')listen(doc,'DOMContentLoaded',mount);else mount();
+  // The hub needs the same physical provider, not a second touch deck.
+  if(/^\/(?:games|__cubby_games__)\//.test(win.location.pathname)){
+   if(doc.readyState==='loading')listen(doc,'DOMContentLoaded',mount);else mount();
+  }
   // BFCache restores this document without rerunning host scripts. Keep its
   // provider/UI installed, but never carry held input into the restored page.
   listen(win,'pagehide',event=>{if(event.persisted)reset();else api.dispose();});
-  const api={device,reset,get root(){return shadow;},dispose(){if(disposed)return;disposed=true;reset();listeners.forEach(f=>f());host?.remove();style?.remove();doc.documentElement.removeAttribute('data-cubby-osd');if(descriptor)Object.defineProperty(nav,'getGamepads',descriptor);else delete nav.getGamepads;if(legacyDescriptor)Object.defineProperty(win,'HandheldControls',legacyDescriptor);else delete win.HandheldControls;if(win.HandheldOSD===api)delete win.HandheldOSD;}};
+  const api={device,calibration,reset,get root(){return shadow;},dispose(){if(disposed)return;disposed=true;reset();listeners.forEach(f=>f());host?.remove();style?.remove();doc.documentElement.removeAttribute('data-cubby-osd');if(descriptor)Object.defineProperty(nav,'getGamepads',descriptor);else delete nav.getGamepads;if(legacyDescriptor)Object.defineProperty(win,'HandheldControls',legacyDescriptor);else delete win.HandheldControls;if(win.HandheldOSD===api)delete win.HandheldOSD;}};
   return api;
  }
- return {createDevice,install};
+ return {createDevice,createCalibration,install};
 });
