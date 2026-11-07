@@ -4,7 +4,8 @@ const path=require('node:path');
 const {CloudHub}=require('./cloud.cjs');
 const {GameInstaller}=require('./installer.cjs');
 const {TokenAccount,GameLauncher}=require('./tokens.cjs');
-const {assetName,assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary}=require('./host.cjs');
+const {assetName,assetPath,gameScope,requireHubFrame,ProfileSaves,GameLibrary}=require('./host.cjs');
+const {FIRST}=require('../runtime/core/profiles.js');
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
 const tokenSmoke=process.argv.includes('--token-smoke');
 const installSmoke=process.argv.includes('--install-smoke');
@@ -20,7 +21,9 @@ app.setPath('userData',userDataPath({appData:app.getPath('appData'),temp:app.get
 if(!app.requestSingleInstanceLock())exitSmoke(0);
 app.whenReady().then(async()=>{
   const site=smoke&&env('SMOKE_SITE')?path.resolve(env('SMOKE_SITE')):app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
-  const store=new SaveStore(path.join(app.getPath('userData'),'saves'));
+  // Game pages save as the player the hub last entered; it can only change from the
+  // hub, so a running game keeps the player it launched with.
+  const saves=new ProfileSaves(app.getPath('userData'));let player=FIRST;
   const library=new GameLibrary(site,env('GAMES_DIR')?path.resolve(env('GAMES_DIR')):path.join(app.getPath('userData'),'games'));
   const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),...(uninstallSmoke||(smoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
   await cloud.refresh();
@@ -53,7 +56,7 @@ app.whenReady().then(async()=>{
       }
       if(!data)data=['/library','/catalog'].includes(pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
       if(pathname.startsWith('/games/')&&path.extname(file).toLowerCase()==='.html'){
-        let html=data.toString('utf8');const tag='<script src="/runtime/core/preferences.js"></script><script data-cubby-controller src="/runtime/core/host-osd.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script>';
+        let html=data.toString('utf8');const tag='<script src="/runtime/core/preferences.js"></script><script data-cubby-controller src="/runtime/core/host-osd.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script><script data-cubby-profile src="/runtime/core/profiles.js"></script>';
         if(!html.includes(tag)){const match=/<!doctype[^>]*>/i.exec(html),at=match?match.index+match[0].length:0;data=Buffer.from(html.slice(0,at)+tag+html.slice(at));}
       }
       const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.webm':'video/webm','.mp4':'video/mp4','.mp3':'audio/mpeg','.png':'image/png'};
@@ -77,7 +80,7 @@ app.whenReady().then(async()=>{
       const game=gameScope(event.senderFrame.url);
       if(message.game!==game)throw Error('Save scope mismatch');
       if(!['get','set','remove'].includes(message.operation))throw Error('Invalid operation');
-      event.returnValue={value:store[message.operation](game,message.key,message.value)??null};
+      event.returnValue={value:saves.store(player)[message.operation](game,message.key,message.value)??null};
     }catch{event.returnValue={error:'Save operation rejected'};}
   });
   win=new BrowserWindow({show:!smoke,width:960,height:640,fullscreen:!smoke,autoHideMenuBar:true,backgroundColor:'#101614',
@@ -91,8 +94,10 @@ app.whenReady().then(async()=>{
   ipcMain.handle('hub:account',event=>{authorizeHub(event);return launcher.status();});
   ipcMain.handle('hub:refill',event=>{authorizeHub(event);const state=account.refill();win.webContents.send('hub:account-state',state);return state;});
   ipcMain.handle('hub:launch',(event,id)=>{authorizeHub(event);return launchGame(id);});
-  ipcMain.handle('hub:saved-games',event=>{authorizeHub(event);return store.savedGames();});
-  ipcMain.handle('hub:reset-game-saves',(event,id)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');store.resetGameSaves(id);});
+  ipcMain.handle('hub:saved-games',(event,profile)=>{authorizeHub(event);return saves.store(profile??player).savedGames();});
+  ipcMain.handle('hub:reset-game-saves',(event,id,profile)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');saves.store(profile??player).resetGameSaves(id);});
+  ipcMain.handle('hub:profile',(event,profile)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');saves.directory(profile);player=profile;});
+  ipcMain.handle('hub:remove-profile',(event,profile)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');saves.remove(profile);if(player===profile)player=FIRST;});
   ipcMain.handle('hub:library',event=>{authorizeHub(event);return library.entries();});
   ipcMain.handle('hub:install',async(event,id)=>{authorizeHub(event);await installer.install(id);return library.entries();});
   ipcMain.handle('hub:uninstall',async(event,id)=>{authorizeHub(event);await installer.uninstall(id);return library.entries();});
@@ -136,7 +141,7 @@ app.whenReady().then(async()=>{
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
   if(uninstallSmoke){
-    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,store,account,{cloud,output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
+    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,saves.store(FIRST),account,{cloud,output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
     catch(error){console.error(error);exitSmoke(1);}return;
   }
   if(installSmoke){

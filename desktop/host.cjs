@@ -1,6 +1,7 @@
 /* Pure host boundaries, testable without Electron. Developer packages are trusted. */
 const fs=require('node:fs');
 const path=require('node:path');
+const {FIRST,validId}=require('../runtime/core/profiles.js');
 const idPattern=/^[a-z0-9][a-z0-9-]{0,79}$/;
 // One portable namespace for installed files and protocol paths. NTFS aliases
 // (devices, alternate streams, trailing dots/spaces) must never bypass inventory.
@@ -75,6 +76,30 @@ class SaveStore{
     fs.rmSync(directory,{recursive:true,force:true});
   }
 }
+// Native saves for each player. The hub decides who plays; this only maps a player
+// to a directory. The first player keeps the saves directory every earlier Cubby
+// used, so nothing moves; other players get their own directory beside it.
+class ProfileSaves{
+  constructor(userData){this.userData=userData;this.stores=new Map();}
+  directory(profile){
+    if(!validId(profile))throw Error('Invalid player');
+    return profile===FIRST?path.join(this.userData,'saves'):path.join(this.userData,'profile-saves',profile);
+  }
+  store(profile){
+    const directory=this.directory(profile);
+    if(!this.stores.has(profile))this.stores.set(profile,new SaveStore(directory));
+    return this.stores.get(profile);
+  }
+  // Only that player's saves go. The first player's directory holds nothing else, but
+  // is removed game by game so no other path is ever touched.
+  remove(profile){
+    if(profile===FIRST){const store=this.store(FIRST);for(const game of store.savedGames())store.resetGameSaves(game);return;}
+    const directory=this.directory(profile);this.stores.delete(profile);
+    let stat;try{stat=fs.lstatSync(directory);}catch(error){if(error.code==='ENOENT')return;throw error;}
+    if(!stat.isDirectory()||stat.isSymbolicLink())throw Error('Invalid save directory');
+    fs.rmSync(directory,{recursive:true,force:true});
+  }
+}
 class GameLibrary{
   constructor(site,games){this.site=site;this.games=games;}
   managed(){return fs.existsSync(this.games);}
@@ -136,4 +161,4 @@ class GameLibrary{
     return file;
   }
 }
-module.exports={assetName,assetPath,gameScope,requireHubFrame,SaveStore,GameLibrary,safePackagePath,validatePackagePaths};
+module.exports={assetName,assetPath,gameScope,requireHubFrame,SaveStore,ProfileSaves,GameLibrary,safePackagePath,validatePackagePaths};
