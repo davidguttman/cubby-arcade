@@ -75,7 +75,7 @@ test('nonempty Library selects and previews a game on load and return',async()=>
 });
 test('Library refresh preserves a selection and falls back when it disappears',async()=>{
  const {host,hub,refresh}=mountedHub(games);await settle();
- host.querySelector('[data-game-id="two"]').click();refresh([...games,{id:'three',artwork:'three.svg'}]);await settle();
+ host.querySelector('[data-game-id="two"]').focus();refresh([...games,{id:'three',artwork:'three.svg'}]);await settle();
  assert.equal(hub.state.detail.id,'two');assert.equal(host.querySelectorAll('.is-selected').length,1);
  refresh([games[0]]);await settle();assert.equal(hub.state.detail.id,'one');assert.equal(host.querySelectorAll('.is-selected').length,1);
  refresh([]);await settle();assert.equal(hub.state.detail,null);assert.equal(host.querySelector('.detail').hidden,true);assert.equal(host.querySelectorAll('.is-selected').length,0);
@@ -135,21 +135,22 @@ test('nonempty Store selects its first offer on load and return',async()=>{
 });
 const shelfIds=host=>host.querySelectorAll('.game-card').map(card=>card.dataset.gameId);
 const offers=games.map(game=>({...game,manifest_url:'/manifest'}));
-for(const view of ['library','store'])for(const control of ['click','confirm','pause'])test(view+' tab '+control+' hands focus to the selected game action',async()=>{
+for(const view of ['library','store'])for(const control of ['click','confirm','pause'])test(view+' tab '+control+' hands focus to the bottom game card',async()=>{
  let installed;const {host,hub,action}=mountedHub(games,offers.map(g=>({...g,id:'offer-'+g.id})),{install:true},{install:async id=>{installed=id;}});await settle();
  const tab=host.querySelectorAll('.view-tab').find(t=>t.getAttribute('aria-label')===view);tab.focus();
  if(control==='click')tab.click();else action(control);
  const primary=host.querySelector(view==='library'?'.play-game':'.download-game');
- assert.equal(host.ownerDocument.activeElement,primary);
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
+ action('confirm');assert.equal(host.ownerDocument.activeElement,primary);
  action('confirm');await settle();
  if(view==='library')assert.equal(host.ownerDocument.defaultView.location.href,games[0].entrypoint);else assert.equal(installed,'offer-one');
  assert.equal(hub.state.view,view);
 });
 test('view cycling enters content, including the first options control',async()=>{
  const {host,hub,action}=mountedHub(games,[{...offers[0],id:'offer'}],{install:true});await settle();
- action('nextView');assert.equal(hub.state.view,'store');assert.equal(host.ownerDocument.activeElement,host.querySelector('.download-game'));
+ action('nextView');assert.equal(hub.state.view,'store');assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
  action('select');assert.equal(hub.state.view,'options');assert.equal(host.ownerDocument.activeElement,host.querySelector('.options-panel').querySelector('button'));
- action('previousView');assert.equal(host.ownerDocument.activeElement,host.querySelector('.download-game'));
+ action('previousView');assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
 });
 test('gear tab shows only the question until answered, and locks again on leaving',async()=>{
  const {host,hub,action}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();
@@ -213,14 +214,14 @@ test('tab activation never focuses a disabled Play action',async()=>{
  const {host}=mountedHub(games,[],{tokens:true},{account:async()=>({available:true,balance:0})});await settle();
  const tab=host.querySelectorAll('.view-tab')[0];tab.focus();tab.click();
  assert.equal(host.querySelector('.play-game').disabled,true);
- assert.equal(host.ownerDocument.activeElement,host.querySelector('.favorite'));
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
 });
 test('activating a loading tab transfers focus only if the user stayed on that tab',async()=>{
  for(const moveAway of [false,true]){
   let resolve;const {host}=mountedHub(games,new Promise(r=>{resolve=r;}),{install:true});await settle();
   const tabs=host.querySelectorAll('.view-tab');tabs[1].focus();tabs[1].click();assert.equal(host.ownerDocument.activeElement,tabs[1]);
   if(moveAway)tabs[2].focus();resolve([{...offers[0],id:'offer'}]);await settle();
-  assert.equal(host.ownerDocument.activeElement,moveAway?tabs[2]:host.querySelector('.download-game'));
+  assert.equal(host.ownerDocument.activeElement,moveAway?tabs[2]:host.querySelector('.is-selected'));
  }
 });
 test('empty, failed and all-owned tab activation keeps a usable tab focused',async()=>{
@@ -252,12 +253,12 @@ test('Store with every game owned rests with nothing to activate',async()=>{
  doc.activeElement=null;action('confirm');assert.ok(doc.activeElement.classList.contains('view-tab'));
  hub.show('library');assert.ok(!host.querySelector('.view-body').classList.contains('all-owned'));assert.ok(host.querySelector('.play-game'));
 });
-test('finished Store download hands off to Library Play',async()=>{
+test('finished Store download hands off to Library game row',async()=>{
  const {host,hub,refresh}=mountedHub([],offers,{install:true});await settle();
  host.querySelector('[data-game-id="two"]').click();host.querySelector('.download-game').click();
  refresh([games[1]]);await settle();
  assert.equal(hub.state.view,'library');assert.equal(hub.state.detail.id,'two');
- assert.equal(host.ownerDocument.activeElement,host.querySelector('.play-game'));
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
 });
 test('download finishing behind another Store preview stays in the Store',async()=>{
  const {host,hub,refresh}=mountedHub([],offers,{install:true});await settle();
@@ -314,4 +315,58 @@ test('catalog refresh adds/removes Store offers without restarting preview or lo
  catalog=[{...games[1],id:'three'}];await hub.refreshCatalog();assert.deepEqual(shelfIds(host),['three']);assert.equal(hub.state.detail.id,'three');
  catalog=Promise.reject(Error('offline'));await hub.refreshCatalog();assert.deepEqual(shelfIds(host),['three']);
  catalog=[];await hub.refreshCatalog();assert.deepEqual(shelfIds(host),[]);assert.equal(hub.state.detail,null);hub.dispose();
+});
+
+for(const library of [games,[]])test('initial discovery focuses the enabled bottom card in '+(library.length?'Library':'Store'),async()=>{
+ const {host,hub}=mountedHub(library,offers,{install:true});await settle();
+ assert.equal(hub.state.view,library.length?'library':'store');
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
+ assert.equal(host.ownerDocument.activeElement.disabled,false);
+});
+test('launch and fresh hub return restore the launched game on the bottom row',async()=>{
+ const values=new Map(),sessionStorage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
+ const first=mountedHub(games,[],{},{},{sessionStorage});await settle();
+ first.host.querySelector('[data-game-id="two"]').focus();first.host.querySelector('.play-game').click();
+ assert.equal(first.host.ownerDocument.defaultView.location.href,'/two');first.hub.dispose();
+ const second=mountedHub(games,[],{},{},{sessionStorage});await settle();
+ assert.equal(second.hub.state.detail.id,'two');assert.equal(second.host.ownerDocument.activeElement,second.host.querySelector('[data-game-id="two"]'));
+});
+test('same-document native launch settles on the shelf without stealing later deliberate focus',async()=>{
+ for(const moveAway of [false,true]){
+  let complete;const {host}=mountedHub(games,[],{tokens:true},{account:async()=>({available:true,balance:2}),launch:()=>new Promise(resolve=>{complete=resolve;})});await settle();
+  const play=host.querySelector('.play-game');play.focus();play.click();
+  if(moveAway)host.querySelector('.favorite').focus();complete();await settle();
+  assert.equal(host.ownerDocument.activeElement,host.querySelector(moveAway?'.favorite':'.is-selected'));
+ }
+});
+test('initial discovery does not steal deliberate focus while loading',async()=>{
+ let resolve;const {host}=mountedHub(new Promise(r=>{resolve=r;}));
+ const settings=host.querySelectorAll('.view-tab')[2];settings.focus();resolve(games);await settle();
+ assert.equal(host.ownerDocument.activeElement,settings);
+});
+test('initial load failure keeps the active tab usable',async()=>{
+ const {host}=mountedHub([],[],{},{library:async()=>{throw Error('offline');}});await settle();
+ assert.equal(host.ownerDocument.activeElement,host.querySelectorAll('.view-tab')[0]);
+});
+
+test('late Library ownership discovery moves focus to the next enabled Store card',async()=>{
+ let resolve;const {host}=mountedHub(new Promise(r=>{resolve=r;}),offers,{install:true});await settle();
+ host.querySelectorAll('.view-tab')[1].click();assert.equal(host.ownerDocument.activeElement.dataset.gameId,'one');
+ resolve([games[0]]);await settle();
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('[data-game-id="two"]'));assert.equal(host.ownerDocument.activeElement.disabled,false);
+});
+test('a removed focused Library selection falls back to the remaining game row',async()=>{
+ const {host,refresh}=mountedHub(games);await settle();host.querySelector('[data-game-id="two"]').focus();
+ refresh([games[0]]);await settle();assert.equal(host.ownerDocument.activeElement,host.querySelector('[data-game-id="one"]'));
+ refresh([]);await settle();assert.equal(host.ownerDocument.activeElement,host.querySelectorAll('.view-tab')[0]);
+});
+
+test('reactivating Store keeps its selected offer focused on the bottom row',async()=>{
+ const {host}=mountedHub([],offers,{install:true});await settle();host.querySelector('[data-game-id="two"]').focus();
+ host.querySelectorAll('.view-tab')[1].click();assert.equal(host.ownerDocument.activeElement,host.querySelector('[data-game-id="two"]'));
+});
+for(const catalogFirst of [false,true])test('empty Library fallback focuses Store regardless of discovery order '+catalogFirst,async()=>{
+ let resolveLibrary,resolveCatalog;const {host}=mountedHub(new Promise(r=>{resolveLibrary=r;}),new Promise(r=>{resolveCatalog=r;}),{install:true});
+ if(catalogFirst){resolveCatalog(offers);await settle();resolveLibrary([]);}else{resolveLibrary([]);await settle();resolveCatalog(offers);}
+ await settle();assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
 });
