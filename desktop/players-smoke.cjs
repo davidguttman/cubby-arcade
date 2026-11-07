@@ -31,10 +31,19 @@ async function run(win,launcher,library,userData,options={}){
  await home();
  await evaluate(`document.querySelector('[aria-label=options]').click();(${passGate})(document);document.querySelector('.manage-players').click();document.querySelector('.add-player').click();document.querySelector('.avatar-choice').click()`);
  const registry=await evaluate('JSON.parse(localStorage.getItem("cubby:profiles:v1"))');assert(registry?.profiles?.length===2,'Adult could not add a player');
- const second=registry.profiles[1].id;await capture('adult-players');
- await home(true);assert(await evaluate('!document.querySelector(".player-picker").hidden'),'Cubby did not ask who is playing');await capture('picker');
+ const second=registry.profiles[1].id;
+ // A new player is named next, on desktop with an ordinary text field.
+ assert(await evaluate(`document.querySelector('.player-name-field')===document.activeElement`),'Name field not focused');
+ await evaluate(`document.querySelector('.player-name-field').value='Maya'`);await capture('adult-name-entry');
+ await evaluate(`document.querySelector('.save-name').click();document.querySelector('.rename-player').click();document.querySelector('.player-name-field').value='Theo';document.querySelector('.save-name').click()`);
+ const named=await evaluate('JSON.parse(localStorage.getItem("cubby:profiles:v1")).profiles.map(p=>p.name)');
+ assert(JSON.stringify(named)===JSON.stringify(['Theo','Maya']),'Names were not saved: '+JSON.stringify(named));report.namesSaved=true;
+ await capture('adult-players');
+ await home(true);assert(await evaluate('!document.querySelector(".player-picker").hidden'),'Cubby did not ask who is playing');
+ assert(await evaluate(`[...document.querySelectorAll('.face-name')].map(n=>n.textContent).join()`)==='Theo,Maya','Picker names missing');await capture('picker');
  await evaluate(`[...document.querySelectorAll('.picker-face')].find(face=>face.dataset.profile===${JSON.stringify(second)}).click()`);
- await wait(()=>evaluate('document.querySelector(".player-picker").hidden&&!document.querySelector(".player-button").hidden'),'second player chosen');await capture('hub-player');
+ await wait(()=>evaluate('document.querySelector(".player-picker").hidden&&!document.querySelector(".player-button").hidden'),'second player chosen');
+ assert(await evaluate(`document.querySelector('.player-label').textContent`)==='Maya','Hub does not show the player’s name');await capture('hub-player');
  await play();assert(JSON.stringify(await save('second'))===JSON.stringify({save:null,direct:null}),'Second player saw the first player’s saves');
  const secondFile=path.join(userData,'profile-saves',second,game.id,'players-smoke.json');
  assert(await readJSON(secondFile)==='second'&&await readJSON(firstFile)==='first','Second player saves were not kept apart on disk');report.secondPlayerOwnDirectory=true;

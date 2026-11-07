@@ -65,13 +65,13 @@ test('player ids are generated, validated and can never be a game, system or pat
 test('one player writes nothing; players are added with unique pictures and the last one stays',async()=>{
  const s=storage(),session=storage(),removed=[],used=[];
  const made=Profiles.createProfiles({storage:s,session,platform:{removeProfile:async id=>removed.push(id),useProfile:async id=>used.push(id)},random:(()=>{let n=0;return ()=>(n++%36)/36;})()});
- assert.deepEqual(made.list(),[{id:FIRST,avatar:'fox'}]);assert.equal(made.current(),FIRST);assert.equal(s.length,0);
+ assert.deepEqual(made.list(),[{id:FIRST,avatar:'fox',name:'Fox',named:false}]);assert.equal(made.current(),FIRST);assert.equal(s.length,0);
  await made.enter(FIRST);assert.equal(s.length,0,'Playing alone never writes the registry');assert.deepEqual(used,[FIRST]);
  assert.throws(()=>made.add('fox'),/already used/);assert.throws(()=>made.add('dragon'));
- const second=made.add('bear');assert.deepEqual(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).profiles,[{id:FIRST,avatar:'fox'},second]);
+ const second=made.add('bear');assert.deepEqual(second,{id:second.id,avatar:'bear',name:'Bear',named:false});assert.deepEqual(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).profiles,[{id:FIRST,avatar:'fox'},{id:second.id,avatar:'bear'}]);
  assert.throws(()=>made.setAvatar(second.id,'fox'));made.setAvatar(second.id,'cat');assert.equal(made.list()[1].avatar,'cat');
  await made.select(second.id);assert.equal(made.current(),second.id);assert.equal(made.pinned(),second.id);assert.equal(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).active,second.id);
- await made.remove(second.id);assert.deepEqual(removed,[second.id]);assert.deepEqual(made.list(),[{id:FIRST,avatar:'fox'}]);assert.equal(made.pinned(),FIRST,'Removing the pinned player pins the next one');
+ await made.remove(second.id);assert.deepEqual(removed,[second.id]);assert.deepEqual(made.list(),[{id:FIRST,avatar:'fox',name:'Fox',named:false}]);assert.equal(made.pinned(),FIRST,'Removing the pinned player pins the next one');
  await assert.rejects(made.remove(FIRST),/only player/);await assert.rejects(made.select('p_missing'));
 });
 test('a failed removal keeps the player listed, and a failed host switch keeps the old player',async()=>{
@@ -195,3 +195,32 @@ test('every host injects the player script after its own modules and before game
  assert.ok(index.indexOf('profiles.js')<index.indexOf('platform.js')&&index.indexOf('avatars.js')<index.indexOf('hub.js'));assert.doesNotMatch(index,/data-cubby-profile/,'The hub is never rescoped');
  assert.match(fs.readFileSync('desktop/build.cjs','utf8'),/runtime','core','profiles\.js'/,'The packaged desktop host carries the player rules');
 });
+
+// Names: the one word a child sees. Stored and checked only here, in the core rules.
+test('player names are trimmed, short, made of letters, and never empty',()=>{
+ const ok={'  Maya  ':'Maya','Mary   Ann':'Mary Ann','Anne-Marie':'Anne-Marie','O’Neil':"O’Neil","D'Angelo":"D'Angelo",'Zoë':'Zoë','José Luis':'José Luis','Jr.':'Jr.','abcdefghijkl':'abcdefghijkl','Zoë':'Zoë'};
+ for(const [raw,clean] of Object.entries(ok))assert.equal(Profiles.cleanName(raw),clean,raw);
+ for(const bad of ['','   ','abcdefghijklm','<b>Al</b>','Maya!','-Al','.Al',null,undefined,42,'😀','Al\u0000'])assert.throws(()=>Profiles.cleanName(bad),String(bad));
+ assert.equal(Profiles.NAME_LENGTH,12);
+});
+test('names persist, default to the animal, and no two players share one',async()=>{
+ const s=storage(),made=Profiles.createProfiles({storage:s,session:storage(),platform:{removeProfile:async()=>{}}});
+ assert.equal(made.list()[0].name,'Fox');
+ assert.equal(made.rename(FIRST,'  Theo '),'Theo');assert.equal(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).profiles[0].name,'Theo','Naming the only player writes it');
+ const maya=made.add('bear','Maya'),bunny=made.add('bunny');
+ assert.deepEqual(Profiles.createProfiles({storage:s}).list().map(p=>[p.name,p.named]),[['Theo',true],['Maya',true],['Bunny',false]],'Names survive a restart');
+ for(const taken of ['theo','MAYA'])assert.throws(()=>made.rename(bunny.id,taken),/already used/,taken);assert.throws(()=>made.rename(maya.id,'bunny'),/already used/,'An animal name in use is taken');assert.equal(made.rename(maya.id,'MAYA'),'MAYA','A player may change their own name’s case');made.rename(maya.id,'Maya');
+ assert.throws(()=>made.add('owl','Theo'),/already used/);assert.throws(()=>made.rename(bunny.id,''),/required/);
+ made.rename(maya.id,'Bear');assert.equal(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,undefined,'Their own animal’s name is no name of their own');
+ made.setAvatar(maya.id,'panda');assert.equal(made.list()[1].name,'Panda','A default name follows the picture');
+ made.rename(bunny.id,'Owl');assert.throws(()=>made.setAvatar(maya.id,'owl'),/already used/,'A picture whose animal name is taken is refused');
+ assert.throws(()=>made.add('owl'),/already used/);
+ made.setAvatar(FIRST,'cat');assert.equal(made.list()[0].name,'Theo','A chosen name stays with a new picture');
+ await made.remove(maya.id);assert.deepEqual(made.list().map(p=>p.name),['Theo','Owl']);
+ assert.throws(()=>made.rename('p_missing','Al'),/Unknown/);
+});
+test('a damaged stored name falls back to the animal and keeps the player',()=>{
+ const s=storage();players(s,[{id:FIRST,avatar:'bear',name:'Theo'},{id:'p_second1',avatar:'fox',name:'<script>'},{id:'p_third1',avatar:'owl',name:'x'.repeat(40)}]);
+ assert.deepEqual(Profiles.createProfiles({storage:s}).list().map(p=>[p.id,p.name]),[[FIRST,'Theo'],['p_second1','Fox'],['p_third1','Owl']]);
+});
+test('animal names match the pictures',()=>{for(const id of Avatars.ids)assert.equal(Profiles.ANIMAL_NAMES[id],Avatars.name(id));});

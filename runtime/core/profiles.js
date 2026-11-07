@@ -20,6 +20,21 @@
   // player, whatever another tab chooses; switching happens only on the hub.
   const PIN_KEY = 'cubby:profile';
   const AVATARS = Object.freeze(['fox', 'frog', 'bear', 'bunny', 'panda', 'owl', 'cat', 'chick']);
+  // A player is called after their animal until an adult gives them a name.
+  const ANIMAL_NAMES = Object.freeze({fox: 'Fox', frog: 'Frog', bear: 'Bear', bunny: 'Bunny', panda: 'Panda', owl: 'Owl', cat: 'Cat', chick: 'Chick'});
+  // A child's own name is the one word the child-facing hub shows (see AGENTS.md).
+  // Short enough to read under a face: letters and the marks names use.
+  const NAME_LENGTH = 12;
+  function cleanName(raw) {
+    if (typeof raw !== 'string') throw Error('Name required');
+    const name = raw.normalize('NFC').trim().replace(/\s+/g, ' ');
+    if (!name) throw Error('Name required');
+    if ([...name].length > NAME_LENGTH) throw Error('Name too long');
+    if (!/^[\p{L}\p{M}\p{N}][\p{L}\p{M}\p{N} '’.-]*$/u.test(name)) throw Error('Use letters in a name');
+    return name;
+  }
+  const sameName = (a, b) => a.toLocaleLowerCase() === b.toLocaleLowerCase();
+  const nameOf = profile => profile.name || ANIMAL_NAMES[profile.avatar];
   // Cubby's own settings, which every player shares, even when read from a game page.
   const SHARED_KEYS = new Set(['handheld:preferences:v1', 'cubby:controller-labels:v1']);
   // The underscore keeps player ids apart from every game id and system id, which
@@ -66,7 +81,10 @@
       const profiles = [], ids = new Set(), avatars = new Set();
       for (const entry of value.profiles) {
         if (!entry || !validId(entry.id) || ids.has(entry.id) || !AVATARS.includes(entry.avatar) || avatars.has(entry.avatar)) return implicit();
-        ids.add(entry.id); avatars.add(entry.avatar); profiles.push({id: entry.id, avatar: entry.avatar});
+        ids.add(entry.id); avatars.add(entry.avatar);
+        // A damaged name falls back to the animal; it never costs the player their saves.
+        let name; try { if (entry.name !== undefined) name = cleanName(entry.name); } catch (_) {}
+        profiles.push(name && name !== ANIMAL_NAMES[entry.avatar] ? {id: entry.id, avatar: entry.avatar, name} : {id: entry.id, avatar: entry.avatar});
       }
       return {stored: true, profiles, active: ids.has(value.active) ? value.active : profiles[0].id};
     } catch (_) { return implicit(); }
@@ -86,7 +104,7 @@
     let registry = readRegistry(storage);
     const find = id => registry.profiles.find(p => p.id === id);
     function write(profiles, active) {
-      const next = {profiles: profiles.map(p => ({id: p.id, avatar: p.avatar})), active};
+      const next = {profiles: profiles.map(p => p.name ? {id: p.id, avatar: p.avatar, name: p.name} : {id: p.id, avatar: p.avatar}), active};
       storage.setItem(REGISTRY_KEY, JSON.stringify(next));
       registry = {stored: true, ...next};
     }
@@ -94,6 +112,10 @@
     function freeAvatar(avatar, except) {
       if (!AVATARS.includes(avatar)) throw Error('Unknown picture');
       if (registry.profiles.some(p => p.avatar === avatar && p.id !== except)) throw Error('Picture already used');
+    }
+    // No two players share a name, whether an adult chose it or it is their animal's.
+    function freeName(name, except) {
+      if (registry.profiles.some(p => p.id !== except && sameName(nameOf(p), name))) throw Error('Name already used');
     }
     function newId() {
       for (;;) {
@@ -109,7 +131,7 @@
       pin(id);
     }
     return {
-      list: () => registry.profiles.map(p => ({...p})),
+      list: () => registry.profiles.map(p => ({id: p.id, avatar: p.avatar, name: nameOf(p), named: !!p.name})),
       current: () => readPin(session, registry) || registry.active,
       pinned: () => readPin(session, registry),
       storageFor: id => scopeStorage(storage, id),
@@ -118,17 +140,32 @@
         await enter(id);
         if (registry.stored && registry.active !== id) write(registry.profiles, id);
       },
-      add(avatar) {
+      add(avatar, raw) {
         if (registry.profiles.length >= AVATARS.length) throw Error('No pictures left');
         freeAvatar(avatar);
-        const profile = {id: newId(), avatar};
+        const name = raw === undefined ? undefined : cleanName(raw);
+        const profile = {id: newId(), avatar, ...(name && name !== ANIMAL_NAMES[avatar] ? {name} : {})};
+        freeName(nameOf(profile));
         write([...registry.profiles, profile], registry.active);
-        return {...profile};
+        return {id: profile.id, avatar, name: nameOf(profile), named: !!profile.name};
       },
       setAvatar(id, avatar) {
-        if (!find(id)) throw Error('Unknown player');
+        const current = find(id);
+        if (!current) throw Error('Unknown player');
         freeAvatar(avatar, id);
-        write(registry.profiles.map(p => p.id === id ? {id, avatar} : p), registry.active);
+        const next = {...current, avatar};
+        freeName(nameOf(next), id);
+        write(registry.profiles.map(p => p.id === id ? next : p), registry.active);
+      },
+      // An adult names a player; their animal's name means no name of their own.
+      rename(id, raw) {
+        const current = find(id);
+        if (!current) throw Error('Unknown player');
+        const name = cleanName(raw);
+        freeName(name, id);
+        const {name: _old, ...rest} = current;
+        write(registry.profiles.map(p => p.id === id ? (name === ANIMAL_NAMES[current.avatar] ? rest : {...rest, name}) : p), registry.active);
+        return name;
       },
       // Saves go first: if that fails the player stays listed, so an adult can retry.
       async remove(id) {
@@ -162,5 +199,5 @@
     return id;
   }
 
-  return {FIRST, REGISTRY_KEY, PIN_KEY, AVATARS, SHARED_KEYS, validId, prefix, scopeStorage, readRegistry, current, createProfiles, enterGamePage};
+  return {FIRST, REGISTRY_KEY, PIN_KEY, AVATARS, ANIMAL_NAMES, NAME_LENGTH, SHARED_KEYS, cleanName, validId, prefix, scopeStorage, readRegistry, current, createProfiles, enterGamePage};
 });

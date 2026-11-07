@@ -206,13 +206,13 @@ function mount(host){
  function saveText(parent,tag,text,cls){const node=element(parent,tag,cls);node.textContent=text;return node;}
  function saveButton(parent,label,fn,cls){const b=saveText(parent,'button',label,cls);b.type='button';b.addEventListener('click',fn);return b;}
  function saveTitle(id){return [...library,...catalog].find(game=>game.id===id)?.title||id;}
- function playerName(id){const p=profiles?.list().find(x=>x.id===id);return p?Avatars.name(p.avatar):'';}
+ function playerName(id){return profiles?.list().find(x=>x.id===id)?.name||'';}
  function playerFace(parent,id){const p=profiles.list().find(x=>x.id===id),face=element(parent,'span','player-face');face.innerHTML=Avatars.svg(p.avatar);return face;}
  function saveHeading(){saveDialog.replaceChildren();const heading=saveText(saveDialog,'h1','Game saves');if(saveProfile&&manyPlayers()){heading.textContent=playerName(saveProfile)+'’s game saves';heading.prepend?.(playerFace(heading,saveProfile));heading.classList.add('player-heading');}}
  function renderSavePlayers(){
   saveProfile=undefined;saveHeading();saveText(saveDialog,'p','Each player has their own saved games. Choose a player.');
   const rows=element(saveDialog,'div','save-rows');
-  for(const p of profiles.list()){const b=saveButton(rows,Avatars.name(p.avatar),()=>loadSaves(p.id),'choose-player');b.prepend?.(playerFace(b,p.id));}
+  for(const p of profiles.list()){const b=saveButton(rows,p.name,()=>loadSaves(p.id),'choose-player');b.prepend?.(playerFace(b,p.id));}
   saveButton(saveDialog,'Back',closeSaveManagement,'close-players');rows.querySelector('.choose-player').focus();
  }
  function renderSaveList(message=''){
@@ -246,10 +246,19 @@ function mount(host){
   if(manyPlayers())renderSavePlayers();else loadSaves(profiles?profile:undefined);
  }
  saveDialog.addEventListener('cancel',e=>{e.preventDefault();if(saveBusy)return;saveBack();});
- // The child's side of players: their picture at the top of the hub, and a picker of
- // faces with no words. With one player neither exists, so the hub looks as it always did.
+ // The child's side of players: their face and name at the top of the hub, and a picker
+ // of faces. A child's own name is the one word the child hub shows (AGENTS.md); nothing
+ // needs reading. With one player neither exists, so the hub looks as it always did.
  const playerButton=element(host.querySelector('.brand'),'button','player-button');playerButton.type='button';playerButton.hidden=true;playerButton.addEventListener('click',()=>openPicker());
- function renderPlayer(){const current=manyPlayers()&&profiles.list().find(p=>p.id===profile);playerButton.hidden=!current;if(!current)return;if(playerButton.dataset.avatar!==current.avatar){playerButton.innerHTML=Avatars.svg(current.avatar);playerButton.dataset.avatar=current.avatar;}playerButton.setAttribute('aria-label','Change player');}
+ const playerDisc=element(playerButton,'span','player-disc'),playerLabel=element(playerButton,'span','player-label');
+ function renderPlayer(){
+  const current=manyPlayers()&&profiles.list().find(p=>p.id===profile);playerButton.hidden=!current;if(!current)return;
+  if(playerButton.dataset.avatar!==current.avatar){playerDisc.innerHTML=Avatars.svg(current.avatar);playerButton.dataset.avatar=current.avatar;}
+  playerLabel.textContent=current.name;playerButton.setAttribute('aria-label',current.name+'. Change player');fitPlayerName();
+ }
+ // The name shows only whole: if the top bar has no room, the face is enough.
+ function fitPlayerName(){playerLabel.hidden=false;win.requestAnimationFrame?.(()=>{playerLabel.hidden=playerLabel.scrollWidth>playerLabel.clientWidth+1;});}
+ if(profiles)win.addEventListener('resize',fitPlayerName);
  const picker=element(host,'section','player-picker');picker.hidden=true;picker.setAttribute('aria-label','Who is playing?');
  let picking=false,choosing=false;
  function openPicker(){
@@ -257,7 +266,7 @@ function mount(host){
   // The first pick after Cubby starts can't be skipped; after that Back keeps the player.
   if(profiles.pinned())button(picker,'back','Keep player',closePicker,'picker-back');
   const faces=element(picker,'div','picker-faces'),list=profiles.list();faces.dataset.count=String(list.length);
-  for(const p of list){const face=element(faces,'button','picker-face');face.type='button';face.dataset.profile=p.id;face.setAttribute('aria-label',Avatars.name(p.avatar));face.innerHTML=Avatars.svg(p.avatar);face.addEventListener('click',()=>choose(p.id));}
+  for(const p of list){const face=element(faces,'button','picker-face');face.type='button';face.dataset.profile=p.id;face.setAttribute('aria-label',p.name);element(face,'span','face-disc').innerHTML=Avatars.svg(p.avatar);element(face,'span','face-name').textContent=p.name;face.addEventListener('click',()=>choose(p.id));}
   picker.hidden=false;
   (Array.from(faces.querySelectorAll('.picker-face')).find(face=>face.dataset.profile===profile)||faces.querySelector('.picker-face'))?.focus();
  }
@@ -282,12 +291,13 @@ function mount(host){
  function playersBack(){if(playerBusy)return;if(playerDialog.querySelector('.cancel-player'))renderPlayers();else closePlayers();}
  function renderPlayers(message=''){
   playerDialog.replaceChildren();saveText(playerDialog,'h1','Players');
-  saveText(playerDialog,'p','Each player has their own game saves and favorites. With two or more, Cubby starts by showing their pictures for a child to pick, and tapping the picture on the home screen switches player.');
+  saveText(playerDialog,'p','Each player has their own name, game saves and favorites. With two or more, Cubby starts by showing their faces and names for a child to pick, and their face on the home screen switches player.');
   const feedback=saveText(playerDialog,'p',message,'save-feedback');feedback.setAttribute('role','status');
   const rows=element(playerDialog,'div','player-rows'),list=profiles.list();
   for(const p of list){
    const row=element(rows,'div','player-row');playerFace(row,p.id);
-   const label=saveText(row,'span',Avatars.name(p.avatar),'player-name');if(list.length>1&&p.id===profile)saveText(label,'small','Playing now','player-note');
+   const label=saveText(row,'span',p.name,'player-name');if(list.length>1&&p.id===profile)saveText(label,'small','Playing now','player-note');
+   saveButton(row,'Name',()=>renamePlayer(p),'rename-player');
    saveButton(row,'Picture',()=>choosePicture(p),'change-picture');
    if(list.length>1)saveButton(row,'Remove',()=>confirmRemovePlayer(p),'remove-player');
   }
@@ -297,7 +307,7 @@ function mount(host){
  }
  function choosePicture(p){
   playerDialog.replaceChildren();saveText(playerDialog,'h1',p?'Change picture':'Add a player');
-  saveText(playerDialog,'p',p?'Choose a new picture for '+Avatars.name(p.avatar)+'. Their saves stay with them.':'Choose a picture for the new player. They start with no saves.');
+  saveText(playerDialog,'p',p?'Choose a new picture for '+p.name+'. Their saves stay with them.':'Choose a picture for the new player. They start with no saves.');
   const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
   const grid=element(playerDialog,'div','avatar-choices'),used=new Set(profiles.list().map(x=>x.avatar));
   for(const avatar of Avatars.ids){
@@ -305,16 +315,19 @@ function mount(host){
    const choice=element(grid,'button','avatar-choice');choice.type='button';choice.innerHTML=Avatars.svg(avatar);saveText(choice,'span',Avatars.name(avatar));
    if(avatar===p?.avatar)choice.setAttribute('aria-current','true');
    choice.addEventListener('click',()=>{
-    try{if(!p)profiles.add(avatar);else if(avatar!==p.avatar)profiles.setAvatar(p.id,avatar);}
-    catch{feedback.textContent='That could not be saved. Try again.';return;}
-    renderPlayer();renderPlayers(p?'Picture saved.':Avatars.name(avatar)+' added. Cubby asks who is playing the next time it starts.');
+    let added;
+    try{if(!p)added=profiles.add(avatar);else if(avatar!==p.avatar)profiles.setAvatar(p.id,avatar);}
+    catch(error){feedback.textContent=/Name already used/.test(error.message)?'Another player is already called '+Avatars.name(avatar)+'. Rename them first, or choose another picture.':'That could not be saved. Try again.';return;}
+    renderPlayer();
+    // A new player is named next; Cancel keeps their animal's name.
+    if(added)renamePlayer(added,true);else renderPlayers('Picture saved.');
    });
   }
   saveButton(element(playerDialog,'div','save-actions'),'Cancel',()=>renderPlayers(),'cancel-player');
   (grid.querySelector('.avatar-choice[aria-current]')||grid.querySelector('.avatar-choice'))?.focus();
  }
  function confirmRemovePlayer(p){
-  const name=Avatars.name(p.avatar);playerDialog.replaceChildren();
+  const name=p.name;playerDialog.replaceChildren();
   const heading=saveText(playerDialog,'h1','Remove '+name+'?','player-heading');heading.prepend?.(playerFace(heading,p.id));
   saveText(playerDialog,'p','This deletes '+name+'’s saved games and favorites on this Cubby. Other players keep theirs. This cannot be undone.');
   const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
@@ -328,6 +341,34 @@ function mount(host){
    if(profiles.list().some(x=>x.id===profile))renderPlayer();else usePlayer(profiles.current());
    renderPlayers(name+' removed.');
   },'confirm-reset remove-confirm');cancel.focus();
+ }
+ // Naming: a text field everywhere; on the handheld, which has only a controller, Cubby's
+ // shared on-screen keyboard (keyboard.js, the same one the Wi-Fi password uses) types it.
+ let nameBoard=null;
+ function renamePlayer(p,added=false){
+  playerDialog.replaceChildren();nameBoard=null;
+  const heading=saveText(playerDialog,'h1',added?'Name the new player':'Name for '+p.name,'player-heading');heading.prepend?.(playerFace(heading,p.id));
+  saveText(playerDialog,'p','Shown under their picture. Up to '+win.HandheldProfiles.NAME_LENGTH+' letters.');
+  const entry=element(playerDialog,'div','name-entry'),field=element(entry,'input','player-name-field');
+  field.type='text';field.value=p.name;field.maxLength=win.HandheldProfiles.NAME_LENGTH;field.setAttribute('aria-label','Player name');field.autocomplete='off';field.spellcheck=false;
+  const feedback=saveText(playerDialog,'p','','save-feedback');feedback.setAttribute('role','status');
+  function save(){
+   let name;try{name=profiles.rename(p.id,field.value);}
+   catch(error){feedback.textContent=({'Name required':'Type a name first.','Name too long':'Use '+win.HandheldProfiles.NAME_LENGTH+' letters or fewer.','Name already used':'Another player already has that name.','Use letters in a name':'Use letters, spaces, hyphens or apostrophes.'})[error.message]||'That name could not be saved. Try again.';return;}
+   renderPlayer();renderPlayers(added?name+' added. Cubby asks who is playing the next time it starts.':'Name saved: '+name+'.');
+  }
+  // Typed keys belong to the field, not to the hub's controls.
+  for(const type of ['keydown','keyup'])field.addEventListener(type,event=>{event.stopPropagation();if(type==='keydown'&&event.key==='Enter')save();if(type==='keydown'&&event.key==='Escape')renderPlayers();});
+  field.addEventListener('input',()=>{feedback.textContent='';});
+  if(win.CubbyDeviceProfile==='rg353v'&&win.HandheldKeyboard){
+   // Start a name over: the field selects nothing on a controller, so begin empty.
+   if(added)field.value='';
+   nameBoard=win.HandheldKeyboard.create({container:element(playerDialog,'div','name-keyboard'),field,layout:'name',capitalizeFirst:true});
+  }
+  const actions=element(playerDialog,'div','save-actions');
+  saveButton(actions,added?'Keep '+p.name:'Cancel',()=>renderPlayers(added?p.name+' added. Cubby asks who is playing the next time it starts.':''),'cancel-player');
+  saveButton(actions,'Save name',save,'save-name');
+  if(nameBoard)nameBoard.focus();else{field.focus();field.select?.();}
  }
  function openPlayers(){if(adult||!profiles)return;adult=true;playerDialog.replaceChildren();playerDialog.showModal();renderPlayers();}
  playerDialog.addEventListener('cancel',e=>{e.preventDefault();playersBack();});
@@ -481,7 +522,10 @@ function mount(host){
  for(const [label,fn,cls] of [['Cancel capture',()=>{stopCapture();feedback.textContent='';renderRows();}],['Reset keys',()=>{stopCapture();draft.reset();feedback.textContent='';renderRows();}],['Cancel',()=>closeAdult(false)],['Save',()=>closeAdult(true),'primary']]){const b=element(actions,'button',cls);b.type='button';b.textContent=label;b.addEventListener('click',fn);}
  dialog.showModal();dialog.querySelector('button').focus();}
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeAdult(false);});
- const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(picking){const nodes=Array.from(picker.querySelectorAll('button'));if(a==='back'||a==='exit'){if(profiles.pinned())closePicker();}else if(a==='confirm'||a==='pause')(nodes.includes(doc.activeElement)?doc.activeElement:picker.querySelector('.picker-face'))?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||picker.querySelector('.picker-face'))?.focus();return;}if(playerDialog.open){if(playerBusy)return;const nodes=Array.from(playerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')playersBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')saveBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
+ const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(picking){const nodes=Array.from(picker.querySelectorAll('button'));if(a==='back'||a==='exit'){if(profiles.pinned())closePicker();}else if(a==='confirm'||a==='pause')(nodes.includes(doc.activeElement)?doc.activeElement:picker.querySelector('.picker-face'))?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||picker.querySelector('.picker-face'))?.focus();return;}if(playerDialog.open){if(playerBusy)return;const nodes=Array.from(playerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);
+  // Keys are a grid: the D-pad moves across it, a shoulder changes case and Start saves.
+  if(nameBoard&&playerDialog.querySelector('.name-keyboard')){if(a==='back'||a==='exit')playersBack();else if(a==='nextView'||a==='previousView')nameBoard.toggleCase();else if(a==='pause')playerDialog.querySelector('.save-name')?.click();else if(a==='confirm')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||nodes[0])?.focus();return;}
+  if(a==='back'||a==='exit')playersBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')saveBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
  if(a==='exit'||a==='back'){if(!detail.hidden)returnToGames(doc.activeElement?.classList.contains('game-card')||doc.activeElement===tabs[state.view]);else activateView('library');return;}
  if(a==='select'||a==='nextView'||a==='previousView'){activateView(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);return;}
  const padKeys=Array.from(doc.activeElement?.closest?.('.gate-pad')?.querySelectorAll('button')||[]);
@@ -491,7 +535,7 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);

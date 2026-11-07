@@ -462,7 +462,7 @@ test('adults add, re-picture and remove players behind the gear question; the on
  assert.equal(host.querySelector('.manage-players'),null);passGate(host);host.querySelector('.manage-players').click();
  const dialog=host.querySelector('.player-management');assert.equal(dialog.open,true);assert.equal(host.querySelector('.remove-player'),null,'The only player cannot be removed');
  host.querySelector('.add-player').click();const choices=host.querySelectorAll('.avatar-choice');assert.equal(choices.length,7,'A used picture is not offered');
- choices[0].click();let registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.deepEqual(registry.profiles.map(p=>p.avatar),['fox','frog']);
+ choices[0].click();assert.ok(host.querySelector('.player-name-field'),'A new player is named next');host.querySelector('.cancel-player').click();let registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.deepEqual(registry.profiles.map(p=>p.avatar),['fox','frog']);
  assert.equal(host.querySelector('.player-button').hidden,false,'The hub now shows who is playing');
  host.querySelectorAll('.change-picture')[1].click();host.querySelectorAll('.avatar-choice').find(b=>b.children.some(c=>c.textContent==='Owl')).click();
  registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.equal(registry.profiles[1].avatar,'owl');
@@ -485,4 +485,38 @@ test('a device lists the players page among its tiles, and a host without player
  assert.ok(withPlayers.host.querySelectorAll('.settings-tile').some(tile=>tile.getAttribute('aria-label')==='Players'));
  const without=mountedHub(games,[],{},{settings});await settle();without.hub.show('options');passGate(without.host);
  assert.equal(without.host.querySelectorAll('.settings-tile').some(tile=>tile.getAttribute('aria-label')==='Players'),false);
+});
+test('a child sees their own name under their face and beside it on the hub',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'}];
+ const {host}=playersHub({list});await settle();
+ assert.deepEqual(host.querySelectorAll('.face-name').map(n=>n.textContent),['Theo','Fox']);
+ assert.deepEqual(host.querySelectorAll('.picker-face').map(f=>f.getAttribute('aria-label')),['Theo','Fox']);
+ host.querySelectorAll('.picker-face')[0].click();await settle();
+ assert.equal(host.querySelector('.player-label').textContent,'Theo');assert.equal(host.querySelector('.player-button').hidden,false);
+});
+test('adults name a player with a text field; bad and duplicate names are refused with a reason',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'}];
+ const {host,hub,localStorage}=playersHub({list,pin:Profiles.FIRST});await settle();hub.show('options');passGate(host);host.querySelector('.manage-players').click();
+ assert.deepEqual(host.querySelectorAll('.player-name').map(n=>n.children.length?n.textContent:n.textContent),['Theo','Fox']);
+ host.querySelectorAll('.rename-player')[1].click();const field=host.querySelector('.player-name-field');
+ assert.equal(field.value,'Fox');assert.equal(field.maxLength,12);assert.equal(host.querySelector('.name-keyboard'),null,'Desktop and browser type on a real keyboard');
+ assert.equal(host.ownerDocument.activeElement,field);
+ const stopped=[];for(const type of ['keydown','keyup'])field.listeners[type][0]({key:'x',stopPropagation:()=>stopped.push(type)});assert.deepEqual(stopped,['keydown','keyup'],'Typed keys never drive the hub');
+ for(const [value,reason] of [['  ',/Type a name/],['theo',/already has that name/],['Maya!',/letters/]]){field.value=value;host.querySelector('.save-name').click();assert.match(host.querySelector('.save-feedback').textContent,reason);}
+ field.value=' Maya ';host.querySelector('.save-name').click();
+ assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Maya');assert.match(host.querySelector('.save-feedback').textContent,/Maya/);
+ assert.ok(host.querySelectorAll('.player-name').some(n=>n.textContent==='Maya'));
+});
+test('on the handheld a name is typed with the controller on Cubby’s shared keyboard',async()=>{
+ const Keyboard=require('../runtime/core/keyboard.js');
+ const {host,hub,action,localStorage}=playersHub({pin:Profiles.FIRST,windowOverrides:{CubbyDeviceProfile:'rg353v',HandheldKeyboard:Keyboard,AbortController,fetch:()=>Promise.reject(Error('offline'))}});await settle();hub.show('options');passGate(host);host.querySelector('.manage-players').click();
+ host.querySelector('.add-player').click();host.querySelectorAll('.avatar-choice')[0].click();
+ const board=host.querySelector('.name-keyboard'),field=host.querySelector('.player-name-field');
+ assert.ok(board,'The new player is named on the on-screen keyboard');assert.equal(field.value,'','A new name starts empty');
+ assert.equal(host.ownerDocument.activeElement,board.children[0],'Focus starts on the keys');
+ const key=label=>board.children.find(b=>b.textContent===label);
+ key('M').focus();action('confirm');for(const c of 'ia'){key(c).focus();action('confirm');}assert.equal(field.value,'Mia');
+ action('nextView');assert.ok(key('Q'),'A shoulder changes case');action('nextView');
+ action('pause');assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Mia','Start saves the name');
+ assert.equal(host.querySelector('.name-keyboard'),null);
 });

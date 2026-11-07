@@ -320,9 +320,16 @@ first asks whose saves, and deletes only that player's.
 
 ## Players
 
-Each player has their own game saves and favorites. Behind the gear tab's
-adult check, the people tile (**Players**) adds a player by picking an animal
-picture, changes a picture, or removes a player after a confirmation; removing
+Each player has their own name, game saves and favorites. Behind the gear
+tab's adult check, the people tile (**Players**) adds a player by picking an
+animal picture and naming them, renames a player, changes a picture, or removes
+a player after a confirmation. A name defaults to the animal ("Fox") until an
+adult sets one; names are trimmed, up to 12 letters, and unique. On the
+handheld they are typed with the controller on Cubby's one on-screen keyboard
+(`runtime/core/keyboard.js`, also used for the Wi-Fi password); elsewhere in a
+text field. A child's own name is the only word the child hub shows: under each
+face in the picker, and beside the face on the hub when the top bar has room
+for all of it (otherwise the face alone). Removing
 deletes only that player's saves and favorites, and the only player can't be
 removed. With one player the hub looks as it always did. With two or more,
 Cubby starts on a wordless picker of faces, and the player's face beside the

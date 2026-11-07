@@ -9,6 +9,10 @@
   It must be short, simple, and phonetic. Never require reading to proceed.
 - A physical button glyph may identify the matching control; it must not become
   a written instruction or the only way to understand the action.
+- A player's own name is the one sanctioned word in child-facing UI: David says
+  kids recognize their own names early, so it shows under their face in the
+  player picker and beside it on the hub. A face always comes with it, and
+  nothing else may require reading.
 - Setup and management may use text only in an explicitly separate adult flow.
 - Line Cutter is an unchanged technical test payload, **not** the intended
   audience, game design, art direction, or UX template. Its text is not precedent.
