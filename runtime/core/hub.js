@@ -336,11 +336,13 @@ function mount(host){
  function returnToGames(toTab=false){const card=shelf.querySelector('[data-game-id="'+state.detail?.id+'"]');(toTab?tabs[state.view]:card||tabs[state.view]).focus();}
  function renderOptions(){options.replaceChildren();gateSubmit=null;
  if(!settingsUnlocked){renderGate();return;}
- if(calibration)button(options,'controller','Adult controller setup',openController,'controller-settings settings-tile');
+ // Every tile shares one wrapping grid, so a handheld's short screen fits them in two rows.
+ const tiles=element(options,'div','settings-tiles');
+ if(calibration)button(tiles,'controller','Adult controller setup',openController,'controller-settings settings-tile');
  if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
- if(platform.settings?.length){const tiles=element(options,'div','settings-tiles');for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}showNotice();showVersion();return;}
+ if(platform.settings?.length){for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}showNotice();showVersion();return;}
  button(options,'trash','Manage game saves',()=>openSetting('#adult-saves'),'manage-saves settings-tile');
  const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
  }
