@@ -257,6 +257,30 @@ retain A/B on indices 0/1 and provide X/Y on indices 2/3 and L/R on indices 4/5.
 The hub still uses shoulders to switch views; pressing both consumes individual
 shoulder input and opens the system menu. Existing keyboard preferences are
 unchanged; X/Y and L/R are available through touch or gamepad.
+
+**Adult controller calibration:** open the hub's gear tab and answer its math
+question, then choose the controller icon. Select the controller as the browser
+reports it (Steam may call a Nintendo pad an Xbox controller). Choose **Start
+calibration**, release all controls, then press the physically printed **A, B,
+X, Y** in that order, releasing between each press. Press only one button at a
+time. Use mouse, touch, or keyboard to operate the setup controls. **Save** applies
+the mapping; **Cancel** discards it; **Reset to default**, then **Save**, removes
+that controller's calibration. The last captured press cannot activate the hub
+when closing setup: all physical controls must return to neutral first.
+
+Calibration is saved locally per browser-reported controller identity (ID,
+mapping, button and axis counts), not by guessing the brand. Steam Input modes
+that change this identity need a separate calibration; indistinguishable pads
+share a profile. Disconnect other identically reported controllers during calibration,
+because setup captures the first matching controller. Browser storage must be
+available to retain it between pages.
+The shared host module applies this mapping before both the hub and every game,
+including games reading `navigator.getGamepads()` directly. Logical buttons stay
+A=0, B=1, X=2, Y=3. Touch buttons are merged afterwards and are never remapped.
+Without calibration, ordinary browser pads and the RG353V's existing built-in
+adapter retain their current behavior. Keyboard preferences are unchanged, and
+installed game files are never edited.
+
 The host reserves screen space for the `.screen`/`canvas#screen`/`canvas.library`
 layout conventions. Shadow DOM isolates controls and styles, not the browser
 viewport: arbitrary games that calculate their layout from `innerHeight` still

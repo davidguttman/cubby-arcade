@@ -62,7 +62,7 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
  addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
  removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{},setTimeout:()=>0,clearTimeout(){},...windowOverrides};
  const host=new Element(),hub=Hub.mount(host);
- return {host,hub,action:action=>onAction({action}),refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
+ return {host,hub,action:(action,source)=>onAction({action,source}),refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 const games=[{id:'one',artwork:'one.svg',entrypoint:'/one'},{id:'two',artwork:'two.svg',entrypoint:'/two'}];
@@ -280,6 +280,24 @@ function typeGate(host,answer){const keys=host.querySelector('.gate-pad').queryS
 function typeAnswer(host){typeGate(host,gateAnswer(host));}
 function passGate(host){typeAnswer(host);host.querySelector('.gate-submit').click();}
 function wrongGate(host){host.querySelector('.gate-erase').click();host.querySelector('.gate-erase').click();typeGate(host,String(+gateAnswer(host)+1));host.querySelector('.gate-submit').click();}
+test('controller calibration is adult-gated, captures only physical labels, and discards or saves explicitly',async()=>{
+ const buttons=Array.from({length:17},()=>({pressed:false,value:0})),pad={id:'Steam Xbox controller',index:0,mapping:'standard',buttons,axes:[0,0]};
+ const saved=new Map(),storage={getItem:k=>saved.get(k)||null,setItem:(k,v)=>saved.set(k,v)};
+ const calibration=require('../runtime/core/host-osd.js').createCalibration(()=>[pad],storage);
+ const {host,hub,action}=mountedHub(games,[],{},{},{HandheldOSD:{calibration,reset(){}}});await settle();hub.show('options');
+ assert.equal(host.querySelector('.controller-settings'),null);passGate(host);host.querySelector('.controller-settings').click();
+ const dialog=host.querySelector('.controller-setup');assert.equal(dialog.open,true);
+ host.querySelector('.controller-choice').value=calibration.controllers()[0].key;
+ host.querySelector('.start-calibration').click();assert.equal(host.querySelector('.save-controller').disabled,true);
+ const focused=host.ownerDocument.activeElement;action('right','gamepad');action('confirm','gamepad');action('previousView','gamepad');assert.equal(host.ownerDocument.activeElement,focused);assert.equal(hub.state.view,'options');
+ const press=i=>{buttons.forEach((b,n)=>{b.pressed=n===i;b.value=b.pressed?1:0;});return calibration.getGamepads();};
+ press(-1);press(1);host.querySelector('.cancel-controller').click();assert.equal(dialog.open,false);assert.equal(saved.size,0);assert.equal(press(1)[0].buttons.some(b=>b.pressed),false);
+ press(-1);host.querySelector('.controller-settings').click();host.querySelector('.controller-choice').value=calibration.controllers()[0].key;host.querySelector('.start-calibration').click();
+ for(const i of [1,0,3,2]){press(-1);press(i);}assert.equal(host.querySelector('.save-controller').disabled,false);
+ host.querySelector('.save-controller').click();assert.equal(dialog.open,false);assert.equal(press(2)[0].buttons.some(b=>b.pressed),false);
+ press(-1);assert.equal(press(1)[0].buttons[0].pressed,true);assert.equal(saved.size,1);
+ hub.show('library');hub.show('options');assert.equal(host.querySelector('.controller-settings'),null);hub.dispose();
+});
 test('save deletion requires adult gate and explicit confirmation; cancel preserves saves',async()=>{
  let saves=['one','uninstalled'],resets=[];
  const {host,hub,action}=mountedHub(games,[],{}, {savedGames:async()=>saves,resetGameSaves:async id=>{resets.push(id);saves=saves.filter(x=>x!==id);}});await settle();hub.show('options');
