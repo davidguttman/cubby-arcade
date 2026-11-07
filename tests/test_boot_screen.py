@@ -188,12 +188,14 @@ class TwinkleTests(unittest.TestCase):
     def test_every_star_rests_at_the_exact_art_and_fades_opaque(self):
         for box in boot_screen.STARS:
             star = boot_screen.Star(self.REAL_ART, box)
-            for offset, pixels in star.at(boot_screen.TWINKLE_LEVELS - 1):
+            for offset, pixels in star.at(boot_screen.TWINKLE_REST):
                 self.assertEqual(pixels, self.REAL_ART[offset:offset + len(pixels)])
             # Alpha must stay set: anything else would show the window underneath.
             for _, pixels in star.at(0):
                 self.assertEqual(set(pixels[3::4]), {255})
-            self.assertNotEqual(star.at(0), star.at(boot_screen.TWINKLE_LEVELS - 1))
+            for _, pixels in star.at(boot_screen.TWINKLE_LEVELS - 1):
+                self.assertEqual(set(pixels[3::4]), {255})
+            self.assertNotEqual(star.at(0), star.at(boot_screen.TWINKLE_REST))
 
     def test_a_fading_star_leaves_the_sky_around_it_alone(self):
         x, y, width, height = box = max(boot_screen.STARS, key=lambda star: star[2] * star[3])
@@ -207,12 +209,18 @@ class TwinkleTests(unittest.TestCase):
     def test_twinkles_rise_and_fall_and_stars_keep_their_own_time(self):
         for index in (0, 7, 42):
             values = [boot_screen.twinkle_at(index, second / 10) for second in range(200)]
-            self.assertEqual(max(values), 1.0)
-            self.assertAlmostEqual(min(values), 1 - boot_screen.TWINKLE_DEPTH, places=1)
-            self.assertTrue(all(abs(a - b) < .35 for a, b in zip(values, values[1:])), 'a smooth fade')
+            self.assertAlmostEqual(max(values), boot_screen.TWINKLE_FLARE, places=1)
+            self.assertAlmostEqual(min(values), boot_screen.TWINKLE_DIM, places=1)
+            self.assertIn(1.0, values)
+            self.assertTrue(all(abs(a - b) < .5 for a, b in zip(values, values[1:])), 'a smooth fade')
+        rest = (1 - boot_screen.TWINKLE_DIM) / (boot_screen.TWINKLE_FLARE - boot_screen.TWINKLE_DIM)
+        self.assertAlmostEqual(rest * (boot_screen.TWINKLE_LEVELS - 1), boot_screen.TWINKLE_REST)
+        self.assertEqual(boot_screen.twinkle_level(1.0), boot_screen.TWINKLE_REST)
+        self.assertEqual(boot_screen.twinkle_level(boot_screen.TWINKLE_DIM), 0)
+        self.assertEqual(boot_screen.twinkle_level(boot_screen.TWINKLE_FLARE), boot_screen.TWINKLE_LEVELS - 1)
         at_once = [sum(boot_screen.twinkle_at(index, moment) < 1 for index in range(len(boot_screen.STARS)))
                    for moment in range(40)]
-        self.assertTrue(all(0 < count < len(boot_screen.STARS) * .6 for count in at_once), at_once)
+        self.assertTrue(all(0 < count < len(boot_screen.STARS) * .7 for count in at_once), at_once)
 
     def test_draws_only_the_stars_that_changed(self):
         twinkle = boot_screen.Twinkle(self.REAL_ART, boot_screen.STARS)

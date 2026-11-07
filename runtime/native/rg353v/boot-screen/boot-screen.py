@@ -75,9 +75,11 @@ STARS = (
     (50, 321, 4, 4), (99, 322, 11, 11), (472, 330, 3, 4), (66, 336, 4, 3), (482, 341, 3, 3),
     (535, 343, 11, 10), (459, 348, 4, 4),
 )
-TWINKLE_LEVELS = 8
-TWINKLE_DEPTH = 0.65  # How far a star fades at the bottom of a twinkle.
-TWINKLE_SHARE = 0.35  # How much of its cycle a star spends twinkling. It rests for the rest.
+TWINKLE_DIM = 0.1  # A star's brightness at the bottom of a twinkle.
+TWINKLE_FLARE = 1.45  # And at the top, where it flares brighter than the art.
+TWINKLE_LEVELS = 16
+TWINKLE_REST = 10  # The level that is the art itself: (1 - DIM) / (FLARE - DIM) * (LEVELS - 1).
+TWINKLE_SHARE = 0.5  # How much of its cycle a star spends twinkling. It rests for the rest.
 TWINKLE_SOFT = 16  # Light this close to the sky fades less, so a star's box never shows.
 
 
@@ -121,12 +123,20 @@ class Bar:
 
 
 def twinkle_at(index, elapsed):
-    """A star's brightness, 1 at rest. Each has its own pace, so they never pulse together."""
-    pace = 3.0 + (index * 0.381966 % 1) * 4.0
+    """A star's brightness, 1 at rest. It fades, then flares, then settles.
+
+    Each has its own pace, so they never pulse together.
+    """
+    pace = 2.5 + (index * 0.381966 % 1) * 3.0
     phase = (elapsed / pace + index * 0.618034) % 1
     if phase >= TWINKLE_SHARE:
         return 1.0
-    return 1 - TWINKLE_DEPTH * math.sin(math.pi * phase / TWINKLE_SHARE) ** 2
+    swing = math.sin(2 * math.pi * phase / TWINKLE_SHARE)
+    return 1 - (1 - TWINKLE_DIM) * swing if swing > 0 else 1 - (TWINKLE_FLARE - 1) * swing
+
+
+def twinkle_level(brightness):
+    return round((brightness - TWINKLE_DIM) / (TWINKLE_FLARE - TWINKLE_DIM) * (TWINKLE_LEVELS - 1))
 
 
 def stars_for(art):
@@ -151,8 +161,13 @@ class Star:
         return self.levels[level]
 
     def faded(self, level):
-        """Fade towards the sky around the star. Dim light goes first, so its points draw in."""
-        brightness = (1 - TWINKLE_DEPTH) + TWINKLE_DEPTH * level / (TWINKLE_LEVELS - 1)
+        """Fade towards the sky around the star, or flare away from it.
+
+        Dim light changes most, so a fading star's points draw in and a flaring star's reach out.
+        A fading star takes its dark outline with it. A flare only adds light, so the
+        outline and any colour below the sky stay as drawn.
+        """
+        brightness = TWINKLE_DIM + (TWINKLE_FLARE - TWINKLE_DIM) * level / (TWINKLE_LEVELS - 1)
         sky = self.sky
         lit = max(1, max(max(row[index] - sky[index % 4] for index in range(len(row)) if index % 4 != 3)
                          for row in self.rows))
@@ -160,13 +175,17 @@ class Star:
         for row in self.rows:
             pixels = bytearray(row)
             for offset in range(0, len(row), 4):
-                glow = max(row[offset + channel] - sky[channel] for channel in range(3))
-                if glow <= 0:
+                change = [row[offset + channel] - sky[channel] for channel in range(3)]
+                strength = max(change) if brightness > 1 else max(map(abs, change))
+                if strength <= 0:
                     continue
-                keep = brightness ** (1 + 2 * (1 - glow / lit))
-                keep = 1 - min(1, glow / TWINKLE_SOFT) * (1 - keep)
+                keep = brightness ** (1 + 2 * (1 - min(strength, lit) / lit))
+                keep = 1 - min(1, strength / TWINKLE_SOFT) * (1 - keep)
                 for channel in range(3):
-                    pixels[offset + channel] = round(sky[channel] + (row[offset + channel] - sky[channel]) * keep)
+                    if brightness > 1 and change[channel] <= 0:
+                        continue
+                    value = round(sky[channel] + change[channel] * keep)
+                    pixels[offset + channel] = min(255, max(0, value))
             rows.append(bytes(pixels))
         return rows
 
@@ -180,13 +199,13 @@ class Twinkle:
 
     def forget(self):
         """A fresh copy of the art went up, so every star is back to full brightness."""
-        self.shown = [TWINKLE_LEVELS - 1] * len(self.stars)
+        self.shown = [TWINKLE_REST] * len(self.stars)
 
     def at(self, elapsed):
         """(rows, boxes) for the stars that changed since the last call."""
         rows, boxes = [], []
         for index, star in enumerate(self.stars):
-            level = round((twinkle_at(index, elapsed) - (1 - TWINKLE_DEPTH)) / TWINKLE_DEPTH * (TWINKLE_LEVELS - 1))
+            level = twinkle_level(twinkle_at(index, elapsed))
             if self.shown[index] != level:
                 self.shown[index] = level
                 rows += star.at(level)
