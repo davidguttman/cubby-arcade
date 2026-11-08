@@ -103,7 +103,7 @@
   function sync(){const pad=device.getGamepads().find(p=>p?.mapping==='standard');shadow?.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(!!pad?.buttons[indices[b.dataset.button]]?.pressed)));}
   function release(pointer){cancelRelease(pointer);if(!win.requestAnimationFrame){device.release(pointer);sync();return;}pendingRelease.set(pointer,win.requestAnimationFrame(()=>pendingRelease.set(pointer,win.requestAnimationFrame(()=>{pendingRelease.delete(pointer);device.release(pointer);sync();}))));}
   function reset(){pendingRelease.forEach((_,pointer)=>cancelRelease(pointer));device.reset();shadow?.querySelectorAll('button[aria-pressed]').forEach(b=>b.setAttribute('aria-pressed','false'));}
-  function update(){visible=prefs?prefs.showTouchControls(win):!!win.matchMedia?.('(any-pointer: coarse)').matches;if(host)host.hidden=!visible;if(visible)doc.documentElement.setAttribute('data-cubby-osd','');else{doc.documentElement.removeAttribute('data-cubby-osd');reset();}}
+  function update(){visible=!win.CubbyHandheldEmbed&&(prefs?prefs.showTouchControls(win):!!win.matchMedia?.('(any-pointer: coarse)').matches);if(host)host.hidden=!visible;if(visible)doc.documentElement.setAttribute('data-cubby-osd','');else{doc.documentElement.removeAttribute('data-cubby-osd');reset();}}
   function pointer(event){
    if(!host||!(event.composedPath?.()||[]).includes(host))return;
    // Stop at the window capture boundary, before a game's global pointer-A handler.

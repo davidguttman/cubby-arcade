@@ -77,7 +77,7 @@ function install(win){
   resumeButton=button(menu,'Resume game','m8 3 14 9-14 9Z',resume);
   homeButton=button(menu,'Return to library','M2 2h8v8H2zM14 2h8v8h-8zM2 14h8v8H2zM14 14h8v8h-8z',home);
   touch=button(doc.body,'Game menu','M3 4h18v3H3zM3 11h18v3H3zM3 18h18v3H3z',open);touch.className='system-menu-button';
-  function update(){const prefs=win.HandheldPreferences?.preferences;touch.hidden=prefs?!prefs.showTouchControls(win):!win.matchMedia?.('(any-pointer: coarse)').matches;}
+  function update(){const prefs=win.HandheldPreferences?.preferences;touch.hidden=!!win.CubbyHandheldEmbed||(prefs?!prefs.showTouchControls(win):!win.matchMedia?.('(any-pointer: coarse)').matches);}
   update();const prefs=win.HandheldPreferences?.preferences;if(prefs)listeners.push(prefs.subscribe(update));
   const media=win.matchMedia?.('(any-pointer: coarse)');if(media?.addEventListener)listen(media,'change',update);
   if(opened)focus();

@@ -1,0 +1,51 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const {install,configuration}=require('../runtime/core/handheld-embed.js');
+function fixture(search='?embed=handheld&parentOrigin=https%3A%2F%2Fdavid.app',saved){
+ const messages=[],storage=saved||new Map(),frames=new Map();let sequence=0,time=0;
+ const doc=new EventTarget();doc.readyState='loading';doc.hidden=false;doc.hasFocus=()=>false;doc.documentElement={setAttribute(){}};doc.querySelectorAll=()=>[];
+ const win=new EventTarget();const parent={postMessage:(data,origin)=>messages.push({data,origin})};
+ Object.assign(win,{document:doc,parent,navigator:{getGamepads:()=>[]},location:{search},sessionStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)},performance:{now:()=>time},requestAnimationFrame:fn=>{frames.set(++sequence,fn);return sequence;},cancelAnimationFrame:id=>frames.delete(id),Event,CustomEvent:class extends Event{constructor(type,options){super(type);this.detail=options?.detail;}},setTimeout,clearTimeout});
+ const send=(data,origin='https://david.app',source=parent)=>{const e=new Event('message');Object.assign(e,{data:{type:'cubby:embed:v1',...data},origin,source});win.dispatchEvent(e);};
+ return {win,doc,send,messages,storage,frame(t){time=t;const callbacks=[...frames.values()];frames.clear();callbacks.forEach(fn=>fn(t));}};
+}
+test('embed is opt-in, validates parent origin and survives package navigation',()=>{
+ const f=fixture();assert.deepEqual(configuration(f.win),{parentOrigin:'https://david.app'});
+ const next=fixture('',f.storage);assert.deepEqual(configuration(next.win),{parentOrigin:'https://david.app'});
+ for(const origin of ['https://evil.test','https://david.app.evil.test','http://david.app','https://foo.davidguttman.jump.sh.evil.test'])assert.equal(configuration(fixture('?embed=handheld&parentOrigin='+encodeURIComponent(origin)).win),null);
+ assert.equal(configuration(fixture('').win),null);
+ const top=fixture();top.win.parent=top.win;assert.equal(configuration(top.win),null);
+});
+test('only bound parent can activate or drive the standard virtual controller',()=>{
+ const f=fixture();install(f.win);assert.equal(f.messages[0].data.event,'ready');assert.equal(f.messages[0].origin,'https://david.app');
+ f.send({event:'active',active:true},'https://evil.test');assert.equal(f.doc.hidden,true);
+ f.send({event:'active',active:true},'https://david.app',{});assert.equal(f.doc.hidden,true);
+ f.send({event:'active',active:true});assert.equal(f.doc.hidden,false);assert.equal(f.doc.hasFocus(),true);
+ f.send({event:'button',button:'a',down:true});assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,true);
+ f.send({event:'button',button:'a',down:false});f.frame(16);f.frame(32);assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,false);
+ f.send({event:'button',button:'toString',down:true});f.send({event:'button',button:'a',down:'true'});assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,false);
+ f.send({event:'button',button:'right',down:true});f.send({event:'active',active:false});assert.equal(f.win.navigator.getGamepads()[0].buttons[15].pressed,false);
+ f.send({event:'button',button:'a',down:true});assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,false);
+});
+test('inactive embed freezes animation and resumes without a catch-up timestamp',()=>{
+ const f=fixture();install(f.win);const seen=[];f.win.requestAnimationFrame(t=>seen.push(t));f.frame(100);assert.deepEqual(seen,[]);
+ f.send({event:'active',active:true});f.frame(120);assert.deepEqual(seen,[20]);
+ f.win.requestAnimationFrame(t=>seen.push(t));f.frame(140);f.send({event:'active',active:false});f.win.requestAnimationFrame(t=>seen.push(t));f.frame(1000);assert.deepEqual(seen,[20,40]);
+ f.send({event:'active',active:true});f.frame(1020);assert.deepEqual(seen,[20,40,60]);
+});
+test('audio contexts and playing media are suspended and inactive play cannot leak',async()=>{
+ const f=fixture();let suspended=0,resumed=0,plays=0,pauses=0;
+ f.win.AudioContext=class {constructor(){this.state='running';}suspend(){suspended++;this.state='suspended';return Promise.resolve();}resume(){resumed++;this.state='running';return Promise.resolve();}};
+ f.win.HTMLMediaElement=class {constructor(){this.paused=true;this.ended=false;}play(){plays++;this.paused=false;return Promise.resolve();}pause(){pauses++;this.paused=true;}};
+ const media=new f.win.HTMLMediaElement();f.doc.querySelectorAll=()=>[media];install(f.win);const context=new f.win.AudioContext();await context.resume();await media.play();assert.equal(plays,0);assert.ok(suspended);assert.equal(resumed,0);
+ f.send({event:'active',active:true});await Promise.resolve();assert.equal(resumed,1);assert.equal(plays,1);
+ f.send({event:'active',active:false});assert.equal(media.paused,true);assert.ok(pauses);await context.resume();assert.equal(resumed,1);
+});
+
+test('a quick semantic tap survives a poll, and an old release cannot lift a fresh hold',()=>{
+ const f=fixture();install(f.win);f.send({event:'active',active:true});
+ f.send({event:'button',button:'a',down:true});f.send({event:'button',button:'a',down:false});
+ assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,true);f.frame(16);assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,true);f.frame(32);assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,false);
+ f.send({event:'button',button:'a',down:true});f.send({event:'button',button:'a',down:false});f.send({event:'button',button:'a',down:true});f.frame(48);f.frame(64);assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,true);
+ f.send({event:'active',active:false});assert.equal(f.win.navigator.getGamepads()[0].buttons[0].pressed,false);
+});
