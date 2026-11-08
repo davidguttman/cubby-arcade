@@ -388,3 +388,59 @@ for(const catalogFirst of [false,true])test('empty Library fallback focuses Stor
  if(catalogFirst){resolveCatalog(offers);await settle();resolveLibrary([]);}else{resolveLibrary([]);await settle();resolveCatalog(offers);}
  await settle();assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
 });
+
+const starterKey='cubby:starter:v1:line-cutter';
+function starterHarness(){const values=new Map();let games=[],installs=0;return {values,storage:{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)},platform:{library:async()=>games,install:async id=>{installs++;games=[{id,entrypoint:'/verified'}];}},get installs(){return installs},set games(value){games=value}};}
+test('starter uses real install once, verifies library, keeps saves and respects later uninstall',async()=>{
+ const e=starterHarness();e.values.set('linecutter_run','saved');
+ assert.equal(await Hub.prepareStarter(e.platform,{id:'line-cutter',storage:e.storage}),'installed');assert.equal(e.installs,1);assert.equal(e.values.get('linecutter_run'),'saved');assert.equal(e.values.get(starterKey),'1');
+ e.games=[];assert.equal(await Hub.prepareStarter(e.platform,{id:'line-cutter',storage:e.storage}),'done');assert.equal(e.installs,1);
+});
+test('starter failure leaves no success marker, retries and never fakes an installed entry',async()=>{
+ const e=starterHarness(),install=e.platform.install;let first=true;
+ e.platform.install=async id=>{if(first){first=false;throw Error('offline');}return install(id);};
+ await assert.rejects(Hub.prepareStarter(e.platform,{id:'line-cutter',storage:e.storage}),/offline/);assert.equal(e.values.has(starterKey),false);
+ await Hub.prepareStarter(e.platform,{id:'line-cutter',storage:e.storage});assert.equal(e.values.get(starterKey),'1');
+ const missing=starterHarness();missing.platform.install=async()=>{};await assert.rejects(Hub.prepareStarter(missing.platform,{id:'line-cutter',storage:missing.storage}),/not installed/);assert.equal(missing.values.has(starterKey),false);
+});
+test('existing starter game records success without reinstalling, no opt-in does no work',async()=>{
+ const e=starterHarness();e.games=[{id:'line-cutter'}];assert.equal(await Hub.prepareStarter(e.platform,{id:'line-cutter',storage:e.storage}),'present');assert.equal(e.installs,0);
+ assert.equal(await Hub.prepareStarter(e.platform,{}),'disabled');assert.equal(e.installs,0);
+});
+test('starter stays in Library with pictorial progress, then selects verified game for A-only launch',async()=>{
+ let complete,installed=[];const game={id:'line-cutter',artwork:'/verified/cover.svg',entrypoint:'/verified/index.html'};
+ const {host,hub,action}=mountedHub([],[],{install:true},{library:async()=>installed,install:()=>new Promise(resolve=>{complete=()=>{installed=[game];resolve();};})},{HandheldPlatformOptions:{starterGame:'line-cutter'},localStorage:{getItem:()=>null,setItem(){}}});
+ await settle();assert.equal(hub.state.view,'library');assert.ok(host.querySelector('.install-progress'));assert.equal(host.querySelector('.download-game'),null);
+ complete();await settle();assert.equal(hub.state.view,'library');assert.equal(hub.state.detail.id,'line-cutter');assert.equal(host.querySelector('.install-progress'),null);
+ action('confirm');action('confirm');assert.equal(host.ownerDocument.defaultView.location.href,game.entrypoint);
+});
+for(const present of [false,true])test('first starter selects Line Cutter over an existing Library game, present='+present,async()=>{
+ const starter={id:'line-cutter',artwork:'starter.svg',entrypoint:'/starter'};let installed=present?[games[0],starter]:[games[0]],installs=0;
+ const {hub}=mountedHub([],[],{install:true},{library:async()=>installed,install:async()=>{installs++;installed.push(starter);}},{HandheldPlatformOptions:{starterGame:'line-cutter'},localStorage:{getItem:()=>null,setItem(){}}});
+ await settle();assert.equal(hub.state.detail.id,'line-cutter');assert.equal(installs,present?0:1);
+});
+test('starter preparation preserves return-from-game selection',async()=>{
+ const starter={id:'line-cutter',artwork:'starter.svg',entrypoint:'/starter'};
+ const {hub}=mountedHub([games[0],starter],[],{install:true},{},{HandheldPlatformOptions:{starterGame:'line-cutter'},localStorage:{getItem:()=>null,setItem(){}},sessionStorage:{getItem:()=>games[0].id,removeItem(){}}});
+ await settle();assert.equal(hub.state.detail.id,games[0].id);
+});
+test('starter completion respects navigation and Store selection made while waiting',async()=>{
+ let complete,installed=[games[0]];const starter={id:'line-cutter',artwork:'starter.svg',entrypoint:'/starter'};
+ const {host,hub}=mountedHub([],games,{install:true},{library:async()=>installed,install:()=>new Promise(resolve=>{complete=()=>{installed.push(starter);resolve();};})},{HandheldPlatformOptions:{starterGame:'line-cutter'},localStorage:{getItem:()=>null,setItem(){}}});
+ await settle();hub.show('store');host.querySelector('[data-game-id="two"]').focus();complete();await settle();
+ assert.equal(hub.state.view,'store');assert.equal(hub.state.detail.id,'two');
+});
+test('failed starter frees Library with pictorial retry and retries only on request',async()=>{
+ let attempts=0,installed=[];const {host,hub}=mountedHub([],[],{install:true},{library:async()=>installed,install:async()=>{attempts++;if(attempts===1)throw Error('offline');installed=[{id:'line-cutter',artwork:'ok.svg',entrypoint:'/ok'}];}},{HandheldPlatformOptions:{starterGame:'line-cutter'},localStorage:{getItem:()=>null,setItem(){}}});
+ await settle();assert.equal(hub.state.view,'library');assert.equal(attempts,1);assert.ok(host.querySelector('.retry-starter'));assert.equal(host.querySelector('.shelf-status').classList.contains('loading'),false);
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('.retry-starter'));host.querySelector('.retry-starter').click();await settle();assert.equal(attempts,2);assert.equal(hub.state.detail.id,'line-cutter');
+});
+test('a hub prepared while hidden focuses its Library card when the host activates',async()=>{
+ let focus;const {host}=mountedHub(games,[],{},{},{addEventListener:(name,listener)=>{if(name==='focus')focus=listener;}});await settle();const doc=host.ownerDocument;doc.body={};doc.activeElement=doc.body;focus();assert.equal(doc.activeElement,host.querySelector('.is-selected'));
+});
+test('failed starter leaves existing installed games usable and exposes a retry',async()=>{
+ const {host,hub}=mountedHub(games,[],{install:true},{install:async()=>{throw Error('offline');}},{HandheldPlatformOptions:{starterGame:'line-cutter'},localStorage:{getItem:()=>null,setItem(){}}});await settle();assert.equal(hub.state.detail.id,'one');assert.ok(host.querySelector('.play-game'));assert.ok(host.querySelector('.retry-starter'));
+});
+test('host activation retries an unfocused hidden-prepared hub after the visible frame',async()=>{
+ let focus,afterFrame;const {host}=mountedHub(games,[],{},{},{addEventListener:(name,listener)=>{if(name==='focus')focus=listener;},requestAnimationFrame:fn=>afterFrame=fn});await settle();const doc=host.ownerDocument,card=host.querySelector('.is-selected');doc.body={};doc.activeElement=doc.body;const original=card.focus;card.focus=()=>{};focus();card.focus=original;assert.equal(doc.activeElement,doc.body);assert.equal(typeof afterFrame,'function');afterFrame();assert.equal(doc.activeElement,card);
+});
