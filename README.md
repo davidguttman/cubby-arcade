@@ -320,21 +320,19 @@ first asks whose saves, and deletes only that player's.
 
 ## Players
 
-Each player has their own name, game saves and favorites. Behind the gear
-tab's adult check, the people tile (**Players**) adds a player by picking an
-animal picture and naming them, renames a player, changes a picture, or removes
-a player after a confirmation. A name defaults to the animal ("Fox") until an
-adult sets one; names are trimmed, up to 12 letters, and unique. On the
-handheld they are typed with the controller on Cubby's one on-screen keyboard
-(`runtime/core/keyboard.js`, also used for the Wi-Fi password); elsewhere in a
-text field. A child's own name is the only word the child hub shows: under each
-face in the picker, and beside the face on the hub when the top bar has room
-for all of it (otherwise the face alone). Removing
-deletes only that player's saves and favorites, and the only player can't be
-removed. With one player the hub looks as it always did. With two or more,
-Cubby starts on a wordless picker of faces, and the player's face beside the
-house on the hub reopens it. Coming back from a game or an adult page keeps
-the player; a game always runs as the player the hub launched it with.
+Each player has their own name, game saves and favorites. A fresh Cubby has one
+player, Cubby, wearing the Cubby house in the logo's spot on the hub. Pressing
+that chip opens the picker: every player's face and name, and a + while an
+animal is free. A child's + picks an animal and types a name (✓ stays dim until
+the name is valid; a taken or bad name shakes red). The first + turns Cubby into
+that child in place, same saves; later ones add a player and switch to them.
+With two or more players Cubby starts on the picker; with one it goes straight
+to the hub. Behind the gear tab's adult check, the people tile renames,
+re-pictures or removes players (removing deletes their saves and favorites;
+removing the last one returns a fresh Cubby). Names are trimmed, up to 12
+letters, and unique; on the handheld, and in a child's +, they are typed on
+Cubby's one on-screen keyboard (`runtime/core/keyboard.js`, also the Wi-Fi
+password's). Player screens show no words but names and keyboard letters.
 
 `runtime/core/profiles.js` holds the rules. The first player is exactly the
 storage every earlier Cubby used (`handheld:<game>:<key>`, `userData/saves` on

@@ -59,20 +59,40 @@ test('player ids are generated, validated and can never be a game, system or pat
  assert.equal(new Set(made.list().map(x=>x.id)).size,8);assert.throws(()=>made.add('fox'),/No pictures left/);
  // A damaged registry falls back to the first player, never to a guessed id.
  for(const raw of ['{','[]','{"profiles":[{"id":"../x","avatar":"fox"}]}','{"profiles":[{"id":"p_a","avatar":"fox"},{"id":"p_a","avatar":"cat"}]}','{"profiles":[{"id":"p_a","avatar":"dragon"}]}']){
-  const broken=storage([[Profiles.REGISTRY_KEY,raw]]);assert.deepEqual(Profiles.readRegistry(broken).profiles,[{id:FIRST,avatar:'fox'}]);
+  const broken=storage([[Profiles.REGISTRY_KEY,raw]]);assert.deepEqual(Profiles.readRegistry(broken).profiles,[{id:FIRST,avatar:'cubby'}]);
  }
 });
-test('one player writes nothing; players are added with unique pictures and the last one stays',async()=>{
+test('a fresh Cubby is one player, Cubby, and writes nothing until a child names it',async()=>{
  const s=storage(),session=storage(),removed=[],used=[];
  const made=Profiles.createProfiles({storage:s,session,platform:{removeProfile:async id=>removed.push(id),useProfile:async id=>used.push(id)},random:(()=>{let n=0;return ()=>(n++%36)/36;})()});
- assert.deepEqual(made.list(),[{id:FIRST,avatar:'fox',name:'Fox',named:false}]);assert.equal(made.current(),FIRST);assert.equal(s.length,0);
- await made.enter(FIRST);assert.equal(s.length,0,'Playing alone never writes the registry');assert.deepEqual(used,[FIRST]);
- assert.throws(()=>made.add('fox'),/already used/);assert.throws(()=>made.add('dragon'));
- const second=made.add('bear');assert.deepEqual(second,{id:second.id,avatar:'bear',name:'Bear',named:false});assert.deepEqual(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).profiles,[{id:FIRST,avatar:'fox'},{id:second.id,avatar:'bear'}]);
- assert.throws(()=>made.setAvatar(second.id,'fox'));made.setAvatar(second.id,'cat');assert.equal(made.list()[1].avatar,'cat');
- await made.select(second.id);assert.equal(made.current(),second.id);assert.equal(made.pinned(),second.id);assert.equal(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).active,second.id);
- await made.remove(second.id);assert.deepEqual(removed,[second.id]);assert.deepEqual(made.list(),[{id:FIRST,avatar:'fox',name:'Fox',named:false}]);assert.equal(made.pinned(),FIRST,'Removing the pinned player pins the next one');
- await assert.rejects(made.remove(FIRST),/only player/);await assert.rejects(made.select('p_missing'));
+ assert.deepEqual(made.list(),[{id:FIRST,avatar:'cubby',name:'Cubby',named:false}]);assert.equal(made.fresh(),true);assert.equal(made.claimTarget(),FIRST);
+ await made.enter(FIRST);assert.equal(s.length,0,'Playing as Cubby never writes the registry');assert.deepEqual(used,[FIRST]);
+ assert.throws(()=>made.claim('dragon','Theo'));assert.throws(()=>made.claim('fox','  '),/required/);assert.throws(()=>made.setAvatar(FIRST,'cubby'),/Unknown picture/,'The house is only for a fresh Cubby');
+ const theo=made.claim('fox','Theo');assert.deepEqual(theo,{id:FIRST,avatar:'fox',name:'Theo',named:true},'The first + is Cubby renamed in place');
+ assert.equal(made.fresh(),false);assert.deepEqual(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).profiles,[{id:FIRST,avatar:'fox',name:'Theo'}]);
+ const mia=made.claim('bear','Mia');assert.notEqual(mia.id,FIRST);assert.equal(made.list().length,2,'After that + adds');assert.equal(made.claimTarget(),null);
+ assert.throws(()=>made.claim('owl','theo'),/already used/);assert.throws(()=>made.claim('fox','Al'),/already used/,'A taken animal is refused');
+ await made.select(mia.id);assert.equal(made.pinned(),mia.id);
+ await made.remove(mia.id);assert.deepEqual(removed,[mia.id]);assert.equal(made.pinned(),FIRST,'Removing the pinned player pins the next one');
+ assert.deepEqual(made.list(),[{id:FIRST,avatar:'fox',name:'Theo',named:true}],'The one left stays as they are');
+ await made.remove(FIRST);assert.deepEqual(removed,[mia.id,FIRST]);assert.equal(s.getItem(Profiles.REGISTRY_KEY),null,'The last one removed leaves a fresh Cubby');
+ assert.equal(made.fresh(),true);await assert.rejects(made.remove(FIRST),/Already fresh/);await assert.rejects(made.select('p_missing'));
+});
+test('the first + keeps every save Cubby had: same id, same storage, in a real game page',async()=>{
+ const s=storage([['handheld:trail-mix:camp','{"level":7}'],['linecutter_run','{"round":3}']]);
+ const made=Profiles.createProfiles({storage:s,session:storage(),platform:{}});
+ made.claim('owl','Theo');
+ const p=createPlatform({storage:s,document:{}});assert.deepEqual(await p.savedGames(made.current()),['line-cutter','trail-mix']);
+ const page=gamePage(s,storage([[Profiles.PIN_KEY,made.current()]]));loadFrozen(page,frozen[0]);
+ assert.equal(page.win.localStorage,s,'Theo plays on exactly the storage Cubby used');assert.deepEqual(page.run(play('trail-mix')).saves.get('camp'),{level:7});
+ const mia=made.claim('bear','Mia'),other=gamePage(s,storage([[Profiles.PIN_KEY,mia.id]]));loadFrozen(other,frozen[0]);
+ const host=other.run(play('trail-mix'));assert.equal(host.saves.get('camp'),null,'A new player starts fresh');host.saves.set('camp',{level:1});
+ assert.equal(s.getItem('handheld:trail-mix:camp'),'{"level":7}');
+});
+test('+ runs out with the animals: eight players, then none',()=>{
+ const made=Profiles.createProfiles({storage:storage(),platform:{}});
+ Profiles.AVATARS.forEach((avatar,i)=>made.claim(avatar,'Kid '+String.fromCharCode(65+i)));
+ assert.equal(made.list().length,8);assert.deepEqual(made.freeAvatars(),[]);assert.throws(()=>made.claim('fox','Zed'));
 });
 test('a failed removal keeps the player listed, and a failed host switch keeps the old player',async()=>{
  const s=storage();players(s,two);const session=storage();
@@ -205,7 +225,7 @@ test('player names are trimmed, short, made of letters, and never empty',()=>{
 });
 test('names persist, default to the animal, and no two players share one',async()=>{
  const s=storage(),made=Profiles.createProfiles({storage:s,session:storage(),platform:{removeProfile:async()=>{}}});
- assert.equal(made.list()[0].name,'Fox');
+ assert.equal(made.list()[0].name,'Cubby');made.claim('fox','Al');
  assert.equal(made.rename(FIRST,'  Theo '),'Theo');assert.equal(JSON.parse(s.getItem(Profiles.REGISTRY_KEY)).profiles[0].name,'Theo','Naming the only player writes it');
  const maya=made.add('bear','Maya'),bunny=made.add('bunny');
  assert.deepEqual(Profiles.createProfiles({storage:s}).list().map(p=>[p.name,p.named]),[['Theo',true],['Maya',true],['Bunny',false]],'Names survive a restart');

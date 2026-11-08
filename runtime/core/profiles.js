@@ -20,8 +20,12 @@
   // player, whatever another tab chooses; switching happens only on the hub.
   const PIN_KEY = 'cubby:profile';
   const AVATARS = Object.freeze(['fox', 'frog', 'bear', 'bunny', 'panda', 'owl', 'cat', 'chick']);
+  // A fresh Cubby has one player, Cubby, wearing the Cubby house. The first child to
+  // press + takes that player over: same id, same saves, their animal and name.
+  const CUBBY = 'cubby';
   // A player is called after their animal until an adult gives them a name.
-  const ANIMAL_NAMES = Object.freeze({fox: 'Fox', frog: 'Frog', bear: 'Bear', bunny: 'Bunny', panda: 'Panda', owl: 'Owl', cat: 'Cat', chick: 'Chick'});
+  const ANIMAL_NAMES = Object.freeze({cubby: 'Cubby', fox: 'Fox', frog: 'Frog', bear: 'Bear', bunny: 'Bunny', panda: 'Panda', owl: 'Owl', cat: 'Cat', chick: 'Chick'});
+  const PICTURES = [CUBBY, ...AVATARS];
   // A child's own name is the one word the child-facing hub shows (see AGENTS.md).
   // Short enough to read under a face: letters and the marks names use.
   const NAME_LENGTH = 12;
@@ -73,14 +77,14 @@
     });
   }
 
-  function implicit() { return {stored: false, profiles: [{id: FIRST, avatar: AVATARS[0]}], active: FIRST}; }
+  function implicit() { return {stored: false, profiles: [{id: FIRST, avatar: CUBBY}], active: FIRST}; }
   function readRegistry(storage) {
     try {
       const value = JSON.parse(storage.getItem(REGISTRY_KEY));
       if (!value || !Array.isArray(value.profiles) || !value.profiles.length || value.profiles.length > AVATARS.length) return implicit();
       const profiles = [], ids = new Set(), avatars = new Set();
       for (const entry of value.profiles) {
-        if (!entry || !validId(entry.id) || ids.has(entry.id) || !AVATARS.includes(entry.avatar) || avatars.has(entry.avatar)) return implicit();
+        if (!entry || !validId(entry.id) || ids.has(entry.id) || !PICTURES.includes(entry.avatar) || avatars.has(entry.avatar)) return implicit();
         ids.add(entry.id); avatars.add(entry.avatar);
         // A damaged name falls back to the animal; it never costs the player their saves.
         let name; try { if (entry.name !== undefined) name = cleanName(entry.name); } catch (_) {}
@@ -109,6 +113,7 @@
       registry = {stored: true, ...next};
     }
     function pin(id) { try { if (session) session.setItem(PIN_KEY, id); } catch (_) {} }
+    // Only animals are chosen; the Cubby house belongs to a fresh Cubby alone.
     function freeAvatar(avatar, except) {
       if (!AVATARS.includes(avatar)) throw Error('Unknown picture');
       if (registry.profiles.some(p => p.avatar === avatar && p.id !== except)) throw Error('Picture already used');
@@ -130,8 +135,34 @@
       if (platform.useProfile) await platform.useProfile(id);
       pin(id);
     }
+    // Still the fresh Cubby: one player, wearing the house. + takes it over.
+    const fresh = () => registry.profiles.length === 1 && registry.profiles[0].avatar === CUBBY;
+    const add = (avatar, raw) => {
+      if (registry.profiles.length >= AVATARS.length) throw Error('No pictures left');
+      freeAvatar(avatar);
+      const name = raw === undefined ? undefined : cleanName(raw);
+      const profile = {id: newId(), avatar, ...(name && name !== ANIMAL_NAMES[avatar] ? {name} : {})};
+      freeName(nameOf(profile));
+      write([...registry.profiles, profile], registry.active);
+      return {id: profile.id, avatar, name: nameOf(profile), named: !!profile.name};
+    };
     return {
       list: () => registry.profiles.map(p => ({id: p.id, avatar: p.avatar, name: nameOf(p), named: !!p.name})),
+      fresh,
+      freeAvatars: () => AVATARS.filter(avatar => !registry.profiles.some(p => p.avatar === avatar)),
+      // The player + names: the fresh Cubby it takes over, or null for a new one.
+      claimTarget: () => fresh() ? registry.profiles[0].id : null,
+      // A child's +: an animal and a name, both required. On a fresh Cubby this is the
+      // same player renamed, keeping its saves; after that it adds a player.
+      claim(avatar, raw) {
+        const name = cleanName(raw);
+        if (!fresh()) return add(avatar, name);
+        const target = registry.profiles[0];
+        freeAvatar(avatar, target.id); freeName(name, target.id);
+        const next = {id: target.id, avatar, ...(name !== ANIMAL_NAMES[avatar] ? {name} : {})};
+        write([next], target.id);
+        return {id: next.id, avatar, name, named: !!next.name};
+      },
       current: () => readPin(session, registry) || registry.active,
       pinned: () => readPin(session, registry),
       storageFor: id => scopeStorage(storage, id),
@@ -140,15 +171,7 @@
         await enter(id);
         if (registry.stored && registry.active !== id) write(registry.profiles, id);
       },
-      add(avatar, raw) {
-        if (registry.profiles.length >= AVATARS.length) throw Error('No pictures left');
-        freeAvatar(avatar);
-        const name = raw === undefined ? undefined : cleanName(raw);
-        const profile = {id: newId(), avatar, ...(name && name !== ANIMAL_NAMES[avatar] ? {name} : {})};
-        freeName(nameOf(profile));
-        write([...registry.profiles, profile], registry.active);
-        return {id: profile.id, avatar, name: nameOf(profile), named: !!profile.name};
-      },
+      add,
       setAvatar(id, avatar) {
         const current = find(id);
         if (!current) throw Error('Unknown player');
@@ -158,8 +181,9 @@
         write(registry.profiles.map(p => p.id === id ? next : p), registry.active);
       },
       // Why a name can't be this player's, or null when it can: the hub checks as an adult types.
+      // id null: a name for a new player.
       nameProblem(id, raw) {
-        try { if (!find(id)) throw Error('Unknown player'); freeName(cleanName(raw), id); return null; } catch (error) { return error.message; }
+        try { if (id !== null && !find(id)) throw Error('Unknown player'); freeName(cleanName(raw), id); return null; } catch (error) { return error.message; }
       },
       // An adult names a player; their animal's name means no name of their own.
       rename(id, raw) {
@@ -172,12 +196,19 @@
         return name;
       },
       // Saves go first: if that fails the player stays listed, so an adult can retry.
+      // Removing the only player leaves a fresh Cubby, as on a new device; a fresh
+      // Cubby has no player to remove.
       async remove(id) {
         if (!find(id)) throw Error('Unknown player');
-        if (registry.profiles.length < 2) throw Error('The only player stays');
+        if (fresh()) throw Error('Already fresh');
         if (!platform.removeProfile) throw Error('Player removal unavailable');
         const wasPinned = readPin(session, registry) === id;
         await platform.removeProfile(id);
+        if (registry.profiles.length === 1) {
+          storage.removeItem(REGISTRY_KEY); registry = implicit();
+          if (wasPinned) pin(FIRST);
+          return;
+        }
         const profiles = registry.profiles.filter(p => p.id !== id), active = registry.active === id ? profiles[0].id : registry.active;
         write(profiles, active);
         if (wasPinned) pin(active);
@@ -203,5 +234,5 @@
     return id;
   }
 
-  return {FIRST, REGISTRY_KEY, PIN_KEY, AVATARS, ANIMAL_NAMES, NAME_LENGTH, SHARED_KEYS, cleanName, validId, prefix, scopeStorage, readRegistry, current, createProfiles, enterGamePage};
+  return {FIRST, REGISTRY_KEY, PIN_KEY, AVATARS, CUBBY, ANIMAL_NAMES, NAME_LENGTH, SHARED_KEYS, cleanName, validId, prefix, scopeStorage, readRegistry, current, createProfiles, enterGamePage};
 });

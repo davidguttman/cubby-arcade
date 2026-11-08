@@ -21,30 +21,35 @@ async function run(win,launcher,library,userData,options={}){
  const save=value=>evaluate(`(()=>{const s=HandheldPlatform.createPlatform(window.HandheldPlatformOptions).saves(${JSON.stringify(game.id)});const before={save:s.get('players-smoke'),direct:localStorage.getItem('players-smoke-direct')};s.set('players-smoke',${JSON.stringify(value)});localStorage.setItem('players-smoke-direct',${JSON.stringify(value)});return before;})()`);
  const report={};
  await home();
- assert(await evaluate('document.querySelector(".player-button").hidden&&document.querySelector(".player-picker").hidden'),'One player shows a picker or picture');
+ // A fresh Cubby: one player, Cubby, in the logo's place; no picker.
+ assert(await evaluate('!document.querySelector(".player-button").hidden&&document.querySelector(".player-button").dataset.avatar==="cubby"&&document.querySelector(".player-picker").hidden'),'Fresh Cubby chip missing');
  await capture('one-player');
  await play();assert(JSON.stringify(await save('first'))===JSON.stringify({save:null,direct:null}),'Fresh first player had saves');
  const firstFile=path.join(userData,'saves',game.id,'players-smoke.json');
  assert(await readJSON(firstFile)==='first','First player did not save to the original directory');report.firstPlayerOriginalDirectory=true;
  assert(await evaluate('HandheldPlatformOptions.bridge.useProfile("p_first").then(()=>false,()=>true)'),'Game page switched player');
  assert(await evaluate('HandheldPlatformOptions.bridge.removeProfile("p_first").then(()=>false,()=>true)'),'Game page removed a player');report.gameCannotSwitchOrRemove=true;
- await home();
- await evaluate(`document.querySelector('[aria-label=options]').click();(${passGate})(document);document.querySelector('.manage-players').click();document.querySelector('.add-player').click();document.querySelector('.avatar-choice').click()`);
- const registry=await evaluate('JSON.parse(localStorage.getItem("cubby:profiles:v1"))');assert(registry?.profiles?.length===2,'Adult could not add a player');
- const second=registry.profiles[1].id;
- // A new player is named next, on desktop with an ordinary text field.
- assert(await evaluate(`document.querySelector('.player-name-field')===document.activeElement`),'Name field not focused');
- const typeName=name=>`(f=>{f.value=${JSON.stringify(name)};f.dispatchEvent(new Event('input'));})(document.querySelector('.player-name-field'))`;
- await evaluate(`document.querySelector('.player-name-field').select()`);await win.webContents.insertText('Maya');
- assert(await evaluate(`document.querySelector('.player-name-field').value==='Maya'&&!document.querySelector('.save-name').disabled`),'Typed name not accepted');await capture('adult-name-entry');
- await evaluate(`document.querySelector('.save-name').click();document.querySelector('.rename-player').click();${typeName('Theo')};document.querySelector('.save-name').click()`);
- const named=await evaluate('JSON.parse(localStorage.getItem("cubby:profiles:v1")).profiles.map(p=>p.name)');
- assert(JSON.stringify(named)===JSON.stringify(['Theo','Maya']),'Names were not saved: '+JSON.stringify(named));report.namesSaved=true;
- await capture('adult-players');
+ // A child's +: the chip, +, an animal, then a name typed for real and ✓. No adult question.
+ async function plus(name,picture){
+  await evaluate(`document.querySelector('.player-button').click();document.querySelector('.picker-plus').click()`);if(picture)await capture(picture);
+  await evaluate(`document.querySelector('.kid-animals .picker-face').click();document.querySelector('.player-name-field').focus()`);
+  await win.webContents.insertText(name);
+  assert(await evaluate(`document.querySelector('.player-name-field').value===${JSON.stringify(name)}&&!document.querySelector('.save-name').disabled`),'Typed name not accepted');
+  if(picture)await capture('kid-name');
+  await evaluate(`document.querySelector('.save-name').click()`);
+  await wait(()=>evaluate(`document.querySelector('.player-picker').hidden&&document.querySelector('.player-label').textContent===${JSON.stringify(name)}`),'named '+name);
+ }
+ await home();await plus('Theo','kid-animal');
+ const renamed=await evaluate('JSON.parse(localStorage.getItem("cubby:profiles:v1")).profiles');
+ assert(renamed.length===1&&renamed[0].id==='p_first'&&renamed[0].name==='Theo','The first + did not rename Cubby in place');await capture('hub-renamed');
+ await play();assert(JSON.stringify(await save('first'))===JSON.stringify({save:'first',direct:'first'}),'Renaming Cubby lost its saves');report.firstPlusRenamesInPlace=true;
+ await home();await plus('Maya');
+ const registry=await evaluate('JSON.parse(localStorage.getItem("cubby:profiles:v1"))');assert(registry.profiles.length===2&&registry.profiles[1].name==='Maya','The second + did not add a player');
+ const second=registry.profiles[1].id;report.namesSaved=true;
  await home(true);assert(await evaluate('!document.querySelector(".player-picker").hidden'),'Cubby did not ask who is playing');
- assert(await evaluate(`[...document.querySelectorAll('.face-name')].map(n=>n.textContent).join()`)==='Theo,Maya','Picker names missing');await capture('picker');
+ assert(await evaluate(`[...document.querySelectorAll('.face-name')].map(n=>n.textContent).filter(Boolean).join()`)==='Theo,Maya','Picker names missing');await capture('picker');
  await evaluate(`[...document.querySelectorAll('.picker-face')].find(face=>face.dataset.profile===${JSON.stringify(second)}).click()`);
- await wait(()=>evaluate('document.querySelector(".player-picker").hidden&&!document.querySelector(".player-button").hidden'),'second player chosen');
+ await wait(()=>evaluate('document.querySelector(".player-picker").hidden'),'second player chosen');
  assert(await evaluate(`document.querySelector('.player-label').textContent`)==='Maya','Hub does not show the player’s name');await capture('hub-player');
  await play();assert(JSON.stringify(await save('second'))===JSON.stringify({save:null,direct:null}),'Second player saw the first player’s saves');
  const secondFile=path.join(userData,'profile-saves',second,game.id,'players-smoke.json');
@@ -55,7 +60,9 @@ async function run(win,launcher,library,userData,options={}){
  await wait(()=>evaluate('document.querySelector(".player-picker").hidden'),'first player chosen again');
  await play();assert(JSON.stringify(await save('first'))===JSON.stringify({save:'first',direct:'first'}),'First player lost their saves');report.firstPlayerKept=true;
  await home();
- await evaluate(`document.querySelector('[aria-label=options]').click();(${passGate})(document);document.querySelector('.manage-players').click();document.querySelectorAll('.remove-player')[1].click();document.querySelector('.remove-confirm').click()`);
+ await evaluate(`document.querySelector('[aria-label=options]').click();(${passGate})(document);document.querySelector('.manage-players').click()`);await capture('adult-players');
+ await evaluate(`document.querySelectorAll('.rename-player')[0].click()`);await capture('adult-name-entry');await evaluate(`document.querySelector('.cancel-player').click()`);
+ await evaluate(`document.querySelectorAll('.remove-player')[1].click();document.querySelector('.remove-confirm').click()`);
  await wait(()=>evaluate('JSON.parse(localStorage.getItem("cubby:profiles:v1")).profiles.length===1'),'player removed');
  assert(await fs.stat(path.join(userData,'profile-saves',second)).then(()=>false,()=>true),'Removed player’s directory remains');
  assert(await readJSON(firstFile)==='first','Removing a player touched the first player');

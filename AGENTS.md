@@ -12,7 +12,12 @@
 - A player's own name is the one sanctioned word in child-facing UI: David says
   kids recognize their own names early, so it shows under their face in the
   player picker and beside it on the hub. A face always comes with it, and
-  nothing else may require reading.
+  nothing else may require reading. Typing a name shows the keyboard's letters.
+- Players: a fresh Cubby has one player, "Cubby", wearing the Cubby house in the
+  logo's spot. A child adds themselves from that chip with + (no adult question):
+  the first + turns Cubby into them in place, keeping its saves; later ones add
+  players. Renaming, re-picturing and removing stay behind the gear tab; removing
+  the last player returns a fresh Cubby. The rules live in `runtime/core/profiles.js`.
 - Setup and management may use text only in an explicitly separate adult flow.
 - Line Cutter is an unchanged technical test payload, **not** the intended
   audience, game design, art direction, or UX template. Its text is not precedent.

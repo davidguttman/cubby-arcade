@@ -51,6 +51,7 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   focus(){doc.activeElement=this;for(const fn of this.listeners.focus||[])fn();let e=this.parent;while(e){for(const fn of e.listeners.focusin||[])fn();e=e.parent;}}
   showModal(){this.open=true;}close(){this.open=false;}
   click(){if(this.disabled)return;for(const fn of this.listeners.click||[])fn();}
+  dispatchEvent(event){for(const fn of this.listeners[event.type]||[])fn(event);return true;}
   insertAdjacentHTML(){}
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
   play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){}
@@ -421,16 +422,10 @@ function playersHub({list,pin,overrides={},capabilities={},windowOverrides={},en
 }
 const three=[{id:Profiles.FIRST,avatar:'bear'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog'}];
 const picker=host=>host.querySelector('.player-picker');
-test('one player looks exactly as before: no picker, no picture, nothing written',async()=>{
- const {host,hub,localStorage,sessionStorage}=playersHub();await settle();
- assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-button').hidden,true);
- host.querySelector('.play-game').click();await settle();
- assert.equal(localStorage.length,0,'Playing alone never writes player storage');assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),Profiles.FIRST);hub.dispose();
-});
 test('with players, Cubby asks who is playing on start; the first pick has no way around it',async()=>{
  const {host,action,calls,sessionStorage}=playersHub({list:three});await settle();
  assert.equal(picker(host).hidden,false);assert.equal(host.querySelector('.picker-back'),null);
- assert.deepEqual(host.querySelectorAll('.picker-face').map(face=>face.dataset.profile),three.map(p=>p.id));
+ assert.deepEqual(host.querySelectorAll('.picker-face').map(face=>face.dataset.profile),[...three.map(p=>p.id),undefined],'Every player, then +');
  assert.equal(host.ownerDocument.activeElement.dataset.profile,Profiles.FIRST,'Focus starts on the last player');
  for(const a of ['back','exit','nextView','select'])action(a);assert.equal(picker(host).hidden,false);
  host.querySelectorAll('.picker-face')[1].focus();action('confirm');await settle();
@@ -457,20 +452,6 @@ test('a host that cannot switch player does not start the game',async()=>{
  const launched=[];const {host}=playersHub({list:three,pin:Profiles.FIRST,windowOverrides:{location:{}},overrides:{useProfile:async()=>{throw Error('ipc');}}});await settle();
  const location=host.ownerDocument.defaultView.location;host.querySelector('.play-game').click();await settle();assert.equal(location.href,undefined);
 });
-test('adults add, re-picture and remove players behind the gear question; the only player stays',async()=>{
- const {host,hub,localStorage,calls}=playersHub({pin:Profiles.FIRST});await settle();hub.show('options');
- assert.equal(host.querySelector('.manage-players'),null);passGate(host);host.querySelector('.manage-players').click();
- const dialog=host.querySelector('.player-management');assert.equal(dialog.open,true);assert.equal(host.querySelector('.remove-player'),null,'The only player cannot be removed');
- host.querySelector('.add-player').click();const choices=host.querySelectorAll('.avatar-choice');assert.equal(choices.length,7,'A used picture is not offered');
- choices[0].click();assert.ok(host.querySelector('.player-name-field'),'A new player is named next');host.querySelector('.cancel-player').click();let registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.deepEqual(registry.profiles.map(p=>p.avatar),['fox','frog']);
- assert.equal(host.querySelector('.player-button').hidden,false,'The hub now shows who is playing');
- host.querySelectorAll('.change-picture')[1].click();host.querySelectorAll('.avatar-choice').find(b=>b.getAttribute('aria-label')==='Owl').click();
- registry=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY));assert.equal(registry.profiles[1].avatar,'owl');
- host.querySelectorAll('.remove-player')[1].click();host.querySelector('.cancel-player').click();assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,2);
- host.querySelectorAll('.remove-player')[1].click();host.querySelector('.remove-confirm').click();await settle();
- assert.deepEqual(calls.filter(c=>c[0]==='remove'),[['remove',registry.profiles[1].id]]);assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,1);
- assert.equal(host.querySelector('.player-button').hidden,true);
-});
 test('with players, the adult save page asks whose saves and resets only that player’s',async()=>{
  const {host,hub,calls,action}=playersHub({list:three,pin:Profiles.FIRST});await settle();hub.show('options');passGate(host);
  host.querySelector('.manage-saves').click();assert.equal(host.querySelectorAll('.choose-player').length,3);
@@ -489,8 +470,8 @@ test('a device lists the players page among its tiles, and a host without player
 test('a child sees their own name under their face and beside it on the hub',async()=>{
  const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'}];
  const {host}=playersHub({list});await settle();
- assert.deepEqual(host.querySelectorAll('.face-name').map(n=>n.textContent),['Theo','Fox']);
- assert.deepEqual(host.querySelectorAll('.picker-face').map(f=>f.getAttribute('aria-label')),['Theo','Fox']);
+ assert.deepEqual(host.querySelectorAll('.face-name').map(n=>n.textContent),['Theo','Fox',undefined],'Names, and a nameless +');
+ assert.deepEqual(host.querySelectorAll('.picker-face').map(f=>f.getAttribute('aria-label')),['Theo','Fox','New player']);
  host.querySelectorAll('.picker-face')[0].click();await settle();
  assert.equal(host.querySelector('.player-label').textContent,'Theo');assert.equal(host.querySelector('.player-button').hidden,false);
 });
@@ -514,33 +495,77 @@ test('adults name a player with a text field; a bad or taken name is refused wit
  assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Maya');
  assert.ok(host.querySelectorAll('.player-name').some(n=>n.textContent==='Maya'));
 });
-test('on the handheld a name is typed with the controller on Cubby’s shared keyboard',async()=>{
- const Keyboard=require('../runtime/core/keyboard.js');
- const {host,hub,action,localStorage}=playersHub({pin:Profiles.FIRST,windowOverrides:{CubbyDeviceProfile:'rg353v',HandheldKeyboard:Keyboard,AbortController,fetch:()=>Promise.reject(Error('offline'))}});await settle();hub.show('options');passGate(host);host.querySelector('.manage-players').click();
- host.querySelector('.add-player').click();host.querySelectorAll('.avatar-choice')[0].click();
- const board=host.querySelector('.name-keyboard'),field=host.querySelector('.player-name-field');
- assert.ok(board,'The new player is named on the on-screen keyboard');assert.equal(field.value,'','A new name starts empty');
- assert.equal(host.ownerDocument.activeElement,board.children[0],'Focus starts on the keys');
- const key=label=>board.children.find(b=>b.textContent===label);
- key('M').focus();action('confirm');for(const c of 'ia'){key(c).focus();action('confirm');}assert.equal(field.value,'Mia');
- action('nextView');assert.ok(key('Q'),'A shoulder changes case');action('nextView');
- action('pause');assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Mia','Start saves the name');
- assert.equal(host.querySelector('.name-keyboard'),null);
+
+// The kid side of players: a fresh Cubby is one player, Cubby; + names it, then adds.
+const Keyboard=require('../runtime/core/keyboard.js');
+const device={CubbyDeviceProfile:'rg353v',HandheldKeyboard:Keyboard,AbortController,fetch:()=>Promise.reject(Error('offline'))};
+const animals=host=>host.querySelector('.kid-animals').querySelectorAll('.picker-face');
+function kidPlus(host){host.querySelector('.player-button').click();host.querySelector('.picker-plus').click();}
+function kidType(host,action,word){const board=host.querySelector('.name-keyboard');for(const c of word){board.children.find(b=>b.textContent===c).focus();action('confirm');}}
+test('a fresh Cubby is one player, Cubby, wearing the logo in the logo’s place, and writes nothing',async()=>{
+ const {host,localStorage,sessionStorage}=playersHub();await settle();
+ assert.equal(picker(host).hidden,true,'One player goes straight to the hub');
+ const chip=host.querySelector('.player-button');assert.equal(chip.hidden,false);assert.equal(chip.dataset.avatar,'cubby');assert.equal(host.querySelector('.player-label').textContent,'Cubby');
+ assert.ok(host.querySelector('.brand').classList.contains('has-player'),'The chip takes the logo’s spot');
+ host.querySelector('.play-game').click();await settle();
+ assert.equal(localStorage.length,0,'Playing as Cubby never writes player storage');assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),Profiles.FIRST);
+});
+test('a child’s first + names Cubby in place, with no adult question; ✕ changes nothing',async()=>{
+ const {host,action,localStorage,calls}=playersHub({windowOverrides:device});await settle();
+ host.querySelector('.player-button').click();assert.equal(picker(host).hidden,false);
+ assert.deepEqual(host.querySelectorAll('.face-name').map(n=>n.textContent),['Cubby',undefined]);assert.equal(host.querySelector('.settings-gate'),null,'The kid side asks no math');
+ host.querySelector('.picker-plus').click();assert.equal(animals(host).length,8);
+ action('back');assert.ok(host.querySelector('.picker-plus'),'Back is ✕: the faces again');assert.equal(localStorage.length,0);
+ host.querySelector('.picker-plus').click();animals(host)[0].click();
+ assert.equal(host.querySelector('.player-name-field').value,'','A child types their name');assert.equal(host.querySelector('.save-name').disabled,true,'✓ waits for a name');
+ host.querySelector('.cancel-player').click();assert.equal(localStorage.length,0,'✕ changes nothing');
+ host.querySelector('.picker-plus').click();animals(host)[0].click();
+ kidType(host,action,'Theo');assert.equal(host.querySelector('.save-name').disabled,false);action('pause');await settle();
+ assert.deepEqual(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles,[{id:Profiles.FIRST,avatar:'fox',name:'Theo'}],'Same player, now Theo the fox');
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-label').textContent,'Theo');assert.deepEqual(calls.at(-1),['use',Profiles.FIRST]);
+});
+test('after that + adds a player and plays as them; a taken name shakes red; + hides when every animal is used',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'fox',name:'Theo'}];
+ const {host,action,localStorage,sessionStorage}=playersHub({list,pin:Profiles.FIRST,windowOverrides:device});await settle();
+ kidPlus(host);assert.equal(animals(host).some(f=>f.getAttribute('aria-label')==='Fox'),false,'A taken animal is not offered');
+ animals(host)[0].click();kidType(host,action,'Theo');
+ const field=host.querySelector('.player-name-field');assert.ok(field.classList.contains('invalid'));assert.equal(host.querySelector('.save-name').disabled,true);
+ action('pause');assert.ok(field.classList.contains('refused'),'Start anyway shakes it');
+ for(let i=0;i<4;i++){host.querySelector('.name-keyboard').children.find(b=>b.getAttribute('aria-label')==='Backspace').focus();action('confirm');}
+ kidType(host,action,'Mia');action('pause');await settle();
+ const players=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles;assert.equal(players.length,2);assert.equal(players[1].name,'Mia');
+ assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),players[1].id,'Plays as the new player');
+ const full=['fox','frog','bear','bunny','panda','owl','cat','chick'].map((avatar,i)=>({id:i?'p_full'+i:Profiles.FIRST,avatar}));
+ const crowded=playersHub({list:full,pin:Profiles.FIRST});await settle();crowded.host.querySelector('.player-button').click();
+ assert.equal(crowded.host.querySelector('.picker-plus'),null);
+});
+test('adults rename, re-picture and remove players behind the gear question; the last one removed leaves a fresh Cubby',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox',name:'Maya'}];
+ const {host,hub,localStorage,calls}=playersHub({list,pin:Profiles.FIRST});await settle();hub.show('options');
+ assert.equal(host.querySelector('.manage-players'),null);passGate(host);host.querySelector('.manage-players').click();
+ assert.equal(host.querySelector('.player-management').open,true);assert.equal(host.querySelector('.add-player'),null,'Children add players with + on the hub');
+ host.querySelectorAll('.change-picture')[1].click();host.querySelectorAll('.avatar-choice').find(b=>b.getAttribute('aria-label')==='Owl').click();
+ assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].avatar,'owl');
+ host.querySelectorAll('.remove-player')[1].click();host.querySelector('.cancel-player').click();assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,2);
+ host.querySelectorAll('.remove-player')[1].click();host.querySelector('.remove-confirm').click();await settle();
+ assert.deepEqual(calls.filter(c=>c[0]==='remove'),[['remove','p_fixture1']]);assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,1);
+ assert.equal(host.querySelectorAll('.player-name')[0].textContent,'Theo','The one left stays as they are');
+ host.querySelector('.remove-player').click();host.querySelector('.remove-confirm').click();await settle();
+ assert.equal(localStorage.getItem(Profiles.REGISTRY_KEY),null,'Back to a fresh Cubby');assert.equal(host.querySelectorAll('.player-name')[0].textContent,'Cubby');
+ assert.equal(host.querySelector('.remove-player'),null,'Cubby itself has nothing to remove');assert.equal(host.querySelector('.player-button').dataset.avatar,'cubby');
 });
 test('player screens show no words but players’ names and keyboard letters',async()=>{
- const Keyboard=require('../runtime/core/keyboard.js');
- const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog',name:'Josephine'}],names=new Set(['Theo','Fox','Josephine','Bunny']);
- const {host,hub}=playersHub({list,windowOverrides:{CubbyDeviceProfile:'rg353v',HandheldKeyboard:Keyboard,AbortController,fetch:()=>Promise.reject(Error('offline'))}});await settle();
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog',name:'Josephine'}],names=new Set(['Theo','Fox','Josephine','Cubby']);
+ const {host,hub,action}=playersHub({list,windowOverrides:device});await settle();
  const shown=[];
  function collect(screen){const walk=e=>{if(typeof e.textContent==='string'&&e.textContent&&!e.children?.length)shown.push([screen,e.textContent,!!e.parent?.classList.contains('cubby-keyboard')]);(e.children||[]).forEach(walk);};walk(host.querySelector('.player-picker'));walk(host.querySelector('.brand'));walk(host.querySelector('.player-management'));const saves=host.querySelector('.save-management');if(saves.querySelector('.choose-player'))walk(saves);}
  collect('picker');host.querySelectorAll('.picker-face')[0].click();await settle();collect('hub');
+ kidPlus(host);collect('kid animal');animals(host)[0].click();collect('kid name');action('back');action('back');
  hub.show('options');passGate(host);host.querySelector('.manage-players').click();collect('players');
  host.querySelectorAll('.rename-player')[0].click();collect('name');host.querySelector('.cancel-player').click();
  host.querySelectorAll('.change-picture')[0].click();collect('picture');host.querySelector('.cancel-player').click();
  host.querySelectorAll('.remove-player')[1].click();collect('remove');host.querySelector('.cancel-player').click();
- host.querySelector('.add-player').click();host.querySelectorAll('.avatar-choice')[0].click();collect('new player');
- host.querySelector('.close-players-page')||host.querySelector('.cancel-player').click();host.querySelector('.close-players-page').click();
- host.querySelector('.manage-saves').click();collect('whose saves');
- assert.ok(shown.some(([screen,text])=>screen==='whose saves'&&text==='Josephine'),'Names are shown');
+ host.querySelector('.close-players-page').click();host.querySelector('.manage-saves').click();collect('whose saves');
+ assert.ok(shown.some(([screen,text])=>screen==='whose saves'&&text==='Josephine'),'Names are shown');assert.ok(shown.some(([screen,,key])=>screen==='kid name'&&key),'Keys are shown');
  for(const [screen,text,key] of shown)assert.ok(names.has(text)||(key&&[...text].length===1),screen+' shows words: '+text);
 });
