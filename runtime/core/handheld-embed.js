@@ -37,12 +37,12 @@
   function schedule(){if(active&&scheduled===null&&callbacks.size)scheduled=request(t=>{scheduled=null;const pending=[...callbacks];callbacks.clear();for(const [id,fn] of pending){if(!active){callbacks.set(id,fn);continue;}try{fn(t-offset);}catch(error){win.setTimeout(()=>{throw error;},0);}}schedule();});}
   win.requestAnimationFrame=fn=>{const id=++sequence;callbacks.set(id,fn);schedule();return id;};
   win.cancelAnimationFrame=id=>callbacks.delete(id);
-  // Input remains a standard controller, composed by Cubby's normal OSD layer.
+  // Preserve the hardware provider for the normal OSD calibration/composition
+  // layer loaded next. Gate every device while inactive, not just virtual input.
+  const readPhysical=nav.getGamepads?.bind(nav);
   Object.defineProperty(nav,'getGamepads',{configurable:true,value(){
-   const pad={id:'Cubby embedded handheld',index:0,mapping:'standard',connected:true,timestamp:win.performance.now(),buttons:Array.from({length:17},(_,i)=>{const pressed=active&&[...held].some(button=>indices[button]===i);return {pressed,touched:pressed,value:pressed?1:0};}),axes:[0,0,0,0]};
-   // The embedding host supplies the controller. Avoid a second physical pad
-   // driving this background frame while it is used elsewhere in the room.
-   return [pad];
+   let pads;try{pads=Array.from(readPhysical?.()||[]);}catch{pads=[];}
+   return active?pads:pads.map(pad=>pad?{id:pad.id,index:pad.index,mapping:pad.mapping,connected:pad.connected,timestamp:pad.timestamp,buttons:Array.from(pad.buttons,()=>({pressed:false,touched:false,value:0})),axes:Array.from(pad.axes,()=>0),vibrationActuator:pad.vibrationActuator,hapticActuators:pad.hapticActuators}:pad);
   }});
   function audioFailure(){post({event:'audio-blocked'});}
   function reportAudioFailure(error){audioFailure();throw error;}
@@ -98,7 +98,7 @@
   // physical embedding supplies the buttons and reserves no touch-deck space.
   doc.documentElement?.setAttribute('data-cubby-embed','handheld');
   post({event:'ready'});
-  return {setActive,get active(){return active;}};
+  return {setActive,get active(){return active;},get buttons(){return active?[...held]:[];}};
  }
  return {configuration,install};
 });
