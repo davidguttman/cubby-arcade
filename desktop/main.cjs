@@ -3,6 +3,7 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const {CloudHub}=require('./cloud.cjs');
 const {GameInstaller}=require('./installer.cjs');
+const {FeedIO}=require('./feeds.cjs');
 const {TokenAccount,GameLauncher}=require('./tokens.cjs');
 const {assetName,assetPath,gameScope,requireHubFrame,ProfileSaves,GameLibrary}=require('./host.cjs');
 const {FIRST}=require('../runtime/core/profiles.js');
@@ -26,7 +27,7 @@ app.whenReady().then(async()=>{
   // hub, so a running game keeps the player it launched with.
   const saves=new ProfileSaves(app.getPath('userData'));let player=FIRST;
   const library=new GameLibrary(site,env('GAMES_DIR')?path.resolve(env('GAMES_DIR')):path.join(app.getPath('userData'),'games'));
-  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),...(uninstallSmoke||(smoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
+  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),requiredFiles:['/runtime/core/game-feeds.js'],...(uninstallSmoke||(smoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
   await cloud.refresh();
   console.log('Hub shell: '+cloud.source);
   let hubActive=true,win,launcher,servedDocuments=new Set();
@@ -34,9 +35,8 @@ app.whenReady().then(async()=>{
   const installer=new GameInstaller(library,{canActivate:()=>hubActive&&!launcher?.pending,onChange:states=>{
     if(win&&!win.isDestroyed()&&hubActive)win.webContents.send('hub:install-state',states);
   }});
+  const feeds=new FeedIO(path.join(app.getPath('userData'),'game-feeds.json'));
   let registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
-  async function refreshRegistry(){registry=await cloud.catalog(registry);installer.setCatalog(registry);return registry;}
-  await refreshRegistry();
   installer.setCatalog(registry);
   protocol.handle('hub',async request=>{
     try{
@@ -47,7 +47,6 @@ app.whenReady().then(async()=>{
       const file=library.file(request.url);
       let data=await cloud.read(pathname);
       if(pathname==='/catalog'){
-        if(hubActive)await refreshRegistry();
         const local=library.entries();
         data=Buffer.from(JSON.stringify(registry.map(entry=>{
           const installed=local.find(game=>game.id===entry.id);
@@ -100,7 +99,17 @@ app.whenReady().then(async()=>{
   ipcMain.handle('hub:profile',(event,profile)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');saves.directory(profile);player=profile;});
   ipcMain.handle('hub:remove-profile',(event,profile)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');saves.remove(profile);if(player===profile)player=FIRST;});
   ipcMain.handle('hub:library',event=>{authorizeHub(event);return library.entries();});
-  ipcMain.handle('hub:install',async(event,id)=>{authorizeHub(event);await installer.install(id);return library.entries();});
+  ipcMain.handle('hub:feeds-read',event=>{authorizeHub(event);return feeds.read();});
+  ipcMain.handle('hub:feeds-write',(event,value)=>{authorizeHub(event);return feeds.write(value);});
+  ipcMain.handle('hub:feeds-fetch',(event,url)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');return feeds.catalog(url);});
+  async function installOffer(event,id,options,update){
+    authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');
+    if(update&&!library.entries().some(game=>game.id===id))return;
+    const offer=feeds.offer(id,options?.offer);
+    await installer.install(id,{offer});return library.entries();
+  }
+  ipcMain.handle('hub:install',(event,id,options)=>installOffer(event,id,options,false));
+  ipcMain.handle('hub:update',(event,id,options)=>installOffer(event,id,options,true));
   ipcMain.handle('hub:uninstall',async(event,id)=>{authorizeHub(event);await installer.uninstall(id);return library.entries();});
   ipcMain.handle('hub:install-status',event=>{authorizeHub(event);return installer.status();});
   ipcMain.handle('hub:quit',event=>{
@@ -142,11 +151,11 @@ app.whenReady().then(async()=>{
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
   if(uninstallSmoke){
-    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,saves.store(FIRST),account,{cloud,output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
+    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,saves.store(FIRST),account,{cloud,feeds,output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
     catch(error){console.error(error);exitSmoke(1);}return;
   }
   if(installSmoke){
-    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{cloud,origin:cloud.origin,output:env('SMOKE_DIR')});exitSmoke(0);}
+    try{await require('./install-smoke.cjs').run(win,installer,library,registry,{cloud,feeds,origin:cloud.origin,output:env('SMOKE_DIR')});exitSmoke(0);}
     catch(error){console.error(error);exitSmoke(1);}return;
   }
   if(smoke){

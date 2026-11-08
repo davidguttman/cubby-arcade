@@ -43,6 +43,8 @@ function validateCatalog(data){
 
 class CloudHub{
  constructor(root,options={}){
+  this.requiredFiles=options.requiredFiles||[];
+  if(this.requiredFiles.some(name=>!shellPath(name)))throw Error('Invalid required hub asset');
   this.root=root;this.origin=options.origin||DEFAULT_ORIGIN;this.fetch=options.fetch||globalThis.fetch;this.source='bundle';this.directory=null;this.manifest=null;
   const url=new URL(this.origin);if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('HTTPS hub origin required');
  }
@@ -54,8 +56,12 @@ class CloudHub{
   if(response.body)for await(const chunk of response.body){size+=chunk.length;if(size>limit)throw Error('Hub response too large');chunks.push(Buffer.from(chunk));}
   return Buffer.concat(chunks);
  }
+ checkCompatibility(manifest){
+  if(this.requiredFiles.some(name=>!Object.hasOwn(manifest.files,name)))throw Error('Hub shell lacks required bridge support');
+  return manifest;
+ }
  async load(directory){
-  const manifest=validate(JSON.parse(await fs.readFile(path.join(directory,'manifest.json'),'utf8')));
+  const manifest=this.checkCompatibility(validate(JSON.parse(await fs.readFile(path.join(directory,'manifest.json'),'utf8'))));
   for(const [name,entry] of Object.entries(manifest.files)){const data=await fs.readFile(path.join(directory,name.slice(1)));if(data.length!==entry.size||hash(data)!==entry.sha256)throw Error('Invalid cached hub');}
   validateCatalog(await fs.readFile(path.join(directory,'catalog'),'utf8'));
   this.directory=directory;this.manifest=manifest;
@@ -64,7 +70,7 @@ class CloudHub{
   let stage;
   try{
    const signal=AbortSignal.timeout(5000);
-   const manifest=validate(JSON.parse((await this.download('/hub-manifest.json',65536,signal)).toString('utf8')));
+   const manifest=this.checkCompatibility(validate(JSON.parse((await this.download('/hub-manifest.json',65536,signal)).toString('utf8'))));
    await fs.mkdir(this.root,{recursive:true});stage=await fs.mkdtemp(path.join(this.root,'.stage-'));
    const downloads=await Promise.allSettled(Object.entries(manifest.files).map(async([name,entry])=>{
     // Public /index.html may be a landing page. Keep native cache keys stable,
@@ -97,23 +103,6 @@ class CloudHub{
   }catch{
    try{const version=(await fs.readFile(path.join(this.root,'current'),'utf8')).trim();if(!/^[a-f0-9]{64}$/.test(version))throw Error('Invalid cache pointer');await this.load(path.join(this.root,version));this.source='cache';}catch{this.directory=null;this.manifest=null;this.source='bundle';}
   }finally{if(stage)await fs.rm(stage,{recursive:true,force:true});}
- }
- // Discovery has its own validated cache: never mutate the coherent shell snapshot.
- catalog(fallback){
-  if(this.catalogChecking)return this.catalogChecking;
-  this.catalogChecking=(async()=>{
-   const file=path.join(this.root,'catalog.json');
-   if(this.catalogEntries===undefined){
-    try{const data=await fs.readFile(file);if(data.length>2*1024*1024)throw Error('Catalog too large');this.catalogEntries=validateCatalog(data);}
-    catch{this.catalogEntries=validateCatalog(JSON.stringify(fallback));}
-   }
-   try{
-    const data=await this.download('/catalog',2*1024*1024,AbortSignal.timeout(5000)),entries=validateCatalog(data);
-    await fs.mkdir(this.root,{recursive:true});await fs.writeFile(file+'.tmp',JSON.stringify(entries));await fs.rename(file+'.tmp',file);
-    this.catalogEntries=entries;
-   }catch{/* Offline or invalid discovery never replaces the last valid catalog. */}
-   return structuredClone(this.catalogEntries);
-  })().finally(()=>this.catalogChecking=null);return this.catalogChecking;
  }
  async read(name){name=name==='/'?'/index.html':name;if(!this.directory||!shellPath(name)||!Object.hasOwn(this.manifest.files,name))return null;return fs.readFile(path.join(this.directory,name.slice(1)));}
 }

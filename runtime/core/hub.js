@@ -27,7 +27,7 @@ async function sweepGameUpdates(platform,{signal}={}){
  const offered=new Set(offers.filter(offer=>offer.manifest_url).map(offer=>offer.id));
  for(const {id} of games){
   signal?.throwIfAborted();
-  if(offered.has(id))try{await platform.update(id,{signal});}catch{/* Current release stays playable. */}
+  if(platform.updateOffer ? await platform.updateOffer(id) : offered.has(id))try{await platform.update(id,{signal});}catch{/* Current release stays playable. */}
  }
 }
 // Hub entry, every five minutes in the hub, and on coming back or back online. These

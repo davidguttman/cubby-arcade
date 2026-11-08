@@ -7,6 +7,7 @@ import http.server
 import io
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import threading
@@ -18,11 +19,31 @@ import yaml
 from runtime import battery, catalog, packages, server as assets
 from rocknix import network, updates
 
-CATALOG_CHECK_SECONDS = 5 * 60
 UPDATE_CHECK_SECONDS = 15 * 60
 UPDATE_RETRY_SECONDS = 5 * 60
 UPDATE_FIRST_CHECK_SECONDS = 60
 SYSTEM_EVENT_WAIT = 25
+
+
+def feed_url(value):
+    """Transport validation only; ordering, caching and pin policy are shared JS."""
+    if (not isinstance(value, str) or len(value) > 2048
+            or not re.match(r'^https://[^/]', value, re.I)
+            or re.search(r'[\\\x00-\x20\x7f#]|%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|20|7f|5c)', value, re.I)):
+        raise ValueError('Invalid feed URL')
+    catalog.check_url(value)
+    return value
+
+
+def feed_entries(entries):
+    catalog.validate_registry(entries)
+    for entry in entries:
+        for key in ('manifest_url', 'artwork', 'attract'):
+            if key in entry:
+                feed_url(entry[key])
+        for url in entry.get('screenshots', []):
+            feed_url(url)
+    return entries
 
 
 class SystemEvents:
@@ -75,6 +96,7 @@ class State:
         self.status = {}
         self.system_events = SystemEvents()
         self.developer = False
+        self.fetched_feeds = {}
         self.catalog = catalog.validate_registry(yaml.safe_load(
             (self.app / 'hosting/catalog.yaml').read_text()))
         try:
@@ -91,20 +113,53 @@ class State:
         except (OSError, ValueError):
             return True
 
-    def refresh_catalog(self):
+    def read_feed_state(self):
+        file = self.data / 'game-feeds.json'
         try:
-            entries = catalog.load('https://cubby.david.app/catalog')
-            if not isinstance(entries, list):
-                raise ValueError('Expected discovery registry')
-            temporary = self.data / 'catalog.tmp'
-            temporary.write_text(json.dumps(entries))
-            temporary.replace(self.data / 'catalog.json')
-            with self.lock:
-                self.catalog = entries
-            return True
-        except (OSError, ValueError, TypeError):
-            # A verified cache or checked-in discovery pointers work offline.
-            return False
+            if file.stat().st_size > 20 * 1024 * 1024:
+                raise ValueError('Feed state too large')
+            value = json.loads(file.read_bytes())
+        except FileNotFoundError:
+            return None
+        cache = value.get('cache', {}) if isinstance(value, dict) else {}
+        for url, entries in (cache.items() if isinstance(cache, dict) else []):
+            try:
+                feed_url(url)
+                self.fetched_feeds[url] = feed_entries(entries)
+            except (ValueError, TypeError):
+                pass
+        return value
+
+    def write_feed_state(self, value):
+        encoded = json.dumps(value).encode()
+        if len(encoded) > 20 * 1024 * 1024:
+            raise ValueError('Feed state too large')
+        temporary = self.data / 'game-feeds.tmp'
+        with self.lock:
+            temporary.write_bytes(encoded)
+            temporary.replace(self.data / 'game-feeds.json')
+
+    def fetch_feed(self, url):
+        feed_url(url)
+        entries = feed_entries(catalog.load(url))
+        with self.lock:
+            self.fetched_feeds[url] = entries
+        return entries
+
+    def selected_offer(self, game_id, offer):
+        if not isinstance(offer, dict) or offer.get('id') != game_id:
+            raise ValueError('Invalid selected offer')
+        feed_entries([offer])
+        source = offer.get('_source')
+        if not isinstance(source, dict):
+            raise ValueError('Missing game source')
+        url = feed_url(source.get('feed_url'))
+        manifest = feed_url(source.get('manifest_url'))
+        if manifest != offer['manifest_url'] or not any(
+                entry['id'] == game_id and entry.get('manifest_url') == manifest
+                for entry in self.fetched_feeds.get(url, [])):
+            raise ValueError('Game source not offered')
+        return offer.copy()
 
     def install(self, entry):
         """Download and verify now; switch versions only outside gameplay."""
@@ -411,16 +466,21 @@ class Handler(assets.Handler):
         if self.path == '/api/power':
             self.request_power()
             return
+        if self.path.startswith('/api/feeds/'):
+            self.feed_operation()
+            return
         if self.path not in {'/api/install', '/api/uninstall'}:
             self.send_error(404)
             return
         try:
             size = int(self.headers.get('Content-Length', '0'))
-            if not 0 < size <= 256:
+            if not 0 < size <= (65536 if self.path == '/api/install' else 256):
                 raise ValueError('Invalid request size')
             request = json.loads(self.rfile.read(size))
-            if not isinstance(request, dict) or set(request) != {'id'}:
-                raise ValueError('Expected game ID only')
+            if (not isinstance(request, dict) or 'id' not in request
+                    or set(request) - ({'id', 'offer', 'update'} if self.path == '/api/install' else {'id'})
+                    or ('update' in request and request['update'] is not True)):
+                raise ValueError('Invalid game request')
             game_id = request['id']
             if not isinstance(game_id, str) or not catalog.ID.fullmatch(game_id):
                 raise ValueError('Invalid ID')
@@ -432,7 +492,11 @@ class Handler(assets.Handler):
                     self.json_response({'error': 'busy'}, 409)
                     return
                 if self.path == '/api/install':
-                    entry = next((item.copy() for item in self.state.catalog if item['id'] == game_id), None)
+                    if request.get('update') and not any(game['id'] == game_id for game in packages.library(self.state.games)):
+                        self.json_response({'skipped': True})
+                        return
+                    entry = (self.state.selected_offer(game_id, request['offer']) if 'offer' in request else
+                             next((item.copy() for item in self.state.catalog if item['id'] == game_id), None))
                     if not entry:
                         raise ValueError('Unknown publisher')
                     self.state.busy = True
@@ -446,6 +510,31 @@ class Handler(assets.Handler):
         except (ValueError, TypeError, OSError, KeyError):
             self.json_response({'error': 'invalid operation'}, 400)
 
+
+    def feed_operation(self):
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            limit = 20 * 1024 * 1024 if self.path == '/api/feeds/write' else 4096
+            if not 0 < size <= limit:
+                raise ValueError('Invalid feed request size')
+            body = json.loads(self.rfile.read(size))
+            if not isinstance(body, dict):
+                raise ValueError('Invalid feed request')
+            if self.path == '/api/feeds/read' and body == {}:
+                self.json_response(self.state.read_feed_state())
+            elif self.path == '/api/feeds/write':
+                self.state.write_feed_state(body)
+                self.json_response({'saved': True})
+            elif self.path == '/api/feeds/fetch' and set(body) == {'url'}:
+                with self.state.lock:
+                    if self.state.active_game or self.state.busy or self.state.network_busy:
+                        self.json_response({'error': 'busy'}, 409)
+                        return
+                self.json_response(self.state.fetch_feed(body['url']))
+            else:
+                raise ValueError('Unknown feed operation')
+        except (ValueError, TypeError, OSError, KeyError):
+            self.json_response({'error': 'invalid feed operation'}, 400)
 
     def system_event_ack(self):
         if not self.valid_host() or self.headers.get('Origin') != self.origin:
@@ -567,14 +656,6 @@ def relay_system_events(state, wait=time.sleep, keep_going=lambda: True):
             wait(5)
 
 
-def watch_catalog(state, wait=time.sleep):
-    """Discovery is independent of app releases; retry offline failures quietly."""
-    while True:
-        if not state.active_game and not state.busy and not state.network_busy:
-            state.refresh_catalog()
-        wait(CATALOG_CHECK_SECONDS)
-
-
 def watch_for_updates(state, wait=time.sleep):
     wait(UPDATE_FIRST_CHECK_SECONDS)
     while True:
@@ -588,7 +669,6 @@ if __name__ == '__main__':
     state.updater = updates.HostClient()
     if os.environ.get('CUBBY_NETWORK_SIMULATION') == '1':
         state.network = network.Onboarding(network.Simulation(), state.data)
-    threading.Thread(target=watch_catalog, args=(state,), daemon=True).start()
     threading.Thread(target=watch_for_updates, args=(state,), daemon=True).start()
     threading.Thread(target=relay_system_events, args=(state,), daemon=True).start()
     make_server(state).serve_forever()

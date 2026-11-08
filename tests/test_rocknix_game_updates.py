@@ -2,6 +2,7 @@
 import http.client
 import http.server
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import threading
@@ -98,6 +99,45 @@ class GameUpdates(unittest.TestCase):
 
     def version(self):
         return json.loads(self.request('GET', '/library')[1])[0]['version']
+
+    def test_real_bridge_blends_and_pins_selected_source_across_restarts(self):
+        self.publisher.publish('1')
+        self.publisher.documents['/first.json'] = self.publisher.documents['/manifest.json'].replace(b'"version": "1"', b'"version": "9"')
+        def offer(host, title, manifest):
+            return {'id': 'demo', 'title': title, 'manifest_url': f'https://{host}/{manifest}',
+                    'artwork': f'https://{host}/art.svg'}
+        self.publisher.documents['/catalog'] = json.dumps([offer('first.test', 'First', 'first.json')]).encode()
+        self.publisher.documents['/other-catalog'] = json.dumps([offer('other.test', 'Other', 'manifest.json')]).encode()
+        download = device.catalog.download
+        def routed(url, destination, limit, developer=False, *args, **kwargs):
+            from urllib.parse import urlsplit
+            parsed = urlsplit(url)
+            path = '/other-catalog' if parsed.hostname == 'other.test' and parsed.path == '/catalog' else parsed.path
+            return download(f'http://127.0.0.1:{self.publisher.server_address[1]}{path}',
+                            destination, limit, True, *args, **kwargs)
+        def run(mode):
+            result = subprocess.run(['node', 'tests/handheld_feed_bridge.cjs', self.origin, self.state.token, mode],
+                                    cwd=ROOT, capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return json.loads(result.stdout)
+        with patch.object(device.catalog, 'download', side_effect=routed):
+            self.assertEqual(run('install')[0]['version'], '1')
+            self.publisher.publish('2')
+            self.publisher.requests.clear()
+            self.assertEqual(run('reorder')[0]['version'], '2')
+            self.assertIn('/manifest.json', self.publisher.requests)
+            self.assertNotIn('/first.json', self.publisher.requests)
+            self.publisher.publish('3')
+            for mode in ['disable', 'remove']:
+                self.publisher.requests.clear()
+                self.assertEqual(run(mode)[0]['version'], '2')
+                self.assertNotIn('/manifest.json', self.publisher.requests)
+            del self.publisher.documents['/other-catalog']
+            self.assertEqual(run('offline')[0]['version'], '2')
+            self.assertEqual(run('replace')[0]['version'], '9')
+        restarted = State(ROOT, self.state.data)
+        saved = restarted.read_feed_state()
+        self.assertEqual(saved['sources']['demo']['feed_url'], 'https://cubby.david.app/catalog')
 
     def test_new_release_replaces_the_installed_one(self):
         self.publisher.publish('1.0.0')

@@ -65,7 +65,7 @@ class RuntimeServerTests(unittest.TestCase):
         self.assertEqual(self.request('GET', '/runtime/core/input.js')[2], b'shared input')
         (core / 'preferences.js').write_bytes(b'shared preferences')
         self.assertEqual(self.request('GET', '/runtime/core/preferences.js')[2], b'shared preferences')
-        for name in ['hub.js', 'hub.css', 'game-shell.js', 'host-osd.js', 'host-osd.css']:
+        for name in ['game-feeds.js', 'hub.js', 'hub.css', 'game-shell.js', 'host-osd.js', 'host-osd.css']:
             (core / name).write_text('shared UI')
             self.assertEqual(self.request('GET', '/runtime/core/' + name)[2], b'shared UI')
         self.assertEqual(self.request('GET', '/catalog')[0], 200)

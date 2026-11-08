@@ -117,10 +117,10 @@ class GameInstaller{
  setCatalog(entries){this.catalog=validateCatalog(JSON.stringify(entries));}
  status(){return structuredClone(this.states);}
  state(id,phase,details={}){this.states[id]={phase,...details};this.onChange(this.status());}
- install(id){
+ install(id,{offer}={}){
   if(typeof id!=='string'||!idPattern.test(id))return Promise.reject(Error('Invalid game id'));
   if(this.jobs.has(id))return this.jobs.get(id);
-  const entry=this.catalog.find(e=>e.id===id&&e.manifest_url);if(!entry)return Promise.reject(Error('Game not offered'));
+  const entry=offer?validateCatalog(JSON.stringify([offer]))[0]:this.catalog.find(e=>e.id===id&&e.manifest_url);if(entry&&entry.id!==id)return Promise.reject(Error('Game source mismatch'));if(!entry)return Promise.reject(Error('Game not offered'));
   const job=this.run(entry).catch(e=>{this.state(id,'error');throw e;}).finally(()=>this.jobs.delete(id));this.jobs.set(id,job);return job;
  }
  // Removal is synchronous inside this async API: navigation, update discovery,
