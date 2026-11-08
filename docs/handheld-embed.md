@@ -52,8 +52,10 @@ Inactive frames suspend animation callbacks (excluding elapsed inactive time fro
 their timestamps), expose hidden/unfocused lifecycle to existing game SDKs,
 release held controls, suspend requested audio contexts, and pause playing media.
 Reactivate the existing frame rather than replacing it: saves, downloads and
-running sessions retain their ordinary ownership. Cubby's Select+Start controller
-chord still opens its game system menu; Escape belongs to the embedding room.
+running sessions retain their ordinary ownership. In handheld embed mode, Select
+alone toggles Cubby's game system menu; Start remains ordinary game input. Outside
+this mode the Select+Start and both-shoulder shortcuts are unchanged. Escape
+belongs to the embedding room.
 
 ## Verification
 
