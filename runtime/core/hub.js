@@ -266,6 +266,69 @@ function mount(host){
   if(manyPlayers())renderSavePlayers();else loadSaves(profiles?profile:undefined);
  }
  saveDialog.addEventListener('cancel',e=>{e.preventDefault();if(saveBusy)return;saveBack();});
+ // Feed management is shared by every host and only entered from the unlocked gear.
+ const feedDialog=element(host,'dialog','save-management feed-management');feedDialog.setAttribute('aria-label','Game feeds');
+ let feedBusy=false,feedConfig=null,feedEditing=false,feedLoad=0,feedDisabled=[],feedBoard=null,feedStatuses={};
+ function closeFeeds(){if(feedBusy)return;feedLoad++;feedDialog.close();adult=false;options.querySelector('.manage-feeds')?.focus();}
+ function feedHeading(){feedDialog.replaceChildren();saveText(feedDialog,'h1','Game feeds');}
+ function feedFeedback(message=''){const note=saveText(feedDialog,'p',message,'feed-feedback');note.setAttribute('role','status');return note;}
+ function feedControls(disabled){
+  feedDialog.setAttribute('aria-busy',String(disabled));
+  if(disabled){feedDisabled=Array.from(feedDialog.querySelectorAll('button,input'),node=>[node,!!node.disabled]);for(const [node] of feedDisabled)node.disabled=true;}
+  else{for(const [node,wasDisabled] of feedDisabled)node.disabled=wasDisabled;feedDisabled=[];}
+ }
+ async function saveFeeds(next,onSaved,onError){
+  if(feedBusy)return;feedBusy=true;feedControls(true);const note=feedDialog.querySelector('.feed-feedback');note.textContent='Saving…';
+  try{feedConfig=await platform.setFeedConfig(next);if(disposed)return;
+   // Drain any old refresh before fetching the newly configured blend.
+   let message='Saved.';
+   try{await catalogChecking;catalog=await platform.catalog();loading.store=false;failed.store=false;feedStatuses=await platform.feedStatus?.()||{};
+    if(Object.values(feedStatuses).some(status=>status.state==='unavailable'||status.error))message='Settings saved. One or more feeds could not load; see their status below.';}
+   catch{message='Settings saved. The Store could not refresh yet; it will try again automatically.';}
+   if(disposed)return;feedBusy=false;feedDisabled=[];onSaved(message);
+  }catch(error){if(disposed)return;feedBusy=false;feedControls(false);note.textContent=error?.message==='A feed needs an absolute HTTPS URL'||error?.message==='Feed already added'?error.message:'Feed settings could not be saved. Check the name and HTTPS URL, then try again.';onError?.();}
+  finally{feedBusy=false;feedDialog.setAttribute('aria-busy','false');}
+ }
+ function renderFeeds(message=''){
+  feedEditing=false;feedBoard=null;feedHeading();saveText(feedDialog,'p','Enabled feeds blend into one Store, in this order. The first offer wins when game IDs match.');
+  saveText(feedDialog,'p','Installed games keep their original update source. Disabling or removing a feed pauses its updates, but keeps installed games and saves.');feedFeedback(message);
+  if(!feedConfig.feeds.length)saveText(feedDialog,'p','No feeds. Add a feed to put games in the Store.','feed-empty');
+  const rows=element(feedDialog,'div','feed-rows');
+  feedConfig.feeds.forEach((feed,index)=>{
+   const row=element(rows,'section','feed-row');saveText(row,'h2',feed.name,'feed-title');saveText(row,'p',feed.url,'feed-url');
+   const status=feedStatuses[feed.url];
+   const statusText=!feed.enabled?'Disabled — updates paused.':status?.state==='loaded'?`Loaded · ${status.count} games.`:status?.state==='cached'?`Using cached catalog · ${status.count} games.${status.error?' Latest refresh could not load.':''}`:status?.state==='unavailable'?'Could not load this feed. Check the URL and connection. Browser feeds must allow cross-origin requests (CORS).':'Not checked yet.';
+   saveText(row,'p',statusText,'feed-status');
+   const actions=element(row,'div','feed-actions');
+   const change=feeds=>saveFeeds({schema:1,feeds},renderFeeds);
+   const toggle=saveButton(actions,feed.enabled?'Enabled':'Disabled',()=>change(feedConfig.feeds.map((item,i)=>i===index?{...item,enabled:!item.enabled}:item)),'feed-toggle');toggle.setAttribute('aria-pressed',String(feed.enabled));toggle.setAttribute('aria-label',(feed.enabled?'Disable ':'Enable ')+feed.name);
+   saveButton(actions,'Edit',()=>editFeed(index),'feed-edit').setAttribute('aria-label','Edit '+feed.name);
+   for(const [label,delta,cls] of [['Move up',-1,'feed-up'],['Move down',1,'feed-down']]){
+    const b=saveButton(actions,label,()=>{const feeds=feedConfig.feeds.slice();[feeds[index],feeds[index+delta]]=[feeds[index+delta],feeds[index]];change(feeds);},cls);b.disabled=index+delta<0||index+delta>=feedConfig.feeds.length;b.setAttribute('aria-label',label+': '+feed.name);
+   }
+   saveButton(actions,'Remove',()=>change(feedConfig.feeds.filter((_,i)=>i!==index)),'feed-remove').setAttribute('aria-label','Remove '+feed.name);
+  });
+  const actions=element(feedDialog,'div','feed-actions');saveButton(actions,'Add feed',()=>editFeed(),'add-feed');saveButton(actions,'Done',closeFeeds,'close-feeds').focus({preventScroll:true});feedDialog.scrollTop=0;
+ }
+ function editFeed(index){
+  if(feedBusy)return;feedEditing=true;feedHeading();const current=feedConfig.feeds[index];saveText(feedDialog,'h2',current?'Edit feed':'Add feed');
+  saveText(feedDialog,'p','Use a trusted catalog’s HTTPS URL. New feeds start enabled.');
+  const fields=element(feedDialog,'div','feed-fields');
+  function field(label,value,cls){const wrapper=element(fields,'label','feed-field');saveText(wrapper,'span',label);const input=element(wrapper,'input',cls);input.type='text';input.value=value;input.maxLength=cls==='feed-name-input'?120:2048;input.autocomplete='off';input.setAttribute('aria-label',label);for(const type of ['keydown','keyup'])input.addEventListener(type,e=>e.stopPropagation());return input;}
+  const name=field('Name',current?.name||'','feed-name-input'),url=field('Feed URL',current?.url||'','feed-url-input');url.inputMode='url';url.spellcheck=false;feedFeedback();
+  feedBoard=null;if(win.CubbyDeviceProfile==='rg353v'&&win.HandheldKeyboard){const choose=element(feedDialog,'div','feed-actions'),keys=element(feedDialog,'div','feed-keyboard');const type=field=>{keys.replaceChildren();feedBoard=win.HandheldKeyboard.create({container:keys,field,layout:'password'});feedBoard.focus();};saveButton(choose,'Type name',()=>type(name),'type-feed-name');saveButton(choose,'Type URL',()=>type(url),'type-feed-url');}
+  const actions=element(feedDialog,'div','feed-actions');saveButton(actions,'Cancel',()=>renderFeeds(),'cancel-feed');saveButton(actions,'Save feed',()=>{
+   const feeds=feedConfig.feeds.slice(),next={name:name.value.trim(),url:url.value.trim(),enabled:current?.enabled??true};if(current)feeds[index]=next;else feeds.push(next);
+   saveFeeds({schema:1,feeds},renderFeeds,()=>name.focus());
+  },'save-feed');name.focus();
+ }
+ async function loadFeeds(){
+  const generation=++feedLoad;feedEditing=false;feedHeading();feedFeedback('Loading feeds…');saveButton(feedDialog,'Done',closeFeeds,'close-feeds').focus();
+  try{const config=await platform.feedConfig(),statuses=await platform.feedStatus?.()||{};if(disposed||!feedDialog.open||generation!==feedLoad)return;feedConfig=config;feedStatuses=statuses;renderFeeds();}
+  catch{if(disposed||!feedDialog.open||generation!==feedLoad)return;feedHeading();feedFeedback('Feeds could not be loaded. Try again.');saveButton(feedDialog,'Try again',loadFeeds,'retry-feeds');saveButton(feedDialog,'Done',closeFeeds,'close-feeds').focus();}
+ }
+ function openFeeds(){if(adult||!settingsUnlocked)return;adult=true;feedDialog.showModal();loadFeeds();}
+ feedDialog.addEventListener('cancel',e=>{e.preventDefault();if(feedBusy)return;if(feedEditing)renderFeeds();else closeFeeds();});
  // The child's side of players: their face and name at the top of the hub, and a picker
  // of faces. A child's own name is the one word the child hub shows (AGENTS.md); nothing
  // needs reading. With one player neither exists, so the hub looks as it always did.
@@ -543,6 +606,7 @@ function mount(host){
  // Every tile shares one wrapping grid, so a handheld's short screen fits them in two rows.
  // Most used first: the host's pages in its order, then one-time controller setup, then power last.
  const tiles=element(options,'div','settings-tiles'),controller=()=>{if(calibration)button(tiles,'controller','Adult controller setup',openController,'controller-settings settings-tile');};
+ if(platform.feedConfig&&platform.setFeedConfig)button(tiles,'store','Game feeds',openFeeds,'manage-feeds settings-tile');
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
  if(platform.settings?.length){for(const entry of platform.settings){if(entry.href==='#adult-players'&&!profiles)continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}
@@ -581,7 +645,7 @@ function mount(host){
   else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||nodes[0])?.focus();return;}if(playerDialog.open){if(playerBusy)return;const nodes=Array.from(playerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);
   // Keys are a grid: the D-pad moves across it, a shoulder changes case and Start saves.
   if(nameBoard&&playerDialog.querySelector('.name-keyboard')){if(a==='back'||a==='exit')playersBack();else if(a==='nextView'||a==='previousView')nameBoard.toggleCase();else if(a==='pause')nameSave?.();else if(a==='confirm')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||nodes[0])?.focus();return;}
-  if(a==='back'||a==='exit')playersBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')saveBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
+  if(a==='back'||a==='exit')playersBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(feedDialog.open){if(feedBusy)return;if(feedBoard&&(a==='nextView'||a==='previousView')){feedBoard.toggleCase();return;}const nodes=Array.from(feedDialog.querySelectorAll('button,input')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit'){if(feedEditing)renderFeeds();else closeFeeds();}else if(a==='confirm'||a==='pause'){if(doc.activeElement?.tagName?.toLowerCase()==='input')feedDialog.querySelector('.save-feed')?.click();else doc.activeElement?.click();}else if(['left','right','up','down'].includes(a))((feedBoard&&nearest(nodes,doc.activeElement,a))||nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length])?.focus();return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')saveBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
  if(a==='exit'||a==='back'){if(!detail.hidden)returnToGames(doc.activeElement?.classList.contains('game-card')||doc.activeElement===tabs[state.view]);else activateView('library');return;}
  if(a==='select'||a==='nextView'||a==='previousView'){activateView(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);return;}
  const padKeys=Array.from(doc.activeElement?.closest?.('.gate-pad')?.querySelectorAll('button')||[]);

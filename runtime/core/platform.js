@@ -170,6 +170,7 @@
       library,
       catalog,
       feedConfig: feeds ? ()=>feeds.config() : undefined,
+      feedStatus: feeds ? ()=>feeds.status() : undefined,
       setFeedConfig: feeds ? async config=>{const result=await feeds.setConfig(config);offers=[];return result;} : undefined,
       updateOffer: feeds ? id=>feeds.updateOffer(id) : undefined,
       async fullscreen() {

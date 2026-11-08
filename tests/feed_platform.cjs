@@ -8,7 +8,7 @@ test('shared platform pins successful installs and updates hidden sources, pausi
  const bridge={readFeedState:async()=>saved,writeFeedState:async value=>{saved=structuredClone(value);},fetchCatalog:async url=>offers[url],library:async()=>games,
  install:async(id,{offer})=>{calls.push(offer);games=[{id}];},uninstall:async()=>{games=[];}};
  let p=createPlatform({bridge});await p.setFeedConfig({schema:1,feeds:[{url:custom,name:'Custom',enabled:true},{url:DEFAULT_URL,name:'Cubby',enabled:true}]});
- await p.catalog();await p.install('demo');assert.equal(calls[0].title,'Custom');
+ await p.catalog();assert.deepEqual((await p.feedStatus())[custom],{state:'loaded',count:1});await p.install('demo');assert.equal(calls[0].title,'Custom');
  await p.setFeedConfig({schema:1,feeds:[{url:DEFAULT_URL,name:'Cubby',enabled:true},{url:custom,name:'Custom',enabled:true}]});
  assert.equal((await p.catalog())[0].title,'First');await assert.rejects(p.install('demo'),/source/);
  await p.update('demo');assert.equal(calls[1].title,'Custom');

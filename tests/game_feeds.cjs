@@ -176,3 +176,13 @@ test('cancellation settles one caller promptly without releasing ongoing shared 
  finally{clearTimeout(timer);}
  const second=manager.catalog();finish([game('x')]);await second;assert.equal(calls,1);
 });
+test('transient feed status distinguishes successful loads, cached failures, first failures and disabled feeds',async()=>{
+ const disk=memory(null);let fail=false;
+ const manager=Feeds.createManager({...disk,fetchCatalog:async url=>{if(url===B||fail)throw Error('Failed to fetch');return [game('x')];}});
+ await manager.setConfig(config([feed(A),feed(B)]));await manager.catalog();
+ assert.deepEqual(await manager.status(),{[A]:{state:'loaded',count:1},[B]:{state:'unavailable',count:0,error:'Failed to fetch'}});
+ fail=true;await manager.catalog();assert.deepEqual((await manager.status())[A],{state:'cached',count:1,error:'Failed to fetch'});
+ const reload=Feeds.createManager({...disk,fetchCatalog:async()=>[]});assert.deepEqual((await reload.status())[A],{state:'cached',count:1});
+ await manager.setConfig(config([feed(A,'Off',false)]));assert.deepEqual(await manager.status(),{[A]:{state:'disabled',count:1}});
+ assert.equal(disk.value().status,undefined);
+});

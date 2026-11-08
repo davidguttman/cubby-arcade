@@ -89,7 +89,7 @@
     let state,loading,queue=Promise.resolve(),refreshing;
     // Weak keys keep provenance alive exactly as long as a host retains an
     // issued offer, without retaining an ever-growing history of old catalogs.
-    const issued=new WeakMap();
+    const issued=new WeakMap(),outcomes=new Map();
     function issue(offer){if(offer)issued.set(offer,{id:offer.id,...sourceOf(offer)});return offer;}
     const validate=entries=>validateEntries(options.validateCatalog?options.validateCatalog(entries):entries);
     async function load(){
@@ -121,6 +121,15 @@
     const manager={
       async config(){await load();await queue;return copy(state.config);},
       async setConfig(config){const checked=validateConfig(config);await change(next=>{next.config=checked;});return copy(checked);},
+      async status(){
+        await load();await queue;
+        return Object.fromEntries(state.config.feeds.map(feed=>{
+          const count=(state.cache[feed.url]||[]).length,outcome=outcomes.get(feed.url);
+          const status={state:!feed.enabled?'disabled':outcome?.ok?'loaded':Object.hasOwn(state.cache,feed.url)?'cached':outcome?'unavailable':'unchecked',count};
+          if(feed.enabled&&outcome?.error)status.error=outcome.error;
+          return [feed.url,status];
+        }));
+      },
       async catalog({signal}={}){
         signal?.throwIfAborted();
         if(!refreshing){
@@ -129,10 +138,11 @@
             const feeds=state.config.feeds.filter(feed=>feed.enabled);
             const results=await Promise.all(feeds.map(async feed=>{
               try{return {url:feed.url,entries:validate(await options.fetchCatalog(feed.url,{}))};}
-              catch{return {url:feed.url};}
+              catch(error){return {url:feed.url,error:typeof error?.message==='string'?error.message.slice(0,200):'Catalog request failed'};}
             }));
             const valid=results.filter(result=>result.entries!==undefined);
             if(valid.length)await change(next=>{for(const result of valid)next.cache[result.url]=result.entries;});
+            for(const result of results)outcomes.set(result.url,result.entries!==undefined?{ok:true}:{error:result.error});
           })();
           refreshing=pending;
           // Only shared work completion releases the refresh, never a caller's
