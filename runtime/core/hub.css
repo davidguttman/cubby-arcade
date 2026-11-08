@@ -126,9 +126,9 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .face-name{display:block;max-width:calc(var(--size) + var(--gap) - 6px);font-size:var(--name);font-weight:800;line-height:1.15;letter-spacing:.01em;color:#fff4e6;text-shadow:0 2px 0 rgba(10,4,20,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hub .picker-face:focus .face-name{color:#ffd770}
 .picker-faces:focus-within .picker-face:not(:focus){opacity:.8}
-/* The hub's player: face and name in one pill; the name hides if the bar has no room. */
+/* The hub's player: face and name in one pill, the same height as the tab bar beside it (tab + its padding); the name hides if the bar has no room. */
 .brand{min-width:0}
-.hub .player-button{flex-shrink:1;gap:10px;min-width:52px;height:52px;padding:0;border-radius:999px;background:rgba(16,9,28,.55);box-shadow:inset 0 2px 6px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.07)}
+.hub .player-button{flex-shrink:1;gap:10px;min-width:64px;height:64px;padding:6px;border-radius:999px;background:rgba(16,9,28,.55);box-shadow:inset 0 2px 6px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.07)}
 .hub .player-button:hover{background:rgba(16,9,28,.7)}
 .hub .player-button:focus{outline:none;box-shadow:0 0 0 3px #fff4e6,0 0 0 6px #ffc94d,0 0 22px 5px rgba(255,184,56,.55)}
 .player-disc{display:block;flex:none;width:52px;height:52px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,244,230,.16)}
@@ -152,7 +152,7 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .avatar-choices{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 18px}
 .hub .player-management .avatar-choice{flex-direction:column;gap:6px;padding:10px 6px;border-radius:18px;font-weight:700}
 .hub .avatar-choice svg{width:64px;height:64px}
-@media (max-height:520px){.hub .player-button{height:44px;min-width:44px;min-height:44px}.player-disc{width:44px;height:44px}.player-label{font-size:17px;padding-right:14px}.hub .avatar-choice svg{width:52px;height:52px}.player-rows{margin:10px 0}.player-face{width:44px;height:44px}}
+@media (max-height:520px){.hub .player-button{height:50px;min-width:50px;min-height:50px;padding:4px}.player-disc{width:42px;height:42px}.player-label{font-size:17px;padding-right:14px}.hub .avatar-choice svg{width:52px;height:52px}.player-rows{margin:10px 0}.player-face{width:44px;height:44px}}
 .player-management .save-feedback:empty{min-height:0;margin:0}
 @media (max-height:540px){.player-management p{margin:6px 0}.player-rows{gap:8px}.player-row{padding:6px 10px}.hub .player-management .player-row button{min-height:42px;padding:8px 14px}}
 /* A seventh settings tile: a short screen fits four smaller tiles a row, still two rows. */
