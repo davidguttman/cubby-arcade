@@ -32,6 +32,10 @@
   Object.defineProperty(doc,'hasFocus',{configurable:true,value:()=>active&&!nativeHidden()});
   Object.defineProperty(doc,'hidden',{configurable:true,get:()=>!active||nativeHidden()});
   Object.defineProperty(doc,'visibilityState',{configurable:true,get:()=>doc.hidden?'hidden':'visible'});
+  // Clicking the enclosing physical controls blurs this iframe, but does not
+  // leave the handheld. Do not let a game's SDK latch that incidental blur as
+  // a permanent pause; logical deactivation below still delivers its blur.
+  win.addEventListener('blur',event=>{if(event.target===win&&active&&!nativeHidden())event.stopImmediatePropagation();},true);
   // Freeze requestAnimationFrame work, including raw game loops, while the room
   // is away. Removing elapsed sleep from timestamps prevents a catch-up jump.
   function schedule(){if(active&&scheduled===null&&callbacks.size)scheduled=request(t=>{scheduled=null;const pending=[...callbacks];callbacks.clear();for(const [id,fn] of pending){if(!active){callbacks.set(id,fn);continue;}try{fn(t-offset);}catch(error){win.setTimeout(()=>{throw error;},0);}}schedule();});}

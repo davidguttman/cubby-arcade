@@ -2,14 +2,16 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {install,configuration}=require('../runtime/core/handheld-embed.js');
 const {install:installOSD}=require('../runtime/core/host-osd.js');
+const {createGameHost}=require('../runtime/core/sdk.js');
 function installHost(win){const embed=install(win);win.CubbyHandheldEmbed=embed;win.HandheldOSD=installOSD(win);return embed;}
 function fixture(search='?embed=handheld&parentOrigin=https%3A%2F%2Fdavid.app',saved){
- const messages=[],storage=saved||new Map(),frames=new Map();let sequence=0,time=0;
- const doc=new EventTarget();doc.readyState='loading';doc.hidden=false;doc.hasFocus=()=>false;doc.documentElement={setAttribute(){},removeAttribute(){}};doc.querySelectorAll=()=>[];
+ const messages=[],storage=saved||new Map(),frames=new Map();let sequence=0,time=0,nativeHidden=false;
+ class Document extends EventTarget {get hidden(){return nativeHidden;}}
+ const doc=new Document();doc.readyState='loading';doc.hasFocus=()=>false;doc.documentElement={setAttribute(){},removeAttribute(){}};doc.querySelectorAll=()=>[];
  const win=new EventTarget();const parent={postMessage:(data,origin)=>messages.push({data,origin})};
  Object.assign(win,{document:doc,parent,navigator:{getGamepads:()=>[]},location:{search},sessionStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v)},performance:{now:()=>time},requestAnimationFrame:fn=>{frames.set(++sequence,fn);return sequence;},cancelAnimationFrame:id=>frames.delete(id),Event,CustomEvent:class extends Event{constructor(type,options){super(type);this.detail=options?.detail;}},setTimeout,clearTimeout});
  const send=(data,origin='https://david.app',source=parent)=>{const e=new Event('message');Object.assign(e,{data:{type:'cubby:embed:v1',...data},origin,source});win.dispatchEvent(e);};
- return {win,doc,send,messages,storage,frame(t){time=t;const callbacks=[...frames.values()];frames.clear();callbacks.forEach(fn=>fn(t));}};
+ return {win,doc,send,messages,storage,setNativeHidden(value){nativeHidden=value;doc.dispatchEvent(new Event('visibilitychange'));},frame(t){time=t;const callbacks=[...frames.values()];frames.clear();callbacks.forEach(fn=>fn(t));}};
 }
 test('embed is opt-in, validates parent origin and survives package navigation',()=>{
  const f=fixture();assert.deepEqual(configuration(f.win),{parentOrigin:'https://david.app'});
@@ -46,6 +48,32 @@ test('inactive embed freezes animation and resumes without a catch-up timestamp'
  f.send({event:'active',active:true});f.frame(120);assert.deepEqual(seen,[20]);
  f.win.requestAnimationFrame(t=>seen.push(t));f.frame(140);f.send({event:'active',active:false});f.win.requestAnimationFrame(t=>seen.push(t));f.frame(1000);assert.deepEqual(seen,[20,40]);
  f.send({event:'active',active:true});f.frame(1020);assert.deepEqual(seen,[20,40,60]);
+});
+test('moving focus from the iframe to the physical handheld does not freeze an active SDK game',()=>{
+ const f=fixture();installHost(f.win);f.send({event:'active',active:true});
+ let running=true,stops=0;
+ const host=createGameHost({target:f.win,document:f.doc,platform:{saves:()=>({})},gameId:'focus-regression',inputFactory:()=>({dispose(){}})});
+ host.start({press(){},release(){},stop(){running=false;stops++;},start(){running=true;},wake(){}});
+ f.win.dispatchEvent(new Event('blur'));
+ assert.equal(running,true,'clicking the parent handheld controls must not stop the game');
+ assert.equal(stops,0);
+ f.send({event:'active',active:false});assert.equal(running,false,'leaving the handheld still suspends the game');
+ f.send({event:'active',active:true});assert.equal(running,true,'re-entering resumes the game');
+ f.setNativeHidden(true);assert.equal(running,false,'a hidden browser tab still suspends the game');
+ let hiddenBlur=false;f.win.addEventListener('blur',()=>{hiddenBlur=true;});f.win.dispatchEvent(new Event('blur'));assert.equal(hiddenBlur,true,'native hidden-tab blur is not suppressed');
+ f.setNativeHidden(false);assert.equal(running,true,'returning to the visible tab resumes the game');
+ host.dispose();
+});
+test('embedded focus policy preserves descendant element blur handlers',()=>{
+ const f=fixture(),listen=f.win.addEventListener.bind(f.win);let capture;
+ f.win.addEventListener=(type,callback,options)=>{if(type==='blur'&&options===true)capture=callback;listen(type,callback,options);};
+ installHost(f.win);f.send({event:'active',active:true});
+ // EventTarget has no DOM ancestry: exercise the window capture phase with a
+ // descendant target, as a browser does when focus moves between form controls.
+ let stopped=false;capture({target:{},stopImmediatePropagation(){stopped=true;}});
+ assert.equal(stopped,false,'descendant blur must reach its own listeners');
+ capture({target:f.win,stopImmediatePropagation(){stopped=true;}});
+ assert.equal(stopped,true,'only iframe window blur is reserved by the embed');
 });
 test('audio contexts and playing media are suspended and inactive play cannot leak',async()=>{
  const f=fixture();let suspended=0,resumed=0,plays=0,pauses=0;
