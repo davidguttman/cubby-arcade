@@ -45,19 +45,20 @@
    return [pad];
   }});
   function audioFailure(){post({event:'audio-blocked'});}
+  function reportAudioFailure(error){audioFailure();throw error;}
   for(const name of ['AudioContext','webkitAudioContext']){
    const Native=win[name];if(!Native)continue;
    win[name]=new Proxy(Native,{construct(Target,args){
     const context=Reflect.construct(Target,args),resume=context.resume.bind(context),suspend=context.suspend.bind(context);
     const record={context,wanted:context.state==='running',resume,suspend};contexts.add(record);
-    context.resume=()=>{record.wanted=true;return active?resume():Promise.resolve();};
+    context.resume=()=>{record.wanted=true;return active?resume().catch(reportAudioFailure):Promise.resolve();};
     context.suspend=()=>{record.wanted=false;return suspend();};
     if(!active)suspend().catch(()=>{});
     return context;
    }});
   }
   const mediaPrototype=win.HTMLMediaElement?.prototype,play=mediaPrototype?.play,pause=mediaPrototype?.pause;
-  if(play)mediaPrototype.play=function(){if(!active){media.add(this);return Promise.resolve();}return play.call(this);};
+  if(play)mediaPrototype.play=function(){if(!active){media.add(this);return Promise.resolve();}return play.call(this).catch(reportAudioFailure);};
   if(pause)mediaPrototype.pause=function(){media.delete(this);return pause.call(this);};
   // Declarative autoplay can start without calling the patched play method.
   doc.addEventListener('play',event=>{if(!active&&pause&&event.target instanceof win.HTMLMediaElement){media.add(event.target);pause.call(event.target);}},true);

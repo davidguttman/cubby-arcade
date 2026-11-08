@@ -42,6 +42,18 @@ test('audio contexts and playing media are suspended and inactive play cannot le
  f.send({event:'active',active:false});assert.equal(media.paused,true);assert.ok(pauses);await context.resume();assert.equal(resumed,1);
 });
 
+test('active audio resume and media play report autoplay rejection without swallowing it',async()=>{
+ const f=fixture(),error=new DOMException('A direct gesture is required','NotAllowedError');
+ f.win.AudioContext=class {constructor(){this.state='suspended';}suspend(){return Promise.resolve();}resume(){return Promise.reject(error);}};
+ f.win.HTMLMediaElement=class {play(){return Promise.reject(error);}pause(){}};
+ install(f.win);f.send({event:'active',active:true});
+ await assert.rejects(new f.win.AudioContext().resume(),failure=>failure===error);
+ assert.deepEqual(f.messages.map(message=>message.data.event),['ready','audio-blocked']);
+ await assert.rejects(new f.win.HTMLMediaElement().play(),failure=>failure===error);
+ assert.deepEqual(f.messages.map(message=>message.data.event),['ready','audio-blocked','audio-blocked']);
+ assert.ok(f.messages.every(message=>message.origin==='https://david.app'));
+});
+
 test('a quick semantic tap survives a poll, and an old release cannot lift a fresh hold',()=>{
  const f=fixture();install(f.win);f.send({event:'active',active:true});
  f.send({event:'button',button:'a',down:true});f.send({event:'button',button:'a',down:false});
