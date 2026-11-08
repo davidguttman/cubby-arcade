@@ -258,22 +258,33 @@ The hub still uses shoulders to switch views; pressing both consumes individual
 shoulder input and opens the system menu. Existing keyboard preferences are
 unchanged; X/Y and L/R are available through touch or gamepad.
 
-**Adult controller calibration:** open the hub's gear tab and answer its math
-question, then choose the controller icon. Select the controller as the browser
-reports it (Steam may call a Nintendo pad an Xbox controller). Choose **Start
-calibration**, release all controls, then press the physically printed **A, B,
-X, Y** in that order, releasing between each press. Press only one button at a
-time. Use mouse, touch, or keyboard to operate the setup controls. **Save** applies
-the mapping; **Cancel** discards it; **Reset to default**, then **Save**, removes
-that controller's calibration. The last captured press cannot activate the hub
-when closing setup: all physical controls must return to neutral first.
+**Adult controller calibration** needs only the controller. Open the hub's gear
+tab, answer its math question, then choose the controller icon. Setup opens
+straight to a big **A**: release everything, then press the button physically
+printed **A**, then **B**, **X** and **Y** as each letter appears, releasing
+between presses. The four letters below fill in as each is taken. Whichever
+controller presses first after everything is released is the one being set up;
+other controllers are ignored until setup closes. Pressing two buttons at once,
+or a button already taken, flashes the letter red and asks again. After **Y** the
+mapping saves itself, all four letters light up for a second, and setup closes
+back to the controller icon. Pressing A, B, X, Y onto the controller's default
+buttons removes its calibration instead of storing one, so that is the reset.
+
+To leave without changes, press **Start**, or wait ten seconds without touching
+anything. On a controller the browser reports with the standard mapping, the
+four face buttons are always buttons 0-3, so Start, Select, the D-pad, shoulders
+and every other non-face button exit. A controller without the standard mapping
+may report a face button at any index, so its buttons are always captured and it
+leaves only by waiting. Escape and the corner close button also exit, for a
+mouse, touch or keyboard, but none is required. The last press cannot activate
+the hub after setup closes: all physical controls must return to neutral first.
 
 Calibration is saved locally per browser-reported controller identity (ID,
-mapping, button and axis counts), not by guessing the brand. Steam Input modes
-that change this identity need a separate calibration; indistinguishable pads
-share a profile. Disconnect other identically reported controllers during calibration,
-because setup captures the first matching controller. Browser storage must be
-available to retain it between pages.
+mapping, button and axis counts), not by guessing the brand (Steam may call a
+Nintendo pad an Xbox controller). Steam Input modes that change this identity
+need a separate calibration; indistinguishable pads share a profile. If browser
+storage is unavailable, setup ends on an amber alert instead of the green check:
+the mapping applies until the page changes.
 The shared host module applies this mapping before both the hub and every game,
 including games reading `navigator.getGamepads()` directly. Logical buttons stay
 A=0, B=1, X=2, Y=3. Touch buttons are merged afterwards and are never remapped.
@@ -304,7 +315,37 @@ This works with browser/device localStorage and desktop native saves. The
 published Line Cutter `linecutter_run` alias is included so old progress cannot
 reappear after reset. Standalone games on other origins and arbitrary storage
 outside Cubby's SDK namespace are not managed by this flow. Uninstall still
-keeps saves; it does not imply a reset.
+keeps saves; it does not imply a reset. With more than one player, the page
+first asks whose saves, and deletes only that player's.
+
+## Players
+
+Each player has their own name, game saves and favorites. A fresh Cubby has one
+player, Cubby, wearing the Cubby house in the logo's spot on the hub. Pressing
+that chip opens the picker: every player's face and name, and a + while an
+animal is free. A child's + picks an animal and types a name (✓ stays dim until
+the name is valid; a taken or bad name shakes red). The first + turns Cubby into
+that child in place, same saves; later ones add a player and switch to them.
+With two or more players Cubby starts on the picker; with one it goes straight
+to the hub. Behind the gear tab's adult check, the people tile renames,
+re-pictures or removes players (removing deletes their saves and favorites;
+removing the last one returns a fresh Cubby). Names are trimmed, up to 12
+letters, and unique; on the handheld, and in a child's +, they are typed on
+Cubby's one on-screen keyboard (`runtime/core/keyboard.js`, also the Wi-Fi
+password's). Player screens show no words but names and keyboard letters.
+
+`runtime/core/profiles.js` holds the rules. The first player is exactly the
+storage every earlier Cubby used (`handheld:<game>:<key>`, `userData/saves` on
+desktop), so nothing migrates and a rolled-back device still finds those saves.
+Other players live under `cubby:profile:<id>:` in browser storage and
+`userData/profile-saves/<id>` on desktop; ids look like `p_x7k2…`, which no
+game or system id can. Hosts inject `profiles.js` into game pages after their
+own modules, where it gives the page the launching player's `localStorage` and
+`HandheldPlatformOptions.storage`, so frozen game releases, including ones
+that write `localStorage` directly, save per player without a byte changing.
+A host with native saves also supplies `useProfile` and `removeProfile`; one
+without them (an older desktop app under a newer cloud hub) keeps one player.
+`desktop/players-smoke.cjs` (`--players-smoke`) checks this end to end.
 
 ## Web host: same launcher and packages
 

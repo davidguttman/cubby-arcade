@@ -1,9 +1,9 @@
 /* Capability-driven bridge. Native/Steam hosts can supply implementations. */
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === 'object' && module.exports ? require('./profiles.js') : root.HandheldProfiles);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.HandheldPlatform = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Profiles) {
   'use strict';
   // Historical SDK alias used by published Line Cutter releases. Keep this
   // explicit: prefix guessing could erase unrelated application preferences.
@@ -12,6 +12,13 @@
   function gameSaveId(id) {
     if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(id) || systemIds.has(id)) throw Error('Invalid game save scope');
     return id;
+  }
+  // Save management takes the player whose saves it means. Without one it means
+  // the first player's storage, which is all a Cubby without players ever had.
+  function playerPrefix(profile) {
+    if (profile === undefined) return '';
+    if (!Profiles) throw Error('Players unavailable');
+    return Profiles.prefix(profile);
   }
   function createPlatform(options) {
     options = options || {};
@@ -52,10 +59,10 @@
         remove(name) { requireStorage().removeItem(key(name)); }
       };
     }
-    function localSaveKeys(id) {
+    function localSaveKeys(id, player) {
       gameSaveId(id);
       if (!storage) { if (!nativeSaves) throw Error('Save storage unavailable'); return []; }
-      const prefix = 'handheld:' + id + ':', aliases = legacySaveKeys[id] || [], keys = [];
+      const prefix = player + 'handheld:' + id + ':', aliases = (legacySaveKeys[id] || []).map(key => player + key), keys = [];
       // Snapshot before removal: Storage indexes shift after each deleted item.
       for (let i = 0; i < storage.length; i++) {
         const name = storage.key(i);
@@ -63,27 +70,46 @@
       }
       return keys;
     }
+    function storedGames(player) {
+      const ids = new Set();
+      for (let i = 0; i < storage.length; i++) {
+        const name = storage.key(i) || '', match = name.startsWith(player) && /^handheld:([a-z0-9][a-z0-9-]{0,79}):[a-zA-Z0-9_-]+$/.exec(name.slice(player.length));
+        if (match && !systemIds.has(match[1])) ids.add(match[1]);
+      }
+      for (const [id, aliases] of Object.entries(legacySaveKeys)) if (aliases.some(key => storage.getItem(player + key) !== null)) ids.add(id);
+      return ids;
+    }
     return {
-      async savedGames() {
-        const ids = new Set(native.savedGames ? await native.savedGames() : []);
-        if (storage) {
-          for (let i = 0; i < storage.length; i++) {
-            const name = storage.key(i), match = /^handheld:([a-z0-9][a-z0-9-]{0,79}):[a-zA-Z0-9_-]+$/.exec(name || '');
-            if (match && !systemIds.has(match[1])) ids.add(match[1]);
-          }
-          for (const [id, aliases] of Object.entries(legacySaveKeys)) if (aliases.some(key => storage.getItem(key) !== null)) ids.add(id);
-        } else if (!native.savedGames) throw Error('Save storage unavailable');
+      async savedGames(profile) {
+        const player = playerPrefix(profile);
+        const ids = new Set(native.savedGames ? await native.savedGames(profile) : []);
+        if (storage) for (const id of storedGames(player)) ids.add(id);
+        else if (!native.savedGames) throw Error('Save storage unavailable');
         return [...ids].filter(id => {try {gameSaveId(id);return true;} catch {return false;}}).sort();
       },
-      async resetGameSaves(id) {
-        const keys = localSaveKeys(id);
+      async resetGameSaves(id, profile) {
+        const keys = localSaveKeys(id, playerPrefix(profile));
         if (nativeSaves && !native.resetGameSaves) throw Error('Save reset unavailable');
-        if (native.resetGameSaves) await native.resetGameSaves(id);
+        if (native.resetGameSaves) await native.resetGameSaves(id, profile);
+        for (const key of keys) storage.removeItem(key);
+      },
+      // Everything one player saved, in every game. The first player's storage is
+      // the shared unprefixed namespace, so only its game saves go, never settings.
+      async removeProfile(profile) {
+        if (!Profiles) throw Error('Players unavailable');
+        const player = Profiles.prefix(profile);
+        if (nativeSaves && !native.removeProfile) throw Error('Player removal unavailable');
+        if (native.removeProfile) await native.removeProfile(profile);
+        if (!storage) return;
+        const keys = [];
+        if (player) for (let i = 0; i < storage.length; i++) { const name = storage.key(i); if (name && name.startsWith(player)) keys.push(name); }
+        else for (const id of storedGames('')) keys.push(...localSaveKeys(id, ''));
         for (const key of keys) storage.removeItem(key);
       },
       kind: options.kind || 'web',
       settings: options.settings || [],
-      capabilities: Object.freeze({saves:!!storage || nativeSaves, fullscreen:!!(doc && doc.documentElement && doc.documentElement.requestFullscreen),
+      // Native saves need a host that knows which player is playing.
+      capabilities: Object.freeze({saves:!!storage || nativeSaves, profiles:!!Profiles && !!storage && (!nativeSaves || typeof native.useProfile === 'function' && typeof native.removeProfile === 'function'), fullscreen:!!(doc && doc.documentElement && doc.documentElement.requestFullscreen),
         tokens:typeof native.account==='function'&&typeof native.launch==='function', quit:typeof native.quit === 'function', power:typeof native.power === 'function', install:typeof native.install === 'function', uninstall:typeof native.uninstall === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
       saves,
       async library() {
@@ -121,6 +147,7 @@
       onInstallState: native.onInstallState && native.onInstallState.bind(native),
       updateAttention: native.updateAttention && native.updateAttention.bind(native),
       version: native.version && native.version.bind(native),
+      useProfile: native.useProfile && native.useProfile.bind(native),
       setVolume: native.setVolume && native.setVolume.bind(native),
       sleep: native.sleep && native.sleep.bind(native)
     };

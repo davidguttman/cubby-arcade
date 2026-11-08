@@ -5,45 +5,59 @@
 })(globalThis,function(){
  'use strict';
  const indices={a:0,b:1,x:2,y:3,l:4,r:5,select:8,start:9,up:12,down:13,left:14,right:15};
- const calibrationKey='cubby:controller-labels:v1',labels=['A','B','X','Y'];
+ const calibrationKey='cubby:controller-labels:v1',labels=['A','B','X','Y'],idleMs=10000;
  const controllerKey=pad=>JSON.stringify([pad.id,pad.mapping,pad.buttons.length,pad.axes.length]);
  // Gamepad attributes are native prototype getters: copy explicitly, not with spread.
  function copyPad(pad,buttons=pad.buttons,axes=pad.axes){return {id:pad.id,index:pad.index,mapping:pad.mapping,connected:pad.connected,timestamp:pad.timestamp,buttons,axes,vibrationActuator:pad.vibrationActuator,hapticActuators:pad.hapticActuators,pose:pad.pose};}
- function createCalibration(read,storage){
+ const held=pad=>Array.from(pad.buttons).flatMap((b,i)=>b.pressed||b.value>.5?[i]:[]);
+ const still=pad=>!pad||!held(pad).length&&Array.from(pad.axes).every(a=>Math.abs(a)<.5);
+ // Driven entirely by the controller being calibrated: the first pad to press a
+ // button after everything is released is locked in, then A, B, X, Y are taken
+ // one press at a time and saved after Y. A standard pad's face buttons are
+ // indices 0-3, so any other button on it (Start, Select, D-pad, shoulders) exits
+ // unchanged. A nonstandard pad may report a face button at any index, so it
+ // exits only by idling; the dialog's own close/Escape works for every pad.
+ function createCalibration(read,storage,now=()=>Date.now()){
   let profiles={};try{const saved=JSON.parse(storage?.getItem(calibrationKey)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))profiles=saved;}catch{}
   let session=null,draining=false;
   function raw(){try{return Array.from(read()||[]);}catch{return [];}}
   function valid(map,pad){return Array.isArray(map)&&map.length===4&&new Set(map).size===4&&map.every(i=>Number.isInteger(i)&&i>=0&&i<pad.buttons.length);}
-  function state(){return session?{next:labels[session.map.length]||null,complete:session.defaults||session.map.length===4,message:session.message}:null;}
+  function state(){return session?{phase:session.phase,ready:session.ready,next:session.phase==='capture'?labels[session.map.length]:null,captured:labels.slice(0,session.map.length),rejected:session.rejected,persisted:session.persisted}:null;}
   function notify(){session?.change?.(state());}
-  function finish(){session=null;draining=true;}
-  const api={
-   controllers:()=>raw().filter(p=>p&&p.connected!==false&&p.buttons.length>=4).map(p=>({key:controllerKey(p),id:p.id,index:p.index})),
-   state,isBlocking:()=>!!session||draining,
-   begin(key,change){if(!api.controllers().some(p=>p.key===key))throw Error('Connect the controller first.');session={key,map:[],ready:false,message:'Release all buttons, then press the button labelled A.',change,defaults:false};notify();},
-   reset(){if(!session)return;session.map=[];session.defaults=true;session.message='Default mapping will be restored when saved.';notify();},
-   cancel:finish,
-   save(){if(!session||!state().complete)throw Error('Capture all four buttons first.');if(session.defaults)delete profiles[session.key];else profiles[session.key]=session.map.slice();let persisted=true;try{storage?.setItem(calibrationKey,JSON.stringify(profiles));if(!storage)persisted=false;}catch{persisted=false;}finish();return persisted;},
-   getGamepads(){
-    const pads=raw(),neutral=pads.every(p=>!p||!Array.from(p.buttons).some(b=>b.pressed||b.value>.5)&&Array.from(p.axes).every(a=>Math.abs(a)<.5));
-    if(session){
-     const pad=pads.find(p=>p&&controllerKey(p)===session.key);
-     if(!pad){session.ready=false;session.message='Controller disconnected. Reconnect it or cancel.';notify();}
-     else if(!session.defaults&&session.map.length<4){
-      const down=Array.from(pad.buttons).flatMap((b,i)=>b.pressed||b.value>.5?[i]:[]);
-      if(neutral){if(!session.ready){session.ready=true;session.message='Press the button labelled '+labels[session.map.length]+'.';notify();}}
-      else if(down.length&&session.ready){
-       session.ready=false;
-       if(down.length!==1)session.message='Press only one button. Release all buttons and try again.';
-       else if(session.map.includes(down[0]))session.message='That button is already assigned. Release it and try again.';
-       else{session.map.push(down[0]);session.message=session.map.length===4?'Captured A, B, X and Y. Release all buttons, then Save.':'Release all buttons, then press the button labelled '+labels[session.map.length]+'.';}
-       notify();
-      }
-     }
+  function end(phase){session.phase=phase;notify();}
+  // Pressing A, B, X, Y onto indices 0-3 is the default, so it removes the profile.
+  function store(){
+   if(session.map.every((source,i)=>source===i))delete profiles[session.key];else profiles[session.key]=session.map.slice();
+   try{storage.setItem(calibrationKey,JSON.stringify(profiles));session.persisted=true;}catch{session.persisted=false;}
+  }
+  function capture(pads){
+   const t=now(),neutral=pads.every(still);
+   if(!neutral)session.active=t;
+   if(neutral){if(!session.ready){session.ready=true;notify();}}
+   else if(session.ready){
+    const usable=pads.filter(p=>p&&p.connected!==false&&p.buttons.length>=4);
+    const pad=session.key?usable.find(p=>controllerKey(p)===session.key):usable.find(p=>held(p).length),down=pad?held(pad):[];
+    if(down.length){
+     session.ready=false;
+     if(pad.mapping==='standard'&&down.some(i=>i>=4))return end('cancelled');
+     if(down.length>1||session.map.includes(down[0]))session.rejected++;
+     else{session.key=controllerKey(pad);session.map.push(down[0]);if(session.map.length===4){store();return end('saved');}}
+     notify();
     }
-    // Also swallow the final Save/Cancel press until every physical control is
-    // neutral. Otherwise a held capture button becomes a fresh navigation edge.
-    const blocked=!!session||draining;if(draining&&neutral)draining=false;
+   }
+   if(t-session.active>=idleMs)end('timeout');
+  }
+  const api={
+   state,isBlocking:()=>!!session||draining,
+   // change(state) runs on every visible step; phase becomes saved, cancelled or timeout.
+   begin(change){session={key:null,map:[],ready:false,phase:'capture',rejected:0,persisted:null,active:now(),change};notify();},
+   // Ends the session; captures not yet saved are discarded. Input stays swallowed
+   // until every physical control is released, so the last press can't navigate.
+   cancel(){if(session){session=null;draining=true;}},
+   getGamepads(){
+    const pads=raw();
+    if(session?.phase==='capture')capture(pads);
+    const blocked=!!session||draining;if(draining&&pads.every(still))draining=false;
     return pads.map(pad=>{
      if(!pad)return pad;
      if(blocked)return copyPad(pad,Array.from(pad.buttons,()=>({pressed:false,touched:false,value:0})),Array.from(pad.axes,()=>0));
@@ -151,5 +165,5 @@
   const api={device,calibration,reset,get root(){return shadow;},dispose(){if(disposed)return;disposed=true;reset();listeners.forEach(f=>f());host?.remove();style?.remove();doc.documentElement.removeAttribute('data-cubby-osd');if(descriptor)Object.defineProperty(nav,'getGamepads',descriptor);else delete nav.getGamepads;if(legacyDescriptor)Object.defineProperty(win,'HandheldControls',legacyDescriptor);else delete win.HandheldControls;if(win.HandheldOSD===api)delete win.HandheldOSD;}};
   return api;
  }
- return {createDevice,createCalibration,install};
+ return {createDevice,createCalibration,controllerKey,install};
 });

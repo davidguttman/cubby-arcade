@@ -120,7 +120,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                          '/runtime/core/preferences.js', '/runtime/core/platform.js', '/runtime/core/sdk.js',
                          '/runtime/core/controls.js', '/runtime/core/screen.css',
                          '/runtime/core/hub.js', '/runtime/core/hub.css', '/runtime/core/game-shell.js',
-                         '/runtime/core/host-osd.js', '/runtime/core/host-osd.css'}:
+                         '/runtime/core/host-osd.js', '/runtime/core/host-osd.css',
+                         '/runtime/core/profiles.js', '/runtime/core/avatars.js',
+                         '/runtime/core/keyboard.js', '/runtime/core/keyboard.css'}:
             return str(ROOT / '.missing-runtime-asset')
         return str(ROOT / path.lstrip('/'))
 

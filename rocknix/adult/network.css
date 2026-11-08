@@ -55,12 +55,8 @@ body.entering .entry-hints{display:flex}
 .entry{display:flex;align-items:center;gap:10px}
 .entry label{font-size:13px;color:#cdbfe6}
 input{flex:1;min-width:0;height:44px;padding:0 12px;border:0;border-radius:12px;background:rgba(16,9,28,.65);box-shadow:inset 0 2px 6px rgba(0,0,0,.4)}
-#keyboard{flex:1;min-height:0;display:grid;grid-template-columns:repeat(11,1fr);grid-auto-rows:1fr;gap:4px}
-#keyboard button{display:grid;place-items:center;min-height:0;padding:0;border-radius:9px;font-size:15px;box-shadow:0 2px 0 rgba(0,0,0,.28)}
-#keyboard button:focus{background:#ffc94d;color:#3a2410;outline-offset:0;outline-width:2px}
-#keyboard svg{width:20px;height:20px}
-#keyboard .case{grid-column:span 2;font-size:13px}
-#keyboard .space{grid-column:span 5;font-size:13px}
+/* The keys themselves are Cubby's shared keyboard: /runtime/core/keyboard.css. */
+#keyboard{flex:1;min-height:0}
 
 .update-card{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 8px 24px;text-align:center}
 #version{font-size:30px;font-weight:750}

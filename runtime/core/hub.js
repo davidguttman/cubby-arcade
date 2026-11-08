@@ -3,13 +3,20 @@
 'use strict';
 const favoriteKey='handheld:favorites:v1';
 function createState(storage){
- let favorites=[];try{const value=JSON.parse(storage?.getItem(favoriteKey)||'[]');if(Array.isArray(value))favorites=value.filter(x=>typeof x==='string');}catch{}
- return {view:'library',detail:null,show(view){if(!['library','store','options'].includes(view))throw Error('Unknown view');this.view=view;this.detail=null;},select(game){this.detail=game;},isFavorite:id=>favorites.includes(id),favorite(id){favorites=favorites.includes(id)?favorites.filter(x=>x!==id):[...favorites,id];try{storage?.setItem(favoriteKey,JSON.stringify(favorites));}catch{}return favorites.includes(id);}};
+ let favorites=[];
+ function load(next){storage=next;favorites=[];try{const value=JSON.parse(storage?.getItem(favoriteKey)||'[]');if(Array.isArray(value))favorites=value.filter(x=>typeof x==='string');}catch{}}
+ load(storage);
+ // Favorites belong to a player: switching player loads theirs.
+ return {view:'library',detail:null,load,show(view){if(!['library','store','options'].includes(view))throw Error('Unknown view');this.view=view;this.detail=null;},select(game){this.detail=game;},isFavorite:id=>favorites.includes(id),favorite(id){favorites=favorites.includes(id)?favorites.filter(x=>x!==id):[...favorites,id];try{storage?.setItem(favoriteKey,JSON.stringify(favorites));}catch{}return favorites.includes(id);}};
 }
-const paths={controller:'M7 7h10q4 0 5 11l-2 2-5-4H9l-5 4-2-2Q3 7 7 7ZM6 10v5M3.5 12.5h5M16 11h.01M19 14h.01',trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6.6l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5Z',library:'M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v7H3zM14 15h7v7h-7z',store:'M4 8h16l1 14H3ZM8 8V6a4 4 0 0 1 8 0v2',options:'M10.2 4.51 10.07 1.58h3.86L13.8 4.51l2.22.92 1.98-2.17L20.74 6l-2.17 1.98.92 2.22 2.93-.13v3.86l-2.93-.13-.92 2.22L20.74 18 18 20.74l-1.98-2.17-2.22.92.13 2.93h-3.86l.13-2.93-2.22-.92L6 20.74 3.26 18l2.17-1.98-.92-2.22-2.93.13v-3.86l2.93.13.92-2.22L3.26 6 6 3.26l1.98 2.17ZM12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z',wifi:'M2 9.5a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0M12 20h.01',update:'M3 11 12 3l9 8v10H3ZM12 18v-7M8.5 14.5 12 11l3.5 3.5',retry:'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',play:'m8 4 13 8-13 8Z',back:'m14 4-8 8 8 8M6 12h16',star:'m12 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1Z',check:'m4 12 5 5L21 5',keyboard:'M2 5h20v14H2ZM5 9h2m2 0h2m2 0h2m2 0h2M5 13h2m2 0h2m2 0h2m2 0h2M7 16h10',adult:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM5 23v-5a7 7 0 0 1 14 0v5',empty:'M3 9h18v12H3ZM3 9l3-5h12l3 5M9 13h6',error:'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9ZM9.5 12.5h.01M14.5 12.5h.01M9.5 16.2q2.5-2 5 0',quit:'M12 2v10M6 5a9 9 0 1 0 12 0',cancel:'m5 5 14 14M19 5 5 19',loading:'M12 3a9 9 0 1 1-9 9',down:'M12 2v13m-5-5 5 5 5-5M3 18v4h18v-4',pick:'m6 9 6 6 6-6',alert:'m12 2 11 20H1ZM12 8v6m0 3v1',backspace:'M9 5h12v14H9l-6-7ZM12 9.5l5 5M17 9.5l-5 5'};
+const paths={controller:'M7 7h10q4 0 5 11l-2 2-5-4H9l-5 4-2-2Q3 7 7 7ZM6 10v5M3.5 12.5h5M16 11h.01M19 14h.01',trash:'M3 6h18M9 6V3h6v3M6 6l1 16h10l1-16M10 10v7M14 10v7',token:'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6.6l1.6 3.3 3.6.5-2.6 2.5.6 3.6-3.2-1.7-3.2 1.7.6-3.6-2.6-2.5 3.6-.5Z',library:'M3 4h7v7H3zM14 4h7v7h-7zM3 15h7v7H3zM14 15h7v7h-7z',store:'M4 8h16l1 14H3ZM8 8V6a4 4 0 0 1 8 0v2',options:'M10.2 4.51 10.07 1.58h3.86L13.8 4.51l2.22.92 1.98-2.17L20.74 6l-2.17 1.98.92 2.22 2.93-.13v3.86l-2.93-.13-.92 2.22L20.74 18 18 20.74l-1.98-2.17-2.22.92.13 2.93h-3.86l.13-2.93-2.22-.92L6 20.74 3.26 18l2.17-1.98-.92-2.22-2.93.13v-3.86l2.93.13.92-2.22L3.26 6 6 3.26l1.98 2.17ZM12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Z',wifi:'M2 9.5a15 15 0 0 1 20 0M5.5 13a10 10 0 0 1 13 0M9 16.5a5 5 0 0 1 6 0M12 20h.01',update:'M3 11 12 3l9 8v10H3ZM12 18v-7M8.5 14.5 12 11l3.5 3.5',retry:'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',play:'m8 4 13 8-13 8Z',back:'m14 4-8 8 8 8M6 12h16',star:'m12 2 3 7 8 1-6 5 2 8-7-4-7 4 2-8-6-5 8-1Z',check:'m4 12 5 5L21 5',pencil:'M15.5 4.5l4 4L8 20H4v-4ZM13 7l4 4',swap:'M4 9a8 8 0 0 1 14-4l2 2M20 3v4h-4M20 15a8 8 0 0 1-14 4l-2-2M4 21v-4h4',plus:'M12 5v14M5 12h14',players:'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2 21v-1.5A5.5 5.5 0 0 1 7.5 14h3a5.5 5.5 0 0 1 5.5 5.5V21M16 4.3a3.5 3.5 0 0 1 0 6.4M19 14.4a5.5 5.5 0 0 1 3 4.9V21',keyboard:'M2 5h20v14H2ZM5 9h2m2 0h2m2 0h2m2 0h2M5 13h2m2 0h2m2 0h2m2 0h2M7 16h10',adult:'M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM5 23v-5a7 7 0 0 1 14 0v5',empty:'M3 9h18v12H3ZM3 9l3-5h12l3 5M9 13h6',error:'M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9ZM9.5 12.5h.01M14.5 12.5h.01M9.5 16.2q2.5-2 5 0',quit:'M12 2v10M6 5a9 9 0 1 0 12 0',cancel:'m5 5 14 14M19 5 5 19',loading:'M12 3a9 9 0 1 1-9 9',down:'M12 2v13m-5-5 5 5 5-5M3 18v4h18v-4',pick:'m6 9 6 6 6-6',alert:'m12 2 11 20H1ZM12 8v6m0 3v1',backspace:'M9 5h12v14H9l-6-7ZM12 9.5l5 5M17 9.5l-5 5'};
+function faceArt(avatar,Avatars){return avatar==='cubby'?cubbyFace:Avatars.svg(avatar);}
 function icon(name){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+paths[name]+'"/></svg>';}
 // Picture-only brand mark: a smiling cubby house.
-const brand='<svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><path class="brand-roof" d="M24 3.5 44 18.5V39a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V18.5Z"/><rect class="brand-door" x="11" y="20" width="26" height="18" rx="6"/><g class="brand-face"><circle cx="19" cy="27.5" r="2.4"/><circle cx="29" cy="27.5" r="2.4"/><path d="M19.5 32.5q4.5 3.4 9 0"/></g></svg>';
+const brandArt='<path class="brand-roof" d="M24 3.5 44 18.5V39a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V18.5Z"/><rect class="brand-door" x="11" y="20" width="26" height="18" rx="6"/><g class="brand-face"><circle cx="19" cy="27.5" r="2.4"/><circle cx="29" cy="27.5" r="2.4"/><path d="M19.5 32.5q4.5 3.4 9 0"/></g>';
+const brand='<svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">'+brandArt+'</svg>';
+// A fresh Cubby's one player wears this same house, on a round token like the animals.
+const cubbyFace='<svg class="avatar-art cubby-art" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="50" fill="#4b3a73"/><svg x="17" y="13" width="66" height="66" viewBox="0 0 48 48">'+brandArt+'</svg><circle cx="50" cy="50" r="48.5" fill="none" stroke="#000" stroke-width="3" opacity=".12"/></svg>';
 // Game updates live here, in the one hub every host mounts: a host that can install
 // a game gets updates with nothing to wire up, so no host can be left without them.
 // Hosts own only the mechanics: downloading, verifying, and when a version may
@@ -104,8 +111,12 @@ function startCatalogChecks(win,refresh){
  return stop;
 }
 function mount(host){
- const doc=host.ownerDocument,win=doc.defaultView;let storage;try{storage=win.localStorage;}catch{}
- const state=createState(storage),prefs=win.HandheldPreferences.preferences,platform=win.HandheldPlatform.createPlatform(win.HandheldPlatformOptions);
+ const doc=host.ownerDocument,win=doc.defaultView;let storage,session;try{storage=win.localStorage;}catch{}try{session=win.sessionStorage;}catch{}
+ const prefs=win.HandheldPreferences.preferences,platform=win.HandheldPlatform.createPlatform(win.HandheldPlatformOptions);
+ // Players: null on a host that can't keep them apart, where Cubby has one player.
+ const Avatars=win.HandheldAvatars,profiles=platform.capabilities?.profiles&&win.HandheldProfiles&&Avatars?win.HandheldProfiles.createProfiles({storage,session,platform}):null;
+ let profile=profiles?.current();
+ const state=createState(profiles?profiles.storageFor(profile):storage);
  const starterGame=win.HandheldPlatformOptions?.starterGame;let starterPending=!!starterGame,starterFailed=false;
  let account=null,launchBusy=false,featured=null,initialViewPending=true,requested=null;
  const gameReturn='cubby:game-return';let returningGame=null;try{returningGame=win.sessionStorage.getItem(gameReturn);win.sessionStorage.removeItem(gameReturn);}catch{}
@@ -122,33 +133,39 @@ function mount(host){
  function renderAccount(){if(!platform.capabilities?.tokens)return;budget.replaceChildren();budget.classList.toggle('empty-budget',account?.balance===0);budget.classList.toggle('no-budget',!account?.available);budget.setAttribute('aria-label',account?.available?account.balance+' tokens':'Tokens unavailable');
   if(account?.available&&account.balance>0){budget.style.setProperty('--coins',account.balance);for(let i=0;i<account.balance;i++){const coin=element(budget,'span','coin');coin.innerHTML=icon('token');}}else{budget.style.removeProperty('--coins');budget.innerHTML=icon(account?.available?'token':'alert');}refreshOwnership();}
  async function readAccount(){try{account=await platform.account();}catch{account={available:false};}if(!disposed)renderAccount();}
- async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.capabilities?.tokens){win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{await platform.launch(id);launched=true;}catch{await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
+ // A game runs as the player chosen here: the host has to agree before it starts.
+ async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.capabilities?.tokens){if(profiles){launchBusy=true;try{await profiles.enter(profile);}catch{return;}finally{launchBusy=false;}}win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{if(profiles)await profiles.enter(profile);await platform.launch(id);launched=true;}catch{await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
  const unsubscribeAccount=platform.onAccountState?.(value=>{account=value;if(!disposed)renderAccount();});
  if(platform.capabilities?.tokens)readAccount();
- const controllerDialog=element(host,'dialog','controller-setup');controllerDialog.setAttribute('aria-label','Adult controller setup');
- const calibration=win.HandheldOSD?.calibration;
- function closeController(){calibration?.cancel();controllerDialog.close();options.querySelector('.controller-settings')?.focus();}
+ const controllerDialog=element(host,'dialog','controller-setup');controllerDialog.setAttribute('aria-label','Adult controller setup');controllerDialog.tabIndex=-1;
+ const calibration=win.HandheldOSD?.calibration;let calibrationTimer=null,rejectTimer=null;
+ function closeController(){win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);calibrationTimer=rejectTimer=null;calibration?.cancel();if(controllerDialog.open)controllerDialog.close();options.querySelector('.controller-settings')?.focus();}
+ // The controller runs its own setup: press the printed A, B, X, Y and it saves
+ // and closes. Start (on a standard pad) or ten idle seconds leave it unchanged;
+ // the close button and Escape are extras for a mouse, touch or keyboard.
  function openController(){
-  if(!settingsUnlocked||!calibration)return;
-  controllerDialog.replaceChildren();element(controllerDialog,'h1').textContent='Controller button labels';
-  element(controllerDialog,'p').textContent='Use the printed A, B, X and Y labels, not their positions. Use a mouse, touch, or keyboard for these setup controls.';
-  const label=element(controllerDialog,'label');label.textContent='Controller ';const select=element(label,'select','controller-choice');
-  // Let the native selector keep its keyboard behavior instead of turning its
-  // arrow/Enter keys into hub navigation actions.
-  select.addEventListener('keydown',event=>event.stopPropagation());
-  const feedback=element(controllerDialog,'p','controller-feedback save-feedback');feedback.setAttribute('role','status');
-  const actions=element(controllerDialog,'div','save-actions');let start,save;
-  function refresh(){select.replaceChildren();for(const pad of calibration.controllers()){const option=element(select,'option');option.value=pad.key;option.textContent=pad.id;}feedback.textContent=select.children.length?'Choose a controller, then start. If Steam changes the reported identity, calibrate again.':'Press a button to connect your controller, then Refresh controllers.';}
-  function control(text,fn,cls){const b=element(actions,'button',cls);b.type='button';b.textContent=text;b.addEventListener('click',fn);return b;}
-  control('Refresh controllers',()=>{calibration.cancel();select.disabled=false;start.disabled=false;save.disabled=true;refresh();},'refresh-controllers');
-  start=control('Start calibration',()=>{
-   try{win.HandheldOSD.reset();calibration.begin(select.value,state=>{feedback.textContent=state.message;save.disabled=!state.complete;});select.disabled=true;}
-   catch(error){feedback.textContent=error.message;}
-  },'start-calibration');
-  control('Reset to default',()=>{try{calibration.begin(select.value);calibration.reset();select.disabled=true;save.disabled=false;feedback.textContent=calibration.state().message;}catch(error){feedback.textContent=error.message;}},'reset-controller');
-  control('Cancel',closeController,'cancel-controller');
-  save=control('Save',()=>{try{const persisted=calibration.save();if(persisted)closeController();else{feedback.textContent='Applied for this page only. Browser storage is unavailable; settings will not survive navigation.';save.disabled=true;}}catch(error){feedback.textContent=error.message;}},'save-controller');save.disabled=true;
-  refresh();controllerDialog.showModal();actions.querySelector('button').focus();
+  if(!settingsUnlocked||!calibration||controllerDialog.open)return;
+  controllerDialog.replaceChildren();
+  const close=element(controllerDialog,'button','cancel-controller');close.type='button';close.setAttribute('aria-label','Cancel');close.innerHTML=icon('cancel');close.addEventListener('click',closeController);
+  // Wordless: the big glyph is the prompt, a check or alert is the result.
+  const prompt=element(controllerDialog,'div','calibration-prompt'),row=element(controllerDialog,'div','calibration-row');
+  prompt.setAttribute('role','status');
+  const glyphs=['A','B','X','Y'].map(letter=>{const glyph=element(row,'span','calibration-glyph');glyph.textContent=letter;return glyph;});
+  let rejected=0;
+  function render(step){
+   if(!controllerDialog.open)return;
+   if(step.phase==='cancelled'||step.phase==='timeout'){closeController();return;}
+   const done=step.phase==='saved';
+   glyphs.forEach((glyph,i)=>{glyph.classList.toggle('is-set',done||i<step.captured.length);glyph.classList.toggle('is-next',glyph.textContent===step.next);});
+   prompt.classList.toggle('waiting',!done&&!step.ready);prompt.classList.toggle('done',done);
+   if(step.rejected!==rejected){rejected=step.rejected;prompt.classList.add('rejected');win.clearTimeout(rejectTimer);rejectTimer=win.setTimeout(()=>prompt.classList.remove('rejected'),400);}
+   if(done){
+    // Storage can be denied in a browser: the mapping still applies until the page changes.
+    prompt.innerHTML=icon(step.persisted?'check':'alert');prompt.classList.toggle('unsaved',!step.persisted);prompt.setAttribute('aria-label',step.persisted?'Saved':'Saved for this page only');
+    calibrationTimer=win.setTimeout(closeController,step.persisted?1000:3000);
+   }else{prompt.textContent=step.next;prompt.setAttribute('aria-label','Press '+step.next);}
+  }
+  win.HandheldOSD.reset?.();controllerDialog.showModal();controllerDialog.focus();calibration.begin(render);
  }
  controllerDialog.addEventListener('cancel',e=>{e.preventDefault();closeController();});
  const quitDialog=element(host,'dialog','quit-confirm');quitDialog.setAttribute('aria-label','Quit application?');
@@ -200,19 +217,31 @@ function mount(host){
  }
  uninstallDialog.addEventListener('cancel',e=>{e.preventDefault();closeUninstall();});
  const saveDialog=element(host,'dialog','save-management');saveDialog.setAttribute('aria-label','Game saves');
- let saveBusy=false,saveIds=[];
+ // With more than one player, the adult first picks whose saves; saveProfile is
+ // that player, or undefined on a Cubby with one player, exactly as before players.
+ let saveBusy=false,saveIds=[],saveProfile;
+ const manyPlayers=()=>!!profiles&&profiles.list().length>1;
  function closeSaveManagement(){if(saveBusy)return;saveDialog.close();adult=false;tabs.options.focus();}
+ function saveBack(){if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else if(saveDialog.querySelector('.choose-save,.close-saves')&&saveProfile&&manyPlayers())renderSavePlayers();else closeSaveManagement();}
  function saveText(parent,tag,text,cls){const node=element(parent,tag,cls);node.textContent=text;return node;}
  function saveButton(parent,label,fn,cls){const b=saveText(parent,'button',label,cls);b.type='button';b.addEventListener('click',fn);return b;}
  function saveTitle(id){return [...library,...catalog].find(game=>game.id===id)?.title||id;}
- function saveHeading(){saveDialog.replaceChildren();saveText(saveDialog,'h1','Game saves');}
+ function playerName(id){return profiles?.list().find(x=>x.id===id)?.name||'';}
+ function playerFace(parent,id){const p=profiles.list().find(x=>x.id===id),face=element(parent,'span','player-face');face.innerHTML=faceArt(p.avatar,Avatars);return face;}
+ function saveHeading(){saveDialog.replaceChildren();const heading=saveText(saveDialog,'h1','Game saves');if(saveProfile&&manyPlayers()){heading.textContent=playerName(saveProfile);heading.prepend?.(playerFace(heading,saveProfile));heading.classList.add('player-heading');}}
+ function renderSavePlayers(){
+  saveProfile=undefined;saveDialog.replaceChildren();button(saveDialog,'back','Back',closeSaveManagement,'close-players dialog-back');
+  const rows=element(saveDialog,'div','save-rows');
+  for(const p of profiles.list()){const b=saveButton(rows,p.name,()=>loadSaves(p.id),'choose-player');b.prepend?.(playerFace(b,p.id));}
+  rows.querySelector('.choose-player').focus();
+ }
  function renderSaveList(message=''){
   saveHeading();saveText(saveDialog,'p','Delete a game’s saved progress to start it fresh. The game stays installed.');
   const feedback=saveText(saveDialog,'p',message,'save-feedback');feedback.setAttribute('role','status');
   if(!saveIds.length)saveText(saveDialog,'p','No saved games.');
   const rows=element(saveDialog,'div','save-rows');
   for(const id of saveIds)saveButton(rows,saveTitle(id),()=>confirmSaveReset(id),'choose-save');
-  saveButton(saveDialog,'Back',closeSaveManagement,'close-saves').focus();
+  saveButton(saveDialog,'Back',saveBack,'close-saves').focus();
  }
  function confirmSaveReset(id){
   if(saveBusy)return;saveHeading();saveText(saveDialog,'h2',saveTitle(id));
@@ -222,17 +251,171 @@ function mount(host){
   const cancel=saveButton(actions,'Cancel',()=>renderSaveList(),'cancel-reset');
   saveButton(actions,'Delete saves',async()=>{
    if(saveBusy)return;saveBusy=true;feedback.textContent='Deleting…';for(const b of saveDialog.querySelectorAll('button'))b.disabled=true;
-   try{await platform.resetGameSaves(id);if(disposed)return;saveIds=saveIds.filter(saved=>saved!==id);saveBusy=false;renderSaveList('Saves deleted. This game will start fresh.');}
+   try{await platform.resetGameSaves(id,saveProfile);if(disposed)return;saveIds=saveIds.filter(saved=>saved!==id);saveBusy=false;renderSaveList('Saves deleted. This game will start fresh.');}
    catch{if(disposed)return;feedback.textContent='Saves could not be fully deleted. Try again.';for(const b of saveDialog.querySelectorAll('button'))b.disabled=false;cancel.focus();}
    finally{saveBusy=false;}
   },'confirm-reset');cancel.focus();
  }
- async function openSaveManagement(){
-  if(adult)return;adult=true;saveHeading();saveText(saveDialog,'p','Loading saved games…');saveButton(saveDialog,'Back',closeSaveManagement,'close-saves');saveDialog.showModal();saveDialog.querySelector('button').focus();
-  try{const ids=await platform.savedGames();if(disposed||!saveDialog.open)return;saveIds=ids;renderSaveList();}
-  catch{if(disposed||!saveDialog.open)return;saveHeading();saveText(saveDialog,'p','Saved games could not be loaded. Close this page and try again.','save-feedback').setAttribute('role','status');saveButton(saveDialog,'Back',closeSaveManagement,'close-saves').focus();}
+ async function loadSaves(player){
+  saveProfile=player;saveHeading();saveText(saveDialog,'p','Loading saved games…');saveButton(saveDialog,'Back',saveBack,'close-saves').focus();
+  try{const ids=await platform.savedGames(saveProfile);if(disposed||!saveDialog.open||saveProfile!==player)return;saveIds=ids;renderSaveList();}
+  catch{if(disposed||!saveDialog.open||saveProfile!==player)return;saveHeading();saveText(saveDialog,'p','Saved games could not be loaded. Close this page and try again.','save-feedback').setAttribute('role','status');saveButton(saveDialog,'Back',saveBack,'close-saves').focus();}
  }
- saveDialog.addEventListener('cancel',e=>{e.preventDefault();if(saveBusy)return;if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();});
+ function openSaveManagement(){
+  if(adult)return;adult=true;saveProfile=undefined;saveDialog.replaceChildren();saveDialog.showModal();
+  if(manyPlayers())renderSavePlayers();else loadSaves(profiles?profile:undefined);
+ }
+ saveDialog.addEventListener('cancel',e=>{e.preventDefault();if(saveBusy)return;saveBack();});
+ // The child's side of players: their face and name at the top of the hub, and a picker
+ // of faces. A child's own name is the one word the child hub shows (AGENTS.md); nothing
+ // needs reading. With one player neither exists, so the hub looks as it always did.
+ const playerButton=element(host.querySelector('.brand'),'button','player-button');playerButton.type='button';playerButton.hidden=true;playerButton.addEventListener('click',()=>openPicker());
+ const playerDisc=element(playerButton,'span','player-disc'),playerLabel=element(playerButton,'span','player-label');
+ function renderPlayer(){
+  // With players the chip takes the logo's place: a fresh Cubby's chip is the logo.
+  const current=profiles&&profiles.list().find(p=>p.id===profile);playerButton.hidden=!current;host.querySelector('.brand').classList.toggle('has-player',!!current);if(!current)return;
+  if(playerButton.dataset.avatar!==current.avatar){playerDisc.innerHTML=faceArt(current.avatar,Avatars);playerButton.dataset.avatar=current.avatar;}
+  playerLabel.textContent=current.name;playerButton.setAttribute('aria-label',current.name+'. Change player');fitPlayerName();
+ }
+ // The name shows only whole: if the top bar has no room, the face is enough.
+ function fitPlayerName(){playerLabel.hidden=false;win.requestAnimationFrame?.(()=>{playerLabel.hidden=playerLabel.scrollWidth>playerLabel.clientWidth+1;});}
+ if(profiles)win.addEventListener('resize',fitPlayerName);
+ const picker=element(host,'section','player-picker');picker.hidden=true;picker.setAttribute('aria-label','Who is playing?');
+ let picking=false,choosing=false;
+ function openPicker(){
+  if(!profiles||adult||picking)return;picking=true;pausePreview();renderFaces();
+ }
+ // Faces, and + while an animal is free. The first pick after Cubby starts can't be
+ // skipped; after that Back keeps the player.
+ function renderFaces(){
+  picker.replaceChildren();kidBoard=null;kidSave=null;
+  if(profiles.pinned()||!manyPlayers())button(picker,'back','Keep player',closePicker,'picker-back');
+  const faces=element(picker,'div','picker-faces'),list=profiles.list(),more=profiles.freeAvatars().length>0;faces.dataset.count=String(list.length+(more?1:0));
+  for(const p of list){const face=element(faces,'button','picker-face');face.type='button';face.dataset.profile=p.id;face.setAttribute('aria-label',p.name);element(face,'span','face-disc').innerHTML=faceArt(p.avatar,Avatars);element(face,'span','face-name').textContent=p.name;face.addEventListener('click',()=>choose(p.id));}
+  if(more){const plus=element(faces,'button','picker-face picker-plus');plus.type='button';plus.setAttribute('aria-label','New player');element(plus,'span','face-disc').innerHTML=icon('plus');element(plus,'span','face-name');plus.addEventListener('click',kidAnimal);}
+  picker.hidden=false;
+  (Array.from(faces.querySelectorAll('.picker-face')).find(face=>face.dataset.profile===profile)||faces.querySelector('.picker-face'))?.focus();
+ }
+ // A child's +: their animal, then their name, with ✕ always going back unchanged. On a
+ // fresh Cubby this takes over Cubby itself (same saves); after that it adds a player.
+ let kidBoard=null,kidSave=null;
+ function kidAnimal(){
+  picker.replaceChildren();kidBoard=null;kidSave=null;
+  const grid=element(picker,'div','picker-faces kid-animals'),free=profiles.freeAvatars();grid.dataset.count=String(free.length);
+  for(const avatar of free){const face=element(grid,'button','picker-face');face.type='button';face.setAttribute('aria-label',Avatars.name(avatar));element(face,'span','face-disc').innerHTML=Avatars.svg(avatar);face.addEventListener('click',()=>kidName(avatar));}
+  iconButton(element(picker,'div','kid-actions'),'cancel','Cancel',renderFaces,'kid-cancel');
+  grid.querySelector('.picker-face')?.focus();
+ }
+ function kidName(avatar){
+  picker.replaceChildren();
+  const box=element(picker,'div','kid-name'),target=profiles.claimTarget();
+  const entry=nameEntry(box,{avatar,value:'',keys:true,problem:raw=>profiles.nameProblem(target,raw),cancel:renderFaces,save:async name=>{
+   let made;try{made=profiles.claim(avatar,name);}catch{return false;}
+   renderPlayer();await choose(made.id);return true;
+  }});
+  kidBoard=entry.board;kidSave=entry.save;
+ }
+ function hidePicker(){picking=false;picker.hidden=true;picker.replaceChildren();kidBoard=null;kidSave=null;}
+ function closePicker(){if(!picking)return;hidePicker();focusView();resumePreview();}
+ async function choose(id){
+  if(choosing)return;choosing=true;
+  try{await profiles.select(id);}catch{return;}finally{choosing=false;}
+  if(disposed)return;usePlayer(id);closePicker();
+ }
+ function usePlayer(id){profile=id;state.load(profiles.storageFor(id));renderPlayer();refreshOwnership();const star=detail.querySelector('.favorite');if(star&&state.detail)star.setAttribute('aria-pressed',String(state.isFavorite(state.detail.id)));}
+ // Spatial focus among a few buttons: the nearest one in the pressed direction.
+ function nearest(nodes,active,a){
+  if(!nodes.includes(active))return null;const from=active.getBoundingClientRect(),x=from.left+from.width/2,y=from.top+from.height/2,horizontal=a==='left'||a==='right',sign=a==='right'||a==='down'?1:-1;let best=active,score=Infinity;
+  for(const node of nodes){if(node===active)continue;const r=node.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=(horizontal?dx:dy)*sign,cost=primary+Math.abs(horizontal?dy:dx)*2;if(primary>4&&cost<score){score=cost;best=node;}}
+  return best;
+ }
+ // Adult players page, behind the gear tab's question like every worded page.
+ const playerDialog=element(host,'dialog','save-management player-management');playerDialog.setAttribute('aria-label','Players');
+ let playerBusy=false;
+ function closePlayers(){if(playerBusy)return;playerDialog.close();adult=false;tabs.options.focus();}
+ function playersBack(){if(playerBusy)return;if(playerDialog.querySelector('.cancel-player'))renderPlayers();else closePlayers();}
+ // Players screens have no words but the players' names: faces, names and picture buttons.
+ function iconButton(parent,name,label,fn,cls){return button(parent,name,label,fn,'icon-button '+(cls||''));}
+ function refuse(target){target.classList.remove('refused');void target.offsetWidth;target.classList.add('refused');}
+ function renderPlayers(){
+  playerDialog.replaceChildren();iconButton(playerDialog,'back','Back',closePlayers,'close-players-page dialog-back');
+  const rows=element(playerDialog,'div','player-rows'),list=profiles.list();
+  for(const p of list){
+   // The player playing now wears the picker's ring.
+   const row=element(rows,'div','player-row'+(list.length>1&&p.id===profile?' is-playing':''));playerFace(row,p.id);
+   saveText(row,'span',p.name,'player-name');
+   iconButton(row,'pencil','Rename '+p.name,()=>renamePlayer(p),'rename-player');
+   iconButton(row,'swap','Change picture',()=>choosePicture(p),'change-picture');
+   // Removing the only player returns the device to a fresh Cubby; Cubby itself stays.
+   if(!profiles.fresh())iconButton(row,'trash','Remove '+p.name,()=>confirmRemovePlayer(p),'remove-player');
+  }
+  // Children add players with + on the hub, so this page only manages them.
+  (rows.querySelector('.rename-player')||playerDialog.querySelector('.dialog-back')).focus();
+ }
+ function choosePicture(p){
+  playerDialog.replaceChildren();
+  const grid=element(playerDialog,'div','avatar-choices'),used=new Set(profiles.list().map(x=>x.avatar));
+  for(const avatar of Avatars.ids){
+   if(used.has(avatar)&&avatar!==p.avatar)continue;
+   const choice=element(grid,'button','avatar-choice');choice.type='button';choice.innerHTML=Avatars.svg(avatar);choice.setAttribute('aria-label',Avatars.name(avatar));
+   if(avatar===p.avatar)choice.setAttribute('aria-current','true');
+   choice.addEventListener('click',()=>{
+    // A picture whose animal name another player has is refused with a shake.
+    try{if(avatar!==p.avatar)profiles.setAvatar(p.id,avatar);}
+    catch{refuse(choice);return;}
+    renderPlayer();renderPlayers();
+   });
+  }
+  iconButton(element(playerDialog,'div','icon-actions'),'cancel','Cancel',()=>renderPlayers(),'cancel-player');
+  (grid.querySelector('.avatar-choice[aria-current]')||grid.querySelector('.avatar-choice'))?.focus();
+ }
+ function confirmRemovePlayer(p){
+  playerDialog.replaceChildren();
+  const picture=element(playerDialog,'div','remove-picture');playerFace(picture,p.id);element(picture,'span','remove-symbol').innerHTML=icon('trash');
+  const actions=element(playerDialog,'div','icon-actions');
+  const cancel=iconButton(actions,'cancel','Cancel',()=>renderPlayers(),'cancel-player');
+  const confirm=iconButton(actions,'trash','Remove '+p.name,async()=>{
+   if(playerBusy)return;playerBusy=true;for(const b of playerDialog.querySelectorAll('button'))b.disabled=true;
+   try{await profiles.remove(p.id);try{profiles.storageFor(p.id).removeItem(favoriteKey);}catch{}}
+   catch{playerBusy=false;if(disposed)return;for(const b of playerDialog.querySelectorAll('button'))b.disabled=false;refuse(confirm);cancel.focus();return;}
+   playerBusy=false;if(disposed)return;
+   if(profiles.list().some(x=>x.id===profile))renderPlayer();else usePlayer(profiles.current());
+   renderPlayers();
+  },'remove-confirm');cancel.focus();
+ }
+ // Naming: a text field everywhere; on the handheld, which has only a controller, Cubby's
+ // shared on-screen keyboard (keyboard.js, the same one the Wi-Fi password uses) types it.
+ // ✓ stays dim until the name is one this player can have; trying anyway shakes the field.
+ // One name entry for adults and children: a face, the field, and ✕ ✓. Keys come from
+ // Cubby's shared on-screen keyboard (keyboard.js, as the Wi-Fi password uses) wherever
+ // there may be no keyboard: the handheld, and a child's +. ✓ stays dim until the name
+ // is one the player can have; trying anyway shakes the field red. No words.
+ function nameEntry(parent,{avatar,value,keys,problem,save,cancel}){
+  const entry=element(parent,'div','name-entry');element(entry,'span','player-face').innerHTML=faceArt(avatar,Avatars);
+  const field=element(entry,'input','player-name-field');
+  field.type='text';field.value=value;field.maxLength=win.HandheldProfiles.NAME_LENGTH;field.setAttribute('aria-label','Name');field.autocomplete='off';field.spellcheck=false;
+  let ok=false,saveKey=null,busy=false;
+  // A red outline marks a name that can't be used; an empty field is just unfinished.
+  function check(){ok=!problem(field.value);field.classList.toggle('invalid',!ok&&!!field.value.trim());if(saveKey)saveKey.disabled=!ok;}
+  async function attempt(){if(busy)return;check();if(!ok){field.classList.add('invalid');refuse(field);return;}busy=true;const done=await save(field.value);busy=false;if(!done)refuse(field);}
+  // Typed keys belong to the field, not to the hub's controls.
+  for(const type of ['keydown','keyup'])field.addEventListener(type,event=>{event.stopPropagation();if(type==='keydown'&&event.key==='Enter')attempt();if(type==='keydown'&&event.key==='Escape')cancel();});
+  field.addEventListener('input',check);
+  const board=keys&&win.HandheldKeyboard?win.HandheldKeyboard.create({container:element(parent,'div','name-keyboard'),field,layout:'name',capitalizeFirst:true}):null;
+  const actions=element(parent,'div','icon-actions');
+  iconButton(actions,'cancel','Cancel',cancel,'cancel-player');
+  saveKey=iconButton(actions,'check','Save name',attempt,'save-name');check();
+  if(board)board.focus();else{field.focus();field.select?.();}
+  return {board,save:attempt};
+ }
+ let nameBoard=null,nameSave=null;
+ function renamePlayer(p){
+  playerDialog.replaceChildren();
+  const entry=nameEntry(playerDialog,{avatar:p.avatar,value:p.name,keys:win.CubbyDeviceProfile==='rg353v',problem:raw=>profiles.nameProblem(p.id,raw),cancel:()=>renderPlayers(),save:name=>{try{profiles.rename(p.id,name);}catch{return false;}renderPlayer();renderPlayers();return true;}});
+  nameBoard=entry.board;nameSave=entry.save;
+ }
+ function openPlayers(){if(adult||!profiles)return;adult=true;playerDialog.replaceChildren();playerDialog.showModal();renderPlayers();}
+ playerDialog.addEventListener('cancel',e=>{e.preventDefault();playersBack();});
  // The gear tab shows this keypad instead of settings until it is answered, and
  // locks again on leaving the tab. It is the tab's content, not a modal, so the
  // shoulder buttons and Back still move a wandering child straight on.
@@ -253,7 +436,7 @@ function mount(host){
  // A worded page is a separate document, so one marker carries the answered gate
  // back to it. It is spent on the next load whatever that load turns out to be.
  const settingsReturn='cubby:settings-return';
- function openSetting(href){if(href==='#adult-saves'){openSaveManagement();return;}try{win.sessionStorage.setItem(settingsReturn,'1');}catch{}win.location.href=href;}
+ function openSetting(href){if(href==='#adult-saves'){openSaveManagement();return;}if(href==='#adult-players'){openPlayers();return;}try{win.sessionStorage.setItem(settingsReturn,'1');}catch{}win.location.href=href;}
  function returningToSettings(){try{const marked=win.sessionStorage.getItem(settingsReturn)==='1';win.sessionStorage.removeItem(settingsReturn);return marked&&win.location?.hash==='#options';}catch{return false;}}
 
  const views=['library','store','options'],tabs={};let pendingTabFocus=null;for(const name of views)tabs[name]=button(nav,name,name,()=>activateView(name),'view-tab');
@@ -362,8 +545,11 @@ function mount(host){
  const tiles=element(options,'div','settings-tiles'),controller=()=>{if(calibration)button(tiles,'controller','Adult controller setup',openController,'controller-settings settings-tile');};
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
- if(platform.settings?.length){for(const entry of platform.settings){const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}showNotice();showVersion();return;}
+ if(platform.settings?.length){for(const entry of platform.settings){if(entry.href==='#adult-players'&&!profiles)continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}
+  // Past six tiles, a short screen takes four smaller ones a row to stay in two rows.
+  tiles.classList.toggle('many',tiles.children.length>6);showNotice();showVersion();return;}
  controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');
+ if(profiles)button(options,'players','Players',()=>openSetting('#adult-players'),'manage-players settings-tile');
  button(options,'trash','Manage game saves',()=>openSetting('#adult-saves'),'manage-saves settings-tile');
  const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
  }
@@ -385,7 +571,17 @@ function mount(host){
  for(const [label,fn,cls] of [['Cancel capture',()=>{stopCapture();feedback.textContent='';renderRows();}],['Reset keys',()=>{stopCapture();draft.reset();feedback.textContent='';renderRows();}],['Cancel',()=>closeAdult(false)],['Save',()=>closeAdult(true),'primary']]){const b=element(actions,'button',cls);b.type='button';b.textContent=label;b.addEventListener('click',fn);}
  dialog.showModal();dialog.querySelector('button').focus();}
  dialog.addEventListener('cancel',e=>{e.preventDefault();closeAdult(false);});
- const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit'){if(saveDialog.querySelector('.cancel-reset'))renderSaveList();else closeSaveManagement();}else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
+ const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(picking){const nodes=Array.from(picker.querySelectorAll('button')).filter(b=>!b.disabled);
+  // In a child's +, Back is ✕; on the name keys a shoulder changes case and Start is ✓.
+  const step=picker.querySelector('.kid-cancel,.name-entry');
+  if(a==='back'||a==='exit'){if(step)renderFaces();else if(profiles.pinned()||!manyPlayers())closePicker();}
+  else if(kidBoard&&(a==='nextView'||a==='previousView'))kidBoard.toggleCase();
+  else if(kidSave&&a==='pause')kidSave();
+  else if(a==='confirm'||a==='pause')(nodes.includes(doc.activeElement)?doc.activeElement:picker.querySelector('.picker-face'))?.click();
+  else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||nodes[0])?.focus();return;}if(playerDialog.open){if(playerBusy)return;const nodes=Array.from(playerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);
+  // Keys are a grid: the D-pad moves across it, a shoulder changes case and Start saves.
+  if(nameBoard&&playerDialog.querySelector('.name-keyboard')){if(a==='back'||a==='exit')playersBack();else if(a==='nextView'||a==='previousView')nameBoard.toggleCase();else if(a==='pause')nameSave?.();else if(a==='confirm')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))(nearest(nodes,doc.activeElement,a)||nodes[0])?.focus();return;}
+  if(a==='back'||a==='exit')playersBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(controllerDialog.open){if(event.source==='gamepad')return;if(a==='back'||a==='exit')closeController();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const nodes=Array.from(controllerDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();}return;}if(uninstallDialog.open){if(uninstallBusy)return;const nodes=Array.from(uninstallDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeUninstall();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(quitDialog.open){if(quitting)return;const nodes=Array.from(quitDialog.querySelectorAll('button'));if(a==='back'||a==='exit')closeQuit();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a)){const index=nodes.indexOf(doc.activeElement);nodes[(index+1)%nodes.length]?.focus();}return;}if(saveDialog.open){if(saveBusy)return;const nodes=Array.from(saveDialog.querySelectorAll('button')).filter(b=>!b.disabled),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')saveBack();else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}if(adult){const nodes=Array.from(dialog.querySelectorAll('button')),index=nodes.indexOf(doc.activeElement);if(a==='back'||a==='exit')closeAdult(false);else if(a==='confirm'||a==='pause')doc.activeElement?.click();else if(['left','right','up','down'].includes(a))nodes[(index+(['left','up'].includes(a)?-1:1)+nodes.length)%nodes.length]?.focus();return;}
  if(a==='exit'||a==='back'){if(!detail.hidden)returnToGames(doc.activeElement?.classList.contains('game-card')||doc.activeElement===tabs[state.view]);else activateView('library');return;}
  if(a==='select'||a==='nextView'||a==='previousView'){activateView(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);return;}
  const padKeys=Array.from(doc.activeElement?.closest?.('.gate-pad')?.querySelectorAll('button')||[]);
@@ -395,7 +591,7 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
@@ -416,8 +612,11 @@ function mount(host){
  // Only initial discovery may choose Store; explicit navigation always wins.
  for(const [view,request] of [...(!starterGame?[['library',platform.library()]]:[]),['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length){const stayed=doc.activeElement===tabs.library;show('store');if(stayed){tabs.store.focus();focusView();if(loading.store)pendingTabFocus='store';}}else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
  // Adult pages return here so Back lands where the adult left, not on the library.
- function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
+ function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;if(picking)hidePicker();initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
  settingsUnlocked=returningToSettings();activateView(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);
+ // Who is playing is asked once each time Cubby starts; coming back from a game or an
+ // adult page keeps the player.
+ renderPlayer();if(manyPlayers()&&!profiles.pinned()&&win.location?.hash!=='#options')openPicker();
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose,refreshCatalog};
 }

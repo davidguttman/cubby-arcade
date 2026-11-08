@@ -1,0 +1,9 @@
+/* Cubby's on-screen keyboard (keyboard.js): one look on every page that takes text. */
+.cubby-keyboard{display:grid;grid-template-columns:repeat(11,1fr);grid-auto-rows:1fr;gap:4px}
+.cubby-keyboard[data-layout=name]{grid-template-columns:repeat(10,1fr)}
+.cubby-keyboard button{display:grid;place-items:center;min-width:0;min-height:0;padding:0;border-radius:9px;font-size:15px;box-shadow:0 2px 0 rgba(0,0,0,.28)}
+.cubby-keyboard button:focus{background:#ffc94d;color:#3a2410;outline-offset:0;outline-width:2px}
+.cubby-keyboard svg{width:20px;height:20px}
+.cubby-keyboard .case{grid-column:span 2;font-size:13px}
+.cubby-keyboard .space{grid-column:span 5;font-size:13px}
+.cubby-keyboard[data-layout=name] .space{grid-column:span 8}

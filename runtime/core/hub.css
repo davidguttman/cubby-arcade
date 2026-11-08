@@ -80,6 +80,135 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .save-actions{display:flex;flex-wrap:wrap;gap:16px}.hub :is(.save-management,.controller-setup) .confirm-reset{background:#854b51}
 .hub :is(.save-management,.controller-setup) .cancel-reset{background:#ffc94d;color:#3a2410}.hub :is(.save-management,.controller-setup) button:focus{outline:3px solid #ffc94d;outline-offset:3px}
 .hub :is(.save-management,.controller-setup) button:disabled{opacity:.45}.settings-tiles{flex-wrap:wrap;justify-content:center}
-.controller-choice{display:block;box-sizing:border-box;width:100%;min-height:44px;margin:8px 0;padding:10px;font:inherit;border-radius:8px;background:#1b142c;color:#fff4e6}
-.controller-feedback{overflow-wrap:anywhere}.hub .controller-setup button{min-height:44px}
-@media(max-height:540px){:is(.save-management,.controller-setup){padding:16px}:is(.save-management,.controller-setup) h1{font-size:21px}:is(.save-management,.controller-setup) p{margin:8px 0}}
+/* Controller setup is driven by the pad itself: one big face-button letter to press,
+   and the four letters below light up as each is taken. */
+.controller-setup{position:relative;width:min(420px,94vw);padding:30px 24px 26px;text-align:center}.controller-setup:focus{outline:none}
+.calibration-prompt{display:grid;place-items:center;width:clamp(112px,28vh,168px);aspect-ratio:1;margin:6px auto 0;border-radius:50%;background:linear-gradient(#ffd770,#ffb22e);color:#3a2410;font:800 clamp(60px,15vh,96px)/1 system-ui,sans-serif;box-shadow:0 8px 0 #bf690e,0 16px 28px rgba(255,160,40,.32),inset 0 3px 0 rgba(255,255,255,.6);transition:opacity .16s,transform .16s}
+.calibration-prompt.waiting{opacity:.45;transform:scale(.94)}
+.calibration-prompt.rejected{background:linear-gradient(#ff9a8a,#ef5f4e);color:#fff;box-shadow:0 8px 0 #a63a2d,inset 0 3px 0 rgba(255,255,255,.45);animation:calibration-shake .36s}
+@keyframes calibration-shake{20%,60%{transform:translateX(-10px)}40%,80%{transform:translateX(10px)}}
+.calibration-prompt.done{background:linear-gradient(#86ecc4,#3fbf8c);color:#0f3b2a;box-shadow:0 8px 0 #22825b,0 16px 28px rgba(63,191,140,.3),inset 0 3px 0 rgba(255,255,255,.55);animation:pop .35s cubic-bezier(.3,1.8,.5,1)}
+.hub .calibration-prompt svg{width:52%;height:52%;stroke-width:3.4}
+.calibration-prompt.done.unsaved{background:linear-gradient(#ffd770,#ffb22e);color:#3a2410;box-shadow:0 8px 0 #bf690e,inset 0 3px 0 rgba(255,255,255,.6)}
+.calibration-row{display:flex;justify-content:center;gap:12px;margin:26px 0 4px}
+.calibration-glyph{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.08);color:#a898c4;font:700 21px/1 system-ui,sans-serif;box-shadow:inset 0 0 0 2px rgba(255,255,255,.12);transition:background-color .16s,color .16s}
+.calibration-glyph.is-next{color:#ffc94d;box-shadow:inset 0 0 0 3px #ffc94d}
+.calibration-glyph.is-set{background:#ffc94d;color:#3a2410;box-shadow:0 3px 0 #b8650c}
+.done~.calibration-row .calibration-glyph{background:#5fd6a4;color:#0f3b2a;box-shadow:0 3px 0 #22825b}
+.hub .controller-setup .cancel-controller{position:absolute;top:12px;right:12px;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border-radius:50%;background:rgba(255,255,255,.08);color:#cdbfe6}
+.hub .controller-setup .cancel-controller svg{width:22px;height:22px}
+@media(max-height:540px){:is(.save-management,.controller-setup){padding:16px}.calibration-row{margin:16px 0 2px}:is(.save-management,.controller-setup) h1{font-size:21px}:is(.save-management,.controller-setup) p{margin:8px 0}}
+/* Players. For a child the faces are the whole interface: big, round, and lit when chosen. */
+.hub :is(.player-button,.picker-face,.player-face,.avatar-choice) svg{stroke:none}
+.player-picker{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(12px,4vh,34px);padding:16px;background:radial-gradient(110% 70% at 8% -12%,#6a3d5d 0,rgba(106,61,93,0) 60%),radial-gradient(90% 70% at 105% 115%,#283a6a 0,rgba(40,58,106,0) 62%),linear-gradient(180deg,#2a1f3d,#150f22);animation:rise .28s ease-out}
+/* Faces sit in rows of a set width: 2-4 in one row, 5-6 as three a row, 7-8 as four.
+   A light rim and a soft shadow keep every face's round edge readable on the dark
+   background; a hard dark drop shadow there made the bottom edge look cut off. */
+.picker-faces{--size:clamp(104px,min(25vh,20vw),210px);--gap:clamp(18px,4vw,44px);display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:var(--gap);max-width:calc(var(--size) * 4 + var(--gap) * 3 + 1px)}
+.picker-faces:is([data-count="2"],[data-count="3"]){--size:clamp(130px,min(40vh,27vw),280px)}
+.picker-faces[data-count="4"]{--size:clamp(110px,min(32vh,20vw),240px)}
+.picker-faces:is([data-count="5"],[data-count="6"]){--size:clamp(110px,min(30vh,24vw),230px);max-width:calc(var(--size) * 3 + var(--gap) * 2 + 1px)}
+/* Each face is a button: the round picture, and the child's name under it in big letters. */
+.picker-faces{--name:clamp(16px,3.8vh,26px)}
+.picker-faces:is([data-count="2"],[data-count="3"]){--name:clamp(22px,5.5vh,40px)}
+.picker-faces[data-count="4"]{--name:clamp(20px,4.6vh,34px)}
+.picker-faces:is([data-count="5"],[data-count="6"]){--name:clamp(18px,4.4vh,30px)}
+.hub .picker-face{flex-direction:column;justify-content:flex-start;gap:clamp(14px,3vh,20px);width:var(--size);min-width:0;min-height:0;padding:0;border-radius:0;background:transparent;transition:opacity .2s}
+.hub .picker-face:hover,.hub .picker-face:active{background:transparent;transform:none}
+.hub .picker-face:focus,.hub .picker-face:focus-visible{outline:none}
+/* Focus grows the face upward, so its ring never covers the name below. */
+.face-disc{display:block;width:var(--size);height:var(--size);border-radius:50%;transform-origin:50% 100%;box-shadow:0 0 0 3px rgba(255,244,230,.16),0 12px 28px rgba(0,0,0,.45);transition:transform .22s cubic-bezier(.3,1.5,.5,1),box-shadow .2s}
+.hub .face-disc svg{width:100%;height:100%}
+.hub .picker-face:hover .face-disc{transform:scale(1.04)}
+/* A cream ring inside the gold one keeps the focus clear on a yellow face too. */
+.hub .picker-face:focus .face-disc{transform:scale(1.1);box-shadow:0 0 0 5px #fff4e6,0 0 0 10px #ffc94d,0 0 40px 12px rgba(255,184,56,.5),0 14px 30px rgba(0,0,0,.5)}
+.hub .picker-face:focus .face-disc svg{animation:wiggle 1.8s ease-in-out infinite}
+.face-name{display:block;max-width:calc(var(--size) + var(--gap) - 6px);font-size:var(--name);font-weight:800;line-height:1.15;letter-spacing:.01em;color:#fff4e6;text-shadow:0 2px 0 rgba(10,4,20,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hub .picker-face:focus .face-name{color:#ffd770}
+.picker-faces:focus-within .picker-face:not(:focus){opacity:.8}
+/* The hub's player: face and name in one pill, the same height as the tab bar beside it (tab + its padding); the name hides if the bar has no room. */
+.brand{min-width:0}
+.hub .player-button{flex-shrink:1;gap:10px;min-width:64px;height:64px;padding:6px;border-radius:999px;background:rgba(16,9,28,.55);box-shadow:inset 0 2px 6px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.07)}
+.hub .player-button:hover{background:rgba(16,9,28,.7)}
+.hub .player-button:focus{outline:none;box-shadow:0 0 0 3px #fff4e6,0 0 0 6px #ffc94d,0 0 22px 5px rgba(255,184,56,.55)}
+.player-disc{display:block;flex:none;width:52px;height:52px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,244,230,.16)}
+.hub .player-disc svg{width:100%;height:100%}
+.player-label{min-width:0;padding-right:16px;font-size:19px;font-weight:800;color:#fff4e6;white-space:nowrap;overflow:hidden}
+@keyframes wiggle{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(-7deg)}85%{transform:rotate(6deg)}}
+.hub .picker-back{position:absolute;top:14px;left:14px;width:54px;height:54px;border-radius:50%;background:#2e2248;box-shadow:0 4px 0 rgba(8,4,16,.5),inset 0 0 0 2px rgba(255,255,255,.16)}
+.hub .picker-back:focus{outline:none;box-shadow:0 0 0 4px #ffc94d,0 0 22px 4px rgba(255,184,56,.45)}
+/* The adult players page shares the worded save page's look. */
+.player-rows{display:grid;gap:10px;margin:16px 0}
+.player-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:18px;background:rgba(255,255,255,.06)}
+.player-face{flex:none;display:block;width:52px;height:52px}
+.hub .player-face svg{width:100%;height:100%}
+.player-name{flex:1;min-width:0;display:flex;flex-direction:column;font-size:19px;font-weight:700}
+.player-note{font-size:13px;font-weight:600;color:#86ecc4}
+.hub .player-management .player-row button{min-height:46px;padding:10px 14px}
+.player-heading{display:flex;align-items:center;gap:12px}
+.player-heading .player-face{width:44px;height:44px}
+.hub .save-management .choose-player{justify-content:flex-start;gap:14px;font-size:18px;font-weight:700;text-align:left}
+.choose-player .player-face{width:44px;height:44px}
+.avatar-choices{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 18px}
+.hub .player-management .avatar-choice{flex-direction:column;gap:6px;padding:10px 6px;border-radius:18px;font-weight:700}
+.hub .avatar-choice svg{width:64px;height:64px}
+@media (max-height:520px){.hub .player-button{height:50px;min-width:50px;min-height:50px;padding:4px}.player-disc{width:42px;height:42px}.player-label{font-size:17px;padding-right:14px}.hub .avatar-choice svg{width:52px;height:52px}.player-rows{margin:10px 0}.player-face{width:44px;height:44px}}
+.player-management .save-feedback:empty{min-height:0;margin:0}
+@media (max-height:540px){.player-management p{margin:6px 0}.player-rows{gap:8px}.player-row{padding:6px 10px}.hub .player-management .player-row button{min-height:42px;padding:8px 14px}}
+/* A seventh settings tile: a short screen fits four smaller tiles a row, still two rows. */
+@media (max-height:520px){.settings-tiles.many{gap:16px}.hub .settings-tiles.many .settings-tile{width:128px;height:116px;border-radius:26px}.hub .settings-tiles.many .settings-tile svg{width:56px;height:56px}}
+
+/* Naming a player: a big field, and on the handheld Cubby's shared keyboard under it. */
+.name-entry{margin:10px 0 12px}
+.hub .player-name-field{box-sizing:border-box;width:100%;height:52px;padding:0 14px;border:0;border-radius:14px;background:rgba(16,9,28,.65);box-shadow:inset 0 2px 6px rgba(0,0,0,.4);color:#ffd770;font:800 24px system-ui,sans-serif}
+.hub .player-name-field:focus{outline:3px solid #ffc94d;outline-offset:2px}
+:is(.player-management,.kid-name) .name-keyboard{grid-auto-rows:40px;margin:0 0 14px}
+.hub :is(.player-management,.kid-name) .cubby-keyboard button{min-width:0;min-height:0;padding:0;border-radius:9px;background:#3b2d57;font-size:16px;white-space:nowrap}
+.hub :is(.player-management,.kid-name) .cubby-keyboard button:focus{outline:none;background:#ffc94d;color:#3a2410}
+.hub :is(.player-management,.kid-name) .cubby-keyboard svg{width:20px;height:20px}
+@media (max-height:540px){:is(.player-management,.kid-name) .name-keyboard{grid-auto-rows:32px;margin:0 0 10px}.hub .player-name-field{height:46px;font-size:22px}.name-entry{margin:6px 0 14px}}/* Players screens use pictures, not words: icon buttons in the settings tiles' line style. */
+.hub .save-management .dialog-back{display:grid;place-items:center;width:48px;height:48px;min-width:48px;min-height:48px;padding:0;margin:0 0 10px;border-radius:50%;background:#2e2248;box-shadow:0 3px 0 rgba(8,4,16,.5),inset 0 0 0 2px rgba(255,255,255,.16)}
+.hub :is(.save-management,.player-picker) .icon-button{display:grid;place-items:center;width:52px;height:52px;min-width:52px;min-height:52px;padding:0;border-radius:16px}
+.hub :is(.save-management,.player-picker) .icon-button svg{width:26px;height:26px;stroke-width:2.2}
+.hub .player-management .player-row .icon-button{width:48px;height:48px;min-width:48px;min-height:48px;background:rgba(255,255,255,.08)}
+.player-row.is-playing{background:rgba(255,201,77,.1)}
+.player-row.is-playing .player-face{border-radius:50%;box-shadow:0 0 0 3px #fff4e6,0 0 0 6px #ffc94d,0 0 16px 4px rgba(255,184,56,.5)}
+.hub .player-management .add-player{width:100%;height:60px;border-radius:18px;background:transparent;border:2px dashed rgba(255,244,230,.28);color:#ffd770}
+.hub .player-management .add-player svg{width:34px;height:34px;stroke-width:2.6}
+.hub .player-management .add-player:disabled{display:none}
+.icon-actions{display:flex;justify-content:center;gap:24px;margin-top:14px}
+.hub :is(.save-management,.player-picker) .icon-actions .icon-button,.hub .kid-actions .icon-button{width:80px;height:58px;border-radius:20px}
+.hub :is(.save-management,.player-picker) .icon-actions .icon-button svg,.hub .kid-actions .icon-button svg{width:30px;height:30px;stroke-width:2.6}
+.hub :is(.save-management,.player-picker) :is(.cancel-player,.kid-cancel){background:rgba(255,255,255,.12);color:#fff4e6}
+.hub :is(.save-management,.player-picker) .save-name{background:linear-gradient(#ffd770,#ffb22e);color:#3a2410}
+.hub :is(.save-management,.player-picker) .save-name:disabled{opacity:.35}
+.hub .save-management .remove-confirm{background:#854b51;color:#fff4e6}
+.remove-picture{position:relative;width:112px;margin:6px auto 18px}
+.remove-picture .player-face{width:112px;height:112px}
+.remove-symbol{position:absolute;right:-6px;bottom:-6px;display:grid;place-items:center;width:46px;height:46px;border:3px solid #291e40;border-radius:50%;background:#854b51;color:#fff4e6}
+.hub .remove-symbol svg{width:24px;height:24px}
+.name-entry{display:flex;align-items:center;gap:12px}
+.name-entry .player-face{width:52px;height:52px}
+.name-entry .player-name-field{flex:1;min-width:0}
+.hub .player-name-field.invalid,.hub .player-name-field.invalid:focus{outline:3px solid #ff8f7f;outline-offset:2px}
+.hub :is(.save-management,.player-picker) .refused{outline:3px solid #ff8f7f;outline-offset:3px;animation:refuse .38s ease}
+@keyframes refuse{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+.hub .player-management .avatar-choice{padding:10px;border-radius:18px}
+.hub .player-management .avatar-choice svg{width:72px;height:72px}
+.hub :is(.player-management,.kid-name) .cubby-keyboard .case[aria-pressed=true]{color:#ffd770}
+@media (max-height:540px){.hub .player-management .avatar-choice svg{width:60px;height:60px}.hub .save-management .dialog-back{width:44px;height:44px;min-width:44px;min-height:44px;margin-bottom:8px}.icon-actions{margin-top:10px}}
+
+/* A fresh Cubby's player chip is the logo itself, so the logo steps aside for it. */
+.hub .brand.has-player .brand-mark{display:none}
+/* The house inside Cubby's token: sizes are in the token's 100-unit picture. */
+.hub svg.cubby-art svg{width:66px;height:66px;animation:none}
+/* The picker's +: an empty face to fill, sized like the others. */
+.hub .picker-plus .face-disc{display:grid;place-items:center;background:rgba(255,255,255,.05);border:3px dashed rgba(255,244,230,.35);box-shadow:none;color:#ffd770;box-sizing:border-box}
+.hub .picker-plus .face-disc svg{width:42%;height:42%;stroke:currentColor;stroke-width:2.6}
+.hub .picker-plus:focus .face-disc{border-color:#ffc94d;background:rgba(255,201,77,.12);box-shadow:0 0 0 5px #fff4e6,0 0 0 10px #ffc94d,0 0 40px 12px rgba(255,184,56,.5)}
+.hub .picker-plus:focus .face-disc svg{animation:none}
+.picker-plus .face-name{min-height:1.15em}
+.kid-actions{display:flex;justify-content:center;margin-top:clamp(10px,3vh,24px)}
+/* A child's name step: the same face, field, keys and ✕ ✓ as the adult page. */
+.kid-name{box-sizing:border-box;width:min(600px,94vw);padding:18px;border-radius:26px;background:#291e40;box-shadow:0 24px 60px #0008}
+@media (max-height:540px){.kid-name{padding:14px}}

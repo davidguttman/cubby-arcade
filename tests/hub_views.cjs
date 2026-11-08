@@ -51,6 +51,7 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   focus(){doc.activeElement=this;for(const fn of this.listeners.focus||[])fn();let e=this.parent;while(e){for(const fn of e.listeners.focusin||[])fn();e=e.parent;}}
   showModal(){this.open=true;}close(){this.open=false;}
   click(){if(this.disabled)return;for(const fn of this.listeners.click||[])fn();}
+  dispatchEvent(event){for(const fn of this.listeners[event.type]||[])fn(event);return true;}
   insertAdjacentHTML(){}
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
   play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){}
@@ -280,23 +281,43 @@ function typeGate(host,answer){const keys=host.querySelector('.gate-pad').queryS
 function typeAnswer(host){typeGate(host,gateAnswer(host));}
 function passGate(host){typeAnswer(host);host.querySelector('.gate-submit').click();}
 function wrongGate(host){host.querySelector('.gate-erase').click();host.querySelector('.gate-erase').click();typeGate(host,String(+gateAnswer(host)+1));host.querySelector('.gate-submit').click();}
-test('controller calibration is adult-gated, captures only physical labels, and discards or saves explicitly',async()=>{
+test('controller setup is adult-gated and runs from the pad alone: A, B, X, Y, auto-save, close',async()=>{
  const buttons=Array.from({length:17},()=>({pressed:false,value:0})),pad={id:'Steam Xbox controller',index:0,mapping:'standard',buttons,axes:[0,0]};
  const saved=new Map(),storage={getItem:k=>saved.get(k)||null,setItem:(k,v)=>saved.set(k,v)};
- const calibration=require('../runtime/core/host-osd.js').createCalibration(()=>[pad],storage);
- const {host,hub,action}=mountedHub(games,[],{},{},{HandheldOSD:{calibration,reset(){}}});await settle();hub.show('options');
- assert.equal(host.querySelector('.controller-settings'),null);passGate(host);host.querySelector('.controller-settings').click();
- const dialog=host.querySelector('.controller-setup');assert.equal(dialog.open,true);
- host.querySelector('.controller-choice').value=calibration.controllers()[0].key;
- host.querySelector('.start-calibration').click();assert.equal(host.querySelector('.save-controller').disabled,true);
+ let time=0,timers=[];const setTimeout=(fn,ms)=>timers.push({fn,ms})-1,clearTimeout=id=>{if(timers[id])timers[id].fn=null;};
+ const fire=ms=>{for(const timer of timers.splice(0))if(timer.fn&&timer.ms===ms)timer.fn();else timers.push(timer);};
+ const calibration=require('../runtime/core/host-osd.js').createCalibration(()=>[pad],storage,()=>time);
+ const {host,hub,action}=mountedHub(games,[],{},{},{HandheldOSD:{calibration,reset(){}},setTimeout,clearTimeout});await settle();hub.show('options');
+ assert.equal(host.querySelector('.controller-settings'),null);passGate(host);
+ const press=(...indices)=>{buttons.forEach((b,n)=>{b.pressed=indices.includes(n);b.value=b.pressed?1:0;});return calibration.getGamepads();};
+ const dialog=host.querySelector('.controller-setup'),prompt=()=>dialog.querySelector('.calibration-prompt'),lit=()=>dialog.querySelectorAll('.calibration-glyph').filter(g=>g.classList.contains('is-set')).map(g=>g.textContent).join('');
+ // Chosen with the pad's own A: setup opens straight into capture, with no choices to make.
+ press(0);host.querySelector('.controller-settings').click();
+ assert.equal(dialog.open,true);assert.equal(prompt().textContent,'A');assert.equal(prompt().getAttribute('aria-label'),'Press A');
+ const tags=node=>[node.tagName,...node.children.flatMap(tags)];assert.deepEqual(tags(dialog).filter(t=>['button','select','input','label'].includes(t)),['button']);assert.equal(dialog.querySelector('button').className,'cancel-controller');
+ assert.equal(press(0)[0].buttons.some(b=>b.pressed),false);assert.equal(prompt().classList.contains('waiting'),true,'the opening press is still held');
  const focused=host.ownerDocument.activeElement;action('right','gamepad');action('confirm','gamepad');action('previousView','gamepad');assert.equal(host.ownerDocument.activeElement,focused);assert.equal(hub.state.view,'options');
- const press=i=>{buttons.forEach((b,n)=>{b.pressed=n===i;b.value=b.pressed?1:0;});return calibration.getGamepads();};
- press(-1);press(1);host.querySelector('.cancel-controller').click();assert.equal(dialog.open,false);assert.equal(saved.size,0);assert.equal(press(1)[0].buttons.some(b=>b.pressed),false);
- press(-1);host.querySelector('.controller-settings').click();host.querySelector('.controller-choice').value=calibration.controllers()[0].key;host.querySelector('.start-calibration').click();
- for(const i of [1,0,3,2]){press(-1);press(i);}assert.equal(host.querySelector('.save-controller').disabled,false);
- host.querySelector('.save-controller').click();assert.equal(dialog.open,false);assert.equal(press(2)[0].buttons.some(b=>b.pressed),false);
- press(-1);assert.equal(press(1)[0].buttons[0].pressed,true);assert.equal(saved.size,1);
+ press();assert.equal(prompt().classList.contains('waiting'),false);press(1);press();
+ assert.equal(prompt().textContent,'B');assert.equal(lit(),'A');
+ press(1);assert.equal(prompt().classList.contains('rejected'),true,'duplicate shows a cue');fire(400);assert.equal(prompt().classList.contains('rejected'),false);
+ press();press(0);press();press(3);assert.equal(lit(),'ABX');press();
+ press(2);assert.equal(lit(),'ABXY');assert.equal(prompt().classList.contains('done'),true);assert.equal(dialog.open,true,'confirmation stays briefly');
+ assert.deepEqual(JSON.parse(saved.get('cubby:controller-labels:v1')),{[JSON.stringify([pad.id,'standard',17,2])]:[1,0,3,2]});
+ fire(1000);assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,host.querySelector('.controller-settings'));
+ assert.equal(press(2)[0].buttons.some(b=>b.pressed),false,'the final press drains');press();assert.equal(press(1)[0].buttons[0].pressed,true);
+ // Start exits unchanged; so does ten seconds idle; the same A, B, X, Y as the defaults resets.
+ press();host.querySelector('.controller-settings').click();press();press(9);assert.equal(dialog.open,false);assert.equal(press(9)[0].buttons.some(b=>b.pressed),false);
+ press();host.querySelector('.controller-settings').click();press();press(0);time+=10000;press();assert.equal(dialog.open,false);assert.equal(saved.size,1);
+ press();host.querySelector('.controller-settings').click();for(const i of [0,1,2,3]){press();press(i);}fire(1000);assert.equal(dialog.open,false);
+ assert.deepEqual(JSON.parse(saved.get('cubby:controller-labels:v1')),{});press();assert.equal(press(1)[0].buttons[1].pressed,true);
+ // Desktop extras: Escape (dialog cancel) and the close button.
+ host.querySelector('.controller-settings').click();press();press(1);dialog.listeners.cancel[0]({preventDefault(){}});assert.equal(dialog.open,false);
+ press();host.querySelector('.controller-settings').click();dialog.querySelector('.cancel-controller').click();assert.equal(dialog.open,false);assert.equal(calibration.isBlocking(),true);press();assert.equal(calibration.isBlocking(),false);
  hub.show('library');hub.show('options');assert.equal(host.querySelector('.controller-settings'),null);hub.dispose();
+});
+test('controller setup never asks for a mouse, touch, or keyboard',()=>{
+ const source=require('node:fs').readFileSync('runtime/core/hub.js','utf8');
+ assert.doesNotMatch(source,/Use a mouse|controller-choice|start-calibration|save-controller|reset-controller|refresh-controllers/);
 });
 test('save deletion requires adult gate and explicit confirmation; cancel preserves saves',async()=>{
  let saves=['one','uninstalled'],resets=[];
@@ -443,4 +464,164 @@ test('failed starter leaves existing installed games usable and exposes a retry'
 });
 test('host activation retries an unfocused hidden-prepared hub after the visible frame',async()=>{
  let focus,afterFrame;const {host}=mountedHub(games,[],{},{},{addEventListener:(name,listener)=>{if(name==='focus')focus=listener;},requestAnimationFrame:fn=>afterFrame=fn});await settle();const doc=host.ownerDocument,card=host.querySelector('.is-selected');doc.body={};doc.activeElement=doc.body;const original=card.focus;card.focus=()=>{};focus();card.focus=original;assert.equal(doc.activeElement,doc.body);assert.equal(typeof afterFrame,'function');afterFrame();assert.equal(doc.activeElement,card);
+});
+
+// Players in the shared hub: the real player rules and pictures, against this DOM adapter.
+const Profiles=require('../runtime/core/profiles.js'),Avatars=require('../runtime/core/avatars.js');
+function memory(entries=[]){const values=new Map(entries);return {values,get length(){return values.size;},key:i=>[...values.keys()][i]??null,getItem:k=>values.has(k)?values.get(k):null,setItem:(k,v)=>values.set(k,String(v)),removeItem:k=>values.delete(k)};}
+function playersHub({list,pin,overrides={},capabilities={},windowOverrides={},entries=[]}={}){
+ const localStorage=memory(entries),sessionStorage=memory(pin?[[Profiles.PIN_KEY,pin]]:[]),calls=[];
+ if(list)localStorage.setItem(Profiles.REGISTRY_KEY,JSON.stringify({profiles:list,active:list[0].id}));
+ const mounted=mountedHub(games,[],{profiles:true,...capabilities},{useProfile:async id=>{calls.push(['use',id]);},removeProfile:async id=>{calls.push(['remove',id]);},savedGames:async id=>{calls.push(['saved',id]);return ['one'];},resetGameSaves:async(id,player)=>{calls.push(['reset',id,player]);},...overrides},
+  {localStorage,sessionStorage,HandheldProfiles:Profiles,HandheldAvatars:Avatars,...windowOverrides});
+ return {...mounted,localStorage,sessionStorage,calls};
+}
+const three=[{id:Profiles.FIRST,avatar:'bear'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog'}];
+const picker=host=>host.querySelector('.player-picker');
+test('with players, Cubby asks who is playing on start; the first pick has no way around it',async()=>{
+ const {host,action,calls,sessionStorage}=playersHub({list:three});await settle();
+ assert.equal(picker(host).hidden,false);assert.equal(host.querySelector('.picker-back'),null);
+ assert.deepEqual(host.querySelectorAll('.picker-face').map(face=>face.dataset.profile),[...three.map(p=>p.id),undefined],'Every player, then +');
+ assert.equal(host.ownerDocument.activeElement.dataset.profile,Profiles.FIRST,'Focus starts on the last player');
+ for(const a of ['back','exit','nextView','select'])action(a);assert.equal(picker(host).hidden,false);
+ host.querySelectorAll('.picker-face')[1].focus();action('confirm');await settle();
+ assert.equal(picker(host).hidden,true);assert.deepEqual(calls,[['use','p_fixture1']]);assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),'p_fixture1');
+ const button=host.querySelector('.player-button');assert.equal(button.hidden,false);assert.equal(button.dataset.avatar,'fox');
+});
+test('coming back to the hub keeps the player; the picture reopens the picker and Back keeps them',async()=>{
+ const {host,action,hub}=playersHub({list:three,pin:'p_fixture2'});await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-button').dataset.avatar,'frog');
+ host.querySelector('.player-button').click();assert.equal(picker(host).hidden,false);assert.ok(host.querySelector('.picker-back'));
+ assert.equal(host.ownerDocument.activeElement.dataset.profile,'p_fixture2');
+ action('back');assert.equal(picker(host).hidden,true);assert.equal(hub.state.view,'library');
+});
+test('switching player switches favorites, and a game launches only once the host plays as that player',async()=>{
+ const order=[];
+ const {host,hub}=playersHub({list:three,pin:Profiles.FIRST,capabilities:{tokens:true},entries:[['handheld:favorites:v1','["one"]'],['cubby:profile:p_fixture1:handheld:favorites:v1','["two"]']],
+  overrides:{account:async()=>({available:true,balance:5}),useProfile:async id=>order.push('use '+id),launch:async id=>order.push('launch '+id)}});await settle();
+ assert.equal(hub.state.isFavorite('one'),true);assert.equal(hub.state.isFavorite('two'),false);
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[1].click();await settle();
+ assert.equal(hub.state.isFavorite('one'),false);assert.equal(hub.state.isFavorite('two'),true);
+ order.length=0;host.querySelector('.play-game').click();await settle();assert.deepEqual(order,['use p_fixture1','launch one']);
+});
+test('a host that cannot switch player does not start the game',async()=>{
+ const launched=[];const {host}=playersHub({list:three,pin:Profiles.FIRST,windowOverrides:{location:{}},overrides:{useProfile:async()=>{throw Error('ipc');}}});await settle();
+ const location=host.ownerDocument.defaultView.location;host.querySelector('.play-game').click();await settle();assert.equal(location.href,undefined);
+});
+test('with players, the adult save page asks whose saves and resets only that player’s',async()=>{
+ const {host,hub,calls,action}=playersHub({list:three,pin:Profiles.FIRST});await settle();hub.show('options');passGate(host);
+ host.querySelector('.manage-saves').click();assert.equal(host.querySelectorAll('.choose-player').length,3);
+ host.querySelectorAll('.choose-player')[2].click();await settle();assert.deepEqual(calls.at(-1),['saved','p_fixture2']);
+ host.querySelector('.choose-save').click();host.querySelector('.confirm-reset').click();await settle();assert.deepEqual(calls.at(-1),['reset','one','p_fixture2']);
+ action('back');assert.equal(host.querySelectorAll('.choose-player').length,3,'Back returns to the players');
+ action('back');assert.equal(host.querySelector('.save-management').open,false);
+});
+test('a device lists the players page among its tiles, and a host without players hides it',async()=>{
+ const settings=[{icon:'trash',label:'Game saves',href:'#adult-saves'},{icon:'players',label:'Players',href:'#adult-players'}];
+ const withPlayers=playersHub({pin:Profiles.FIRST,overrides:{settings}});await settle();withPlayers.hub.show('options');passGate(withPlayers.host);
+ assert.ok(withPlayers.host.querySelectorAll('.settings-tile').some(tile=>tile.getAttribute('aria-label')==='Players'));
+ const without=mountedHub(games,[],{},{settings});await settle();without.hub.show('options');passGate(without.host);
+ assert.equal(without.host.querySelectorAll('.settings-tile').some(tile=>tile.getAttribute('aria-label')==='Players'),false);
+});
+test('a child sees their own name under their face and beside it on the hub',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'}];
+ const {host}=playersHub({list});await settle();
+ assert.deepEqual(host.querySelectorAll('.face-name').map(n=>n.textContent),['Theo','Fox',undefined],'Names, and a nameless +');
+ assert.deepEqual(host.querySelectorAll('.picker-face').map(f=>f.getAttribute('aria-label')),['Theo','Fox','New player']);
+ host.querySelectorAll('.picker-face')[0].click();await settle();
+ assert.equal(host.querySelector('.player-label').textContent,'Theo');assert.equal(host.querySelector('.player-button').hidden,false);
+});
+test('adults name a player with a text field; a bad or taken name is refused with a red shake, not words',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'}];
+ const {host,hub,localStorage}=playersHub({list,pin:Profiles.FIRST});await settle();hub.show('options');passGate(host);host.querySelector('.manage-players').click();
+ assert.deepEqual(host.querySelectorAll('.player-name').map(n=>n.textContent),['Theo','Fox']);
+ assert.ok(host.querySelectorAll('.player-row')[0].classList.contains('is-playing'),'The player playing now wears the ring');
+ host.querySelectorAll('.rename-player')[1].click();const field=host.querySelector('.player-name-field'),save=host.querySelector('.save-name');
+ assert.equal(field.value,'Fox');assert.equal(field.maxLength,12);assert.equal(host.querySelector('.name-keyboard'),null,'Desktop and browser type on a real keyboard');
+ assert.equal(host.ownerDocument.activeElement,field);assert.equal(save.disabled,false);
+ const stopped=[];for(const type of ['keydown','keyup'])field.listeners[type][0]({key:'x',stopPropagation:()=>stopped.push(type)});assert.deepEqual(stopped,['keydown','keyup'],'Typed keys never drive the hub');
+ const enter=()=>field.listeners.keydown[0]({key:'Enter',stopPropagation(){}});
+ for(const [value,outlined] of [['theo',true],['Maya!',true],['  ',false]]){
+  field.value=value;field.listeners.input[0]();
+  assert.equal(save.disabled,true,value+': ✓ stays dim');assert.equal(field.classList.contains('invalid'),outlined,value+': red outline');
+  enter();assert.ok(field.classList.contains('refused')&&field.classList.contains('invalid'),value+': trying anyway shakes it red');
+ }
+ assert.equal(host.querySelector('.save-feedback'),null,'No error words');
+ field.value=' Maya ';field.listeners.input[0]();assert.equal(save.disabled,false);assert.equal(field.classList.contains('invalid'),false);save.click();
+ assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].name,'Maya');
+ assert.ok(host.querySelectorAll('.player-name').some(n=>n.textContent==='Maya'));
+});
+
+// The kid side of players: a fresh Cubby is one player, Cubby; + names it, then adds.
+const Keyboard=require('../runtime/core/keyboard.js');
+const device={CubbyDeviceProfile:'rg353v',HandheldKeyboard:Keyboard,AbortController,fetch:()=>Promise.reject(Error('offline'))};
+const animals=host=>host.querySelector('.kid-animals').querySelectorAll('.picker-face');
+function kidPlus(host){host.querySelector('.player-button').click();host.querySelector('.picker-plus').click();}
+function kidType(host,action,word){const board=host.querySelector('.name-keyboard');for(const c of word){board.children.find(b=>b.textContent===c).focus();action('confirm');}}
+test('a fresh Cubby is one player, Cubby, wearing the logo in the logo’s place, and writes nothing',async()=>{
+ const {host,localStorage,sessionStorage}=playersHub();await settle();
+ assert.equal(picker(host).hidden,true,'One player goes straight to the hub');
+ const chip=host.querySelector('.player-button');assert.equal(chip.hidden,false);assert.equal(chip.dataset.avatar,'cubby');assert.equal(host.querySelector('.player-label').textContent,'Cubby');
+ assert.ok(host.querySelector('.brand').classList.contains('has-player'),'The chip takes the logo’s spot');
+ host.querySelector('.play-game').click();await settle();
+ assert.equal(localStorage.length,0,'Playing as Cubby never writes player storage');assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),Profiles.FIRST);
+});
+test('a child’s first + names Cubby in place, with no adult question; ✕ changes nothing',async()=>{
+ const {host,action,localStorage,calls}=playersHub({windowOverrides:device});await settle();
+ host.querySelector('.player-button').click();assert.equal(picker(host).hidden,false);
+ assert.deepEqual(host.querySelectorAll('.face-name').map(n=>n.textContent),['Cubby',undefined]);assert.equal(host.querySelector('.settings-gate'),null,'The kid side asks no math');
+ host.querySelector('.picker-plus').click();assert.equal(animals(host).length,8);
+ action('back');assert.ok(host.querySelector('.picker-plus'),'Back is ✕: the faces again');assert.equal(localStorage.length,0);
+ host.querySelector('.picker-plus').click();animals(host)[0].click();
+ assert.equal(host.querySelector('.player-name-field').value,'','A child types their name');assert.equal(host.querySelector('.save-name').disabled,true,'✓ waits for a name');
+ host.querySelector('.cancel-player').click();assert.equal(localStorage.length,0,'✕ changes nothing');
+ host.querySelector('.picker-plus').click();animals(host)[0].click();
+ kidType(host,action,'Theo');assert.equal(host.querySelector('.save-name').disabled,false);action('pause');await settle();
+ assert.deepEqual(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles,[{id:Profiles.FIRST,avatar:'fox',name:'Theo'}],'Same player, now Theo the fox');
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-label').textContent,'Theo');assert.deepEqual(calls.at(-1),['use',Profiles.FIRST]);
+});
+test('after that + adds a player and plays as them; a taken name shakes red; + hides when every animal is used',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'fox',name:'Theo'}];
+ const {host,action,localStorage,sessionStorage}=playersHub({list,pin:Profiles.FIRST,windowOverrides:device});await settle();
+ kidPlus(host);assert.equal(animals(host).some(f=>f.getAttribute('aria-label')==='Fox'),false,'A taken animal is not offered');
+ animals(host)[0].click();kidType(host,action,'Theo');
+ const field=host.querySelector('.player-name-field');assert.ok(field.classList.contains('invalid'));assert.equal(host.querySelector('.save-name').disabled,true);
+ action('pause');assert.ok(field.classList.contains('refused'),'Start anyway shakes it');
+ for(let i=0;i<4;i++){host.querySelector('.name-keyboard').children.find(b=>b.getAttribute('aria-label')==='Backspace').focus();action('confirm');}
+ kidType(host,action,'Mia');action('pause');await settle();
+ const players=JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles;assert.equal(players.length,2);assert.equal(players[1].name,'Mia');
+ assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),players[1].id,'Plays as the new player');
+ const full=['fox','frog','bear','bunny','panda','owl','cat','chick'].map((avatar,i)=>({id:i?'p_full'+i:Profiles.FIRST,avatar}));
+ const crowded=playersHub({list:full,pin:Profiles.FIRST});await settle();crowded.host.querySelector('.player-button').click();
+ assert.equal(crowded.host.querySelector('.picker-plus'),null);
+});
+test('adults rename, re-picture and remove players behind the gear question; the last one removed leaves a fresh Cubby',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox',name:'Maya'}];
+ const {host,hub,localStorage,calls}=playersHub({list,pin:Profiles.FIRST});await settle();hub.show('options');
+ assert.equal(host.querySelector('.manage-players'),null);passGate(host);host.querySelector('.manage-players').click();
+ assert.equal(host.querySelector('.player-management').open,true);assert.equal(host.querySelector('.add-player'),null,'Children add players with + on the hub');
+ host.querySelectorAll('.change-picture')[1].click();host.querySelectorAll('.avatar-choice').find(b=>b.getAttribute('aria-label')==='Owl').click();
+ assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles[1].avatar,'owl');
+ host.querySelectorAll('.remove-player')[1].click();host.querySelector('.cancel-player').click();assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,2);
+ host.querySelectorAll('.remove-player')[1].click();host.querySelector('.remove-confirm').click();await settle();
+ assert.deepEqual(calls.filter(c=>c[0]==='remove'),[['remove','p_fixture1']]);assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).profiles.length,1);
+ assert.equal(host.querySelectorAll('.player-name')[0].textContent,'Theo','The one left stays as they are');
+ host.querySelector('.remove-player').click();host.querySelector('.remove-confirm').click();await settle();
+ assert.equal(localStorage.getItem(Profiles.REGISTRY_KEY),null,'Back to a fresh Cubby');assert.equal(host.querySelectorAll('.player-name')[0].textContent,'Cubby');
+ assert.equal(host.querySelector('.remove-player'),null,'Cubby itself has nothing to remove');assert.equal(host.querySelector('.player-button').dataset.avatar,'cubby');
+});
+test('player screens show no words but players’ names and keyboard letters',async()=>{
+ const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog',name:'Josephine'}],names=new Set(['Theo','Fox','Josephine','Cubby']);
+ const {host,hub,action}=playersHub({list,windowOverrides:device});await settle();
+ const shown=[];
+ function collect(screen){const walk=e=>{if(typeof e.textContent==='string'&&e.textContent&&!e.children?.length)shown.push([screen,e.textContent,!!e.parent?.classList.contains('cubby-keyboard')]);(e.children||[]).forEach(walk);};walk(host.querySelector('.player-picker'));walk(host.querySelector('.brand'));walk(host.querySelector('.player-management'));const saves=host.querySelector('.save-management');if(saves.querySelector('.choose-player'))walk(saves);}
+ collect('picker');host.querySelectorAll('.picker-face')[0].click();await settle();collect('hub');
+ kidPlus(host);collect('kid animal');animals(host)[0].click();collect('kid name');action('back');action('back');
+ hub.show('options');passGate(host);host.querySelector('.manage-players').click();collect('players');
+ host.querySelectorAll('.rename-player')[0].click();collect('name');host.querySelector('.cancel-player').click();
+ host.querySelectorAll('.change-picture')[0].click();collect('picture');host.querySelector('.cancel-player').click();
+ host.querySelectorAll('.remove-player')[1].click();collect('remove');host.querySelector('.cancel-player').click();
+ host.querySelector('.close-players-page').click();host.querySelector('.manage-saves').click();collect('whose saves');
+ assert.ok(shown.some(([screen,text])=>screen==='whose saves'&&text==='Josephine'),'Names are shown');assert.ok(shown.some(([screen,,key])=>screen==='kid name'&&key),'Keys are shown');
+ for(const [screen,text,key] of shown)assert.ok(names.has(text)||(key&&[...text].length===1),screen+' shows words: '+text);
 });
