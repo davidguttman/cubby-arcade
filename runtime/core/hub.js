@@ -119,8 +119,9 @@ function mount(host){
   if(!settingsUnlocked||!calibration||controllerDialog.open)return;
   controllerDialog.replaceChildren();
   const close=element(controllerDialog,'button','cancel-controller');close.type='button';close.setAttribute('aria-label','Cancel');close.innerHTML=icon('cancel');close.addEventListener('click',closeController);
-  const prompt=element(controllerDialog,'div','calibration-prompt'),hint=element(controllerDialog,'p','calibration-hint'),row=element(controllerDialog,'div','calibration-row');
-  hint.setAttribute('role','status');
+  // Wordless: the big glyph is the prompt, a check or alert is the result.
+  const prompt=element(controllerDialog,'div','calibration-prompt'),row=element(controllerDialog,'div','calibration-row');
+  prompt.setAttribute('role','status');
   const glyphs=['A','B','X','Y'].map(letter=>{const glyph=element(row,'span','calibration-glyph');glyph.textContent=letter;return glyph;});
   let rejected=0;
   function render(step){
@@ -131,11 +132,10 @@ function mount(host){
    prompt.classList.toggle('waiting',!done&&!step.ready);prompt.classList.toggle('done',done);
    if(step.rejected!==rejected){rejected=step.rejected;prompt.classList.add('rejected');win.clearTimeout(rejectTimer);rejectTimer=win.setTimeout(()=>prompt.classList.remove('rejected'),400);}
    if(done){
-    prompt.innerHTML=icon('check');
     // Storage can be denied in a browser: the mapping still applies until the page changes.
-    hint.textContent=step.persisted?'Saved':'Saved for this page only';
+    prompt.innerHTML=icon(step.persisted?'check':'alert');prompt.classList.toggle('unsaved',!step.persisted);prompt.setAttribute('aria-label',step.persisted?'Saved':'Saved for this page only');
     calibrationTimer=win.setTimeout(closeController,step.persisted?1000:3000);
-   }else{prompt.textContent=step.next;hint.textContent='Press '+step.next;}
+   }else{prompt.textContent=step.next;prompt.setAttribute('aria-label','Press '+step.next);}
   }
   win.HandheldOSD.reset?.();controllerDialog.showModal();controllerDialog.focus();calibration.begin(render);
  }

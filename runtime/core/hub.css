@@ -89,12 +89,12 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 @keyframes calibration-shake{20%,60%{transform:translateX(-10px)}40%,80%{transform:translateX(10px)}}
 .calibration-prompt.done{background:linear-gradient(#86ecc4,#3fbf8c);color:#0f3b2a;box-shadow:0 8px 0 #22825b,0 16px 28px rgba(63,191,140,.3),inset 0 3px 0 rgba(255,255,255,.55);animation:pop .35s cubic-bezier(.3,1.8,.5,1)}
 .hub .calibration-prompt svg{width:52%;height:52%;stroke-width:3.4}
-.controller-setup .calibration-hint{margin:22px 0 14px;font-size:20px;font-weight:700;color:#fff4e6}
-.calibration-row{display:flex;justify-content:center;gap:12px}
+.calibration-prompt.done.unsaved{background:linear-gradient(#ffd770,#ffb22e);color:#3a2410;box-shadow:0 8px 0 #bf690e,inset 0 3px 0 rgba(255,255,255,.6)}
+.calibration-row{display:flex;justify-content:center;gap:12px;margin:26px 0 4px}
 .calibration-glyph{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.08);color:#a898c4;font:700 21px/1 system-ui,sans-serif;box-shadow:inset 0 0 0 2px rgba(255,255,255,.12);transition:background-color .16s,color .16s}
 .calibration-glyph.is-next{color:#ffc94d;box-shadow:inset 0 0 0 3px #ffc94d}
 .calibration-glyph.is-set{background:#ffc94d;color:#3a2410;box-shadow:0 3px 0 #b8650c}
 .done~.calibration-row .calibration-glyph{background:#5fd6a4;color:#0f3b2a;box-shadow:0 3px 0 #22825b}
 .hub .controller-setup .cancel-controller{position:absolute;top:12px;right:12px;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border-radius:50%;background:rgba(255,255,255,.08);color:#cdbfe6}
 .hub .controller-setup .cancel-controller svg{width:22px;height:22px}
-@media(max-height:540px){:is(.save-management,.controller-setup){padding:16px}.controller-setup .calibration-hint{margin:14px 0 10px}:is(.save-management,.controller-setup) h1{font-size:21px}:is(.save-management,.controller-setup) p{margin:8px 0}}
+@media(max-height:540px){:is(.save-management,.controller-setup){padding:16px}.calibration-row{margin:16px 0 2px}:is(.save-management,.controller-setup) h1{font-size:21px}:is(.save-management,.controller-setup) p{margin:8px 0}}

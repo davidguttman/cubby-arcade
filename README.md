@@ -283,8 +283,8 @@ Calibration is saved locally per browser-reported controller identity (ID,
 mapping, button and axis counts), not by guessing the brand (Steam may call a
 Nintendo pad an Xbox controller). Steam Input modes that change this identity
 need a separate calibration; indistinguishable pads share a profile. If browser
-storage is unavailable, setup says **Saved for this page only**: the mapping
-applies until the page changes.
+storage is unavailable, setup ends on an amber alert instead of the green check:
+the mapping applies until the page changes.
 The shared host module applies this mapping before both the hub and every game,
 including games reading `navigator.getGamepads()` directly. Logical buttons stay
 A=0, B=1, X=2, Y=3. Touch buttons are merged afterwards and are never remapped.

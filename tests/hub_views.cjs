@@ -292,7 +292,7 @@ test('controller setup is adult-gated and runs from the pad alone: A, B, X, Y, a
  const dialog=host.querySelector('.controller-setup'),prompt=()=>dialog.querySelector('.calibration-prompt'),lit=()=>dialog.querySelectorAll('.calibration-glyph').filter(g=>g.classList.contains('is-set')).map(g=>g.textContent).join('');
  // Chosen with the pad's own A: setup opens straight into capture, with no choices to make.
  press(0);host.querySelector('.controller-settings').click();
- assert.equal(dialog.open,true);assert.equal(prompt().textContent,'A');assert.equal(dialog.querySelector('.calibration-hint').textContent,'Press A');
+ assert.equal(dialog.open,true);assert.equal(prompt().textContent,'A');assert.equal(prompt().getAttribute('aria-label'),'Press A');
  const tags=node=>[node.tagName,...node.children.flatMap(tags)];assert.deepEqual(tags(dialog).filter(t=>['button','select','input','label'].includes(t)),['button']);assert.equal(dialog.querySelector('button').className,'cancel-controller');
  assert.equal(press(0)[0].buttons.some(b=>b.pressed),false);assert.equal(prompt().classList.contains('waiting'),true,'the opening press is still held');
  const focused=host.ownerDocument.activeElement;action('right','gamepad');action('confirm','gamepad');action('previousView','gamepad');assert.equal(host.ownerDocument.activeElement,focused);assert.equal(hub.state.view,'options');
