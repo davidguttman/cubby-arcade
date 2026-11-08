@@ -71,13 +71,13 @@
    }
   };return api;
  }
- function createDevice(readPhysical,now=()=>Date.now()){
+ function createDevice(readPhysical,now=()=>Date.now(),readVirtual=()=>[]){
   const pointers=new Map();let stamp=now();
   function reset(){pointers.clear();stamp=now();}
   return {press(pointer,button){if(Object.hasOwn(indices,button)){pointers.set(pointer,button);stamp=now();}},release(pointer){pointers.delete(pointer);stamp=now();},reset,
    getGamepads(){
     let pads;try{pads=Array.from(readPhysical()||[]);}catch{pads=[];}
-    const held=new Set(pointers.values()),standard=pads.findIndex(p=>p?.mapping==='standard'),physical=standard<0?null:pads[standard];
+    const held=new Set([...pointers.values(),...readVirtual()]),standard=pads.findIndex(p=>p?.mapping==='standard'),physical=standard<0?null:pads[standard];
     const mergedIndex=standard<0?0:standard;
     if(physical&&!held.size&&standard===pads.findIndex(Boolean))return pads;
     const buttons=Array.from({length:Math.max(17,physical?.buttons?.length||0)},(_,i)=>{
@@ -104,7 +104,7 @@
   const descriptor=Object.getOwnPropertyDescriptor(nav,'getGamepads'),read=nav.getGamepads?.bind(nav);
   let storage;try{storage=win.localStorage;}catch{}
   const calibration=createCalibration(()=>read?.()||[],storage);
-  const device=createDevice(()=>calibration.getGamepads(),()=>win.performance?.now?.()??Date.now());
+  const device=createDevice(()=>calibration.getGamepads(),()=>win.performance?.now?.()??Date.now(),()=>win.CubbyHandheldEmbed?.buttons||[]);
   const listeners=[],pendingRelease=new Map();let host,shadow,style,disposed=false,menuOpen=false,visible=false;
   const legacyDescriptor=Object.getOwnPropertyDescriptor(win,'HandheldControls');
   const legacyGate={createControls:()=>()=>{}};
@@ -117,7 +117,7 @@
   function sync(){const pad=device.getGamepads().find(p=>p?.mapping==='standard');shadow?.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(!!pad?.buttons[indices[b.dataset.button]]?.pressed)));}
   function release(pointer){cancelRelease(pointer);if(!win.requestAnimationFrame){device.release(pointer);sync();return;}pendingRelease.set(pointer,win.requestAnimationFrame(()=>pendingRelease.set(pointer,win.requestAnimationFrame(()=>{pendingRelease.delete(pointer);device.release(pointer);sync();}))));}
   function reset(){pendingRelease.forEach((_,pointer)=>cancelRelease(pointer));device.reset();shadow?.querySelectorAll('button[aria-pressed]').forEach(b=>b.setAttribute('aria-pressed','false'));}
-  function update(){visible=prefs?prefs.showTouchControls(win):!!win.matchMedia?.('(any-pointer: coarse)').matches;if(host)host.hidden=!visible;if(visible)doc.documentElement.setAttribute('data-cubby-osd','');else{doc.documentElement.removeAttribute('data-cubby-osd');reset();}}
+  function update(){visible=!win.CubbyHandheldEmbed&&(prefs?prefs.showTouchControls(win):!!win.matchMedia?.('(any-pointer: coarse)').matches);if(host)host.hidden=!visible;if(visible)doc.documentElement.setAttribute('data-cubby-osd','');else{doc.documentElement.removeAttribute('data-cubby-osd');reset();}}
   function pointer(event){
    if(!host||!(event.composedPath?.()||[]).includes(host))return;
    // Stop at the window capture boundary, before a game's global pointer-A handler.

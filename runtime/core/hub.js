@@ -47,6 +47,21 @@ function startGameUpdates(win,platform){
   stop(){if(stopped)return;stopped=true;controller.abort();win.clearInterval(timer);win.removeEventListener('online',check);win.document.removeEventListener('visibilitychange',visible);}
  };
 }
+// Explicit starter policy is shared by every hub host. A successful seed is
+// remembered independently of library emptiness, so uninstall stays intentional.
+async function prepareStarter(platform,{id,storage}={}){
+ if(!id||!platform.install)return 'disabled';
+ if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(id))throw Error('Invalid starter game');
+ if(!storage)throw Error('Starter storage unavailable');
+ const key='cubby:starter:v1:'+id;
+ if(storage.getItem(key)==='1')return 'done';
+ const present=(await platform.library()).some(game=>game.id===id);
+ if(!present){
+  await platform.install(id);
+  if(!(await platform.library()).some(game=>game.id===id))throw Error('Starter not installed');
+ }
+ storage.setItem(key,'1');return present?'present':'installed';
+}
 // This sensor belongs to the device host, not browser games or their packages.
 function startBattery(indicator,win){
  indicator.hidden=true;
@@ -102,6 +117,7 @@ function mount(host){
  const Avatars=win.HandheldAvatars,profiles=platform.capabilities?.profiles&&win.HandheldProfiles&&Avatars?win.HandheldProfiles.createProfiles({storage,session,platform}):null;
  let profile=profiles?.current();
  const state=createState(profiles?profiles.storageFor(profile):storage);
+ const starterGame=win.HandheldPlatformOptions?.starterGame;let starterPending=!!starterGame,starterFailed=false;
  let account=null,launchBusy=false,featured=null,initialViewPending=true,requested=null;
  const gameReturn='cubby:game-return';let returningGame=null;try{returningGame=win.sessionStorage.getItem(gameReturn);win.sessionStorage.removeItem(gameReturn);}catch{}
  let installStates={},library=[],catalog=[],loading={library:true,store:true},failed={library:false,store:false},adult=false,draft=null,cancelCapture=null,disposed=false;
@@ -427,7 +443,7 @@ function mount(host){
  function show(view,initial=false){if(adult)return;if(view!=='options')settingsUnlocked=false;pendingTabFocus=null;if(!initial)initialViewPending=false;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
  // Activating a tab enters its content; merely navigating across tabs does not.
  function selectedCard(){const cards=Array.from(shelf.querySelectorAll('.game-card')).filter(card=>!card.disabled);return cards.find(card=>card.dataset.gameId===state.detail?.id)||cards[0];}
- function focusView(){(state.view==='options'?options.querySelector('button:not(:disabled)'):selectedCard())?.focus();}
+ function focusView(){(state.view==='options'?options.querySelector('button:not(:disabled)'):selectedCard()||shelf.querySelector('.retry-starter'))?.focus();}
  function activateView(view,initial=false){if(adult)return;show(view,initial);tabs[view].focus();focusView();if(loading[view])pendingTabFocus=view;}
  function finishTabFocus(view){if(pendingTabFocus!==view)return;pendingTabFocus=null;if(state.view===view&&doc.activeElement===tabs[view])focusView();}
  function primaryAction(){return detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')||detail.querySelector('.favorite');}
@@ -443,12 +459,17 @@ function mount(host){
  function markSelection(){const id=detail.hidden?(state.view==='library'?featured?.id:null):state.detail?.id;shelf.classList.toggle('has-selection',!!id);for(const card of shelf.querySelectorAll('.game-card'))card.classList.toggle('is-selected',card.dataset.gameId===id);}
  function renderGrid(){shelf.replaceChildren();const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'';body.classList.toggle('is-status',!!status);
  const store=state.view==='store',offer=store?catalog.find(g=>!ownedInStore(g.id)):null;body.classList.toggle('all-owned',store&&!status&&!offer);
- if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');feature(null);return;}
+ if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');if(state.view==='library'&&starterGame){
+  if(starterPending){const progress=element(box,'progress','install-progress');progress.setAttribute('aria-label','Download progress');const job=installStates[starterGame];if(job?.total){progress.max=job.total;progress.value=job.received||0;}else progress.removeAttribute('value');}
+  if(starterFailed)button(box,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
+ }
+ feature(null);return;}
  for(const game of store?[...catalog].sort((a,b)=>ownedInStore(a.id)-ownedInStore(b.id)):entries()){
  const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');image.src=game.artwork;image.alt='';
  element(card,'span','card-badge');setOwned(card);
  card.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')preview(game);});card.addEventListener('focus',()=>preview(game));
  }
+ if(state.view==='library'&&starterFailed)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  // Library always starts with a selection and keeps it through refreshes.
  const keep=entries().find(g=>g.id===(state.detail?.id||(state.view==='library'?returningGame:null)||featured?.id));
  if(state.view==='library'){returningGame=null;preview(keep||entries()[0]);markSelection();return;}
@@ -511,7 +532,7 @@ function mount(host){
  }
  const stopCatalog=startCatalogChecks(win,refreshCatalog);
  async function installGame(id){if(disposed)return;requested=id;installStates[id]={phase:'checking'};refreshOwnership();try{await gameUpdates.idle();await platform.install(id);await refreshLibrary();}catch{installStates[id]={phase:'error'};refreshOwnership();}}
- const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(installedChanged)refreshLibrary();});
+ const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(starterPending&&state.view==='library')renderGrid();if(installedChanged&&!starterPending)refreshLibrary();});
  platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
  const gameUpdates=startGameUpdates(win,platform);
  function hideDetail(){pausePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
@@ -571,11 +592,25 @@ function mount(host){
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
  function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
- function resumePreview(){if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
+ function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
+ async function loadStarterLibrary(){
+  starterPending=true;starterFailed=false;loading.library=true;failed.library=false;if(state.view==='library')renderGrid();
+  try{await gameUpdates.idle();const seeded=await prepareStarter(platform,{id:starterGame,storage});
+   // First preparation selects its game, but never overrides a game return or
+   // navigation/selection the user made while the verified install was pending.
+   if((seeded==='installed'||seeded==='present')&&initialViewPending&&state.view==='library'&&!returningGame&&!state.detail) returningGame=starterGame;
+  }
+  catch{starterFailed=true;}
+  try{const entries=await platform.library();if(disposed)return;library=entries;failed.library=starterFailed&&!entries.length;}
+  catch{if(disposed)return;failed.library=true;}
+  if(disposed)return;starterPending=false;loading.library=false;initialViewPending=false;
+  if(state.view==='library')renderGrid();refreshOwnership();finishTabFocus('library');
+ }
+ if(starterGame)loadStarterLibrary();
  // Only initial discovery may choose Store; explicit navigation always wins.
- for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length){const stayed=doc.activeElement===tabs.library;show('store');if(stayed){tabs.store.focus();focusView();if(loading.store)pendingTabFocus='store';}}else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
+ for(const [view,request] of [...(!starterGame?[['library',platform.library()]]:[]),['store',platform.catalog()]])request.then(entries=>{if(disposed)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length){const stayed=doc.activeElement===tabs.library;show('store');if(stayed){tabs.store.focus();focusView();if(loading.store)pendingTabFocus='store';}}else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
  // Adult pages return here so Back lands where the adult left, not on the library.
  function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;if(picking)hidePicker();initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
  settingsUnlocked=returningToSettings();activateView(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);
@@ -585,5 +620,5 @@ function mount(host){
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose,refreshCatalog};
 }
-return {createState,mount,challenge,startBattery,startCatalogChecks,startGameUpdates,sweepGameUpdates};
+return {createState,mount,challenge,startBattery,startCatalogChecks,startGameUpdates,sweepGameUpdates,prepareStarter};
 });

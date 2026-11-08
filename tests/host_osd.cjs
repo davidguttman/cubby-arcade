@@ -30,8 +30,8 @@ test('host gate suppresses unchanged bundled controls; virtual buttons do not de
  osd.dispose();assert.equal(f.win.navigator.getGamepads,f.original);
 });
 
-function mountedEnvironment(){
- const f=environment(),frames=new Map();let next=0;
+function mountedEnvironment(embedded=false){
+ const f=environment(),frames=new Map();let next=0;if(embedded)f.win.CubbyHandheldEmbed={};
  f.win.requestAnimationFrame=callback=>{frames.set(++next,callback);return next;};f.win.cancelAnimationFrame=id=>frames.delete(id);
  const element=tag=>({tag,dataset:{},attributes:{},children:[],style:{},hidden:false,setAttribute(n,v){this.attributes[n]=v;},appendChild(node){this.children.push(node);},remove(){},setPointerCapture(){},attachShadow(){this.shadowRoot=element('shadow');return this.shadowRoot;},querySelectorAll(){const all=[];function walk(n){if(n.tag==='button')all.push(n);n.children.forEach(walk);}walk(this);return all;}});
  f.win.document.createElement=element;f.win.document.body.appendChild=node=>{if(node.id==='cubby-host-osd')f.host=node;};f.win.document.readyState='complete';
@@ -72,4 +72,11 @@ test('BFCache pagehide releases input but preserves the controller for pageshow;
  f.pointer('pointerdown','b',2);assert.equal(provider()[0].buttons[1].pressed,true);
  f.fire('pagehide',{persisted:false});
  assert.equal(f.win.HandheldOSD,undefined);assert.equal(f.win.navigator.getGamepads,f.original);
+});
+
+test('an embedded physical handheld keeps the host gate but does not mount a visible second deck',()=>{
+ const f=mountedEnvironment(true);assert.equal(f.host.hidden,true);
+ f.win.HandheldControls={createControls(){throw Error('legacy game deck mounted');}};
+ assert.doesNotThrow(()=>f.win.HandheldControls.createControls({},'game')());
+ f.pointer('pointerdown','a');assert.equal(f.win.navigator.getGamepads()[0].buttons.some(b=>b.pressed),false);f.osd.dispose();
 });
