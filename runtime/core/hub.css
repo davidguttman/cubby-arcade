@@ -163,9 +163,9 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .hub .player-name-field{box-sizing:border-box;width:100%;height:52px;padding:0 14px;border:0;border-radius:14px;background:rgba(16,9,28,.65);box-shadow:inset 0 2px 6px rgba(0,0,0,.4);color:#ffd770;font:800 24px system-ui,sans-serif}
 .hub .player-name-field:focus{outline:3px solid #ffc94d;outline-offset:2px}
 :is(.player-management,.kid-name) .name-keyboard{grid-auto-rows:40px;margin:0 0 14px}
-.hub :is(.player-management,.kid-name) .cubby-keyboard button{min-width:0;min-height:0;padding:0;border-radius:9px;background:#3b2d57;font-size:16px;white-space:nowrap}
-.hub :is(.player-management,.kid-name) .cubby-keyboard button:focus{outline:none;background:#ffc94d;color:#3a2410}
-.hub :is(.player-management,.kid-name) .cubby-keyboard svg{width:20px;height:20px}
+.hub :is(.player-management,.kid-name,.feed-management) .cubby-keyboard button{min-width:0;min-height:0;padding:0;border-radius:9px;background:#3b2d57;font-size:16px;white-space:nowrap}
+.hub :is(.player-management,.kid-name,.feed-management) .cubby-keyboard button:focus{outline:none;background:#ffc94d;color:#3a2410}
+.hub :is(.player-management,.kid-name,.feed-management) .cubby-keyboard svg{width:20px;height:20px}
 @media (max-height:540px){:is(.player-management,.kid-name) .name-keyboard{grid-auto-rows:32px;margin:0 0 10px}.hub .player-name-field{height:46px;font-size:22px}.name-entry{margin:6px 0 14px}}/* Players screens use pictures, not words: icon buttons in the settings tiles' line style. */
 .hub .save-management .dialog-back{display:grid;place-items:center;width:48px;height:48px;min-width:48px;min-height:48px;padding:0;margin:0 0 10px;border-radius:50%;background:#2e2248;box-shadow:0 3px 0 rgba(8,4,16,.5),inset 0 0 0 2px rgba(255,255,255,.16)}
 .hub :is(.save-management,.player-picker) .icon-button{display:grid;place-items:center;width:52px;height:52px;min-width:52px;min-height:52px;padding:0;border-radius:16px}
@@ -195,7 +195,7 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 @keyframes refuse{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
 .hub .player-management .avatar-choice{padding:10px;border-radius:18px}
 .hub .player-management .avatar-choice svg{width:72px;height:72px}
-.hub :is(.player-management,.kid-name) .cubby-keyboard .case[aria-pressed=true]{color:#ffd770}
+.hub :is(.player-management,.kid-name,.feed-management) .cubby-keyboard .case[aria-pressed=true]{color:#ffd770}
 @media (max-height:540px){.hub .player-management .avatar-choice svg{width:60px;height:60px}.hub .save-management .dialog-back{width:44px;height:44px;min-width:44px;min-height:44px;margin-bottom:8px}.icon-actions{margin-top:10px}}
 
 /* A fresh Cubby's player chip is the logo itself, so the logo steps aside for it. */
@@ -212,6 +212,56 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 /* A child's name step: the same face, field, keys and ✕ ✓ as the adult page. */
 .kid-name{box-sizing:border-box;width:min(600px,94vw);padding:18px;border-radius:26px;background:#291e40;box-shadow:0 24px 60px #0008}
 @media (max-height:540px){.kid-name{padding:14px}}
-/* Text and URL controls are exclusive to the math-gated adult feed flow. */
-.feed-management{width:min(680px,94vw)}.feed-rows{display:grid;gap:16px;margin:18px 0}.feed-row{min-width:0;border:1px solid #79658f;border-radius:18px;padding:16px;background:#302348}.feed-row h2{margin:0 0 6px}.feed-url{margin:0 0 12px;color:#d2c5e2;font-size:14px;overflow-wrap:anywhere}.feed-actions{display:flex;flex-wrap:wrap;gap:10px}.hub .feed-management button{min-width:44px;min-height:44px;padding:10px 14px;font-size:15px;border-radius:12px}.hub .feed-toggle[aria-pressed=true],.hub .feed-management .save-feed{background:#ffc94d;color:#3a2410}.hub .feed-toggle[aria-pressed=false]{background:#473858;color:#fff4e6}.feed-feedback{min-height:24px;color:#ffd770;overflow-wrap:anywhere}.feed-fields{display:grid;gap:18px;margin:18px 0}.feed-field{display:grid;gap:8px;font-size:16px}.feed-field input{box-sizing:border-box;width:100%;min-width:0;min-height:48px;padding:12px;border:2px solid #8f7ca4;border-radius:12px;background:#1e152f;color:#fff4e6;font:inherit}.feed-field input:focus{outline:3px solid #ffc94d;outline-offset:2px}.feed-field input:disabled{opacity:.6}@media(max-width:480px){.feed-management{padding:18px}.feed-row{padding:12px}.feed-management h1{font-size:23px}.feed-management h2{font-size:19px}}
-.feed-keyboard{margin:16px 0;overflow:auto}.hub .feed-keyboard button{min-width:44px;min-height:44px;padding:0}.feed-keyboard.cubby-keyboard{grid-template-columns:repeat(11,minmax(44px,1fr))}
+/* Game feeds: the Players screens' look. Cards of name, covers and picture buttons; no words but names. */
+.feed-management{width:min(600px,94vw)}
+.feed-top{display:flex;align-items:center;gap:14px;margin:0 0 4px}
+.hub .feed-top .dialog-back{margin:0}
+.feed-heading{display:grid;place-items:center;color:#ffd770}
+.hub .feed-heading svg{width:38px;height:38px;stroke-width:1.8}
+.feed-rows{display:grid;gap:12px;margin:12px 0 4px}
+.feed-card{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"head head" "covers tools";align-items:center;gap:10px 12px;min-width:0;padding:12px 14px;border:2px solid transparent;border-radius:18px;background:rgba(255,255,255,.06)}
+.feed-card.is-down{border-color:#ff8f7f;background:rgba(255,143,127,.08)}
+.feed-head{grid-area:head;display:flex;align-items:center;gap:10px;min-width:0}
+.feed-title{flex:1;min-width:0;overflow:hidden;font-size:19px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}
+.feed-mark{display:grid;place-items:center}
+.hub .feed-mark svg{width:24px;height:24px;stroke-width:2.2}
+.is-stale .feed-mark{color:#ffc94d;opacity:.7}.is-down .feed-mark{color:#ff8f7f}
+.feed-card.is-off :is(.feed-title,.feed-covers){opacity:.4}
+.feed-covers{grid-area:covers;display:flex;align-items:center;gap:6px;min-width:0;min-height:44px;overflow:hidden}
+.feed-covers img{flex:none;height:44px;aspect-ratio:3/2;border-radius:8px;object-fit:cover;image-rendering:pixelated;background:#2c2244;box-shadow:0 2px 0 rgba(10,4,20,.35)}
+.feed-none{display:grid;place-items:center;opacity:.45}.hub .feed-none svg{width:30px;height:30px}
+.feed-tools{grid-area:tools;display:flex;align-items:center;gap:8px}
+.hub .feed-management .feed-tools .icon-button{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:14px;background:rgba(255,255,255,.08)}
+.hub .feed-management .feed-tools .icon-button svg{width:22px;height:22px}
+.hub .feed-management .feed-tools .icon-button:disabled{opacity:.2}
+/* The switch: a pill whose knob slides over and lights up when the feed is in use. */
+.hub .feed-management .feed-toggle{position:relative;display:block;width:64px;height:36px;min-width:64px;min-height:36px;padding:0;border-radius:999px;background:rgba(16,9,28,.65);box-shadow:inset 0 2px 6px rgba(0,0,0,.45)}
+.feed-knob{position:absolute;top:4px;left:4px;width:28px;height:28px;border-radius:50%;background:#8f7ca4;box-shadow:0 2px 0 rgba(0,0,0,.3);transition:transform .2s cubic-bezier(.3,1.5,.5,1),background-color .16s}
+.hub .feed-management .feed-toggle[aria-checked=true]{background:linear-gradient(#ffd770,#ffb22e)}
+.feed-toggle[aria-checked=true] .feed-knob{transform:translateX(28px);background:#fff4e6}
+.hub .feed-management .add-feed{width:100%;height:60px;border-radius:18px;background:transparent;border:2px dashed rgba(255,244,230,.28);color:#ffd770}
+.hub .feed-management .add-feed svg{width:34px;height:34px;stroke-width:2.6}
+.hub .feed-management .add-feed:disabled{display:none}
+.hub :is(.save-management,.player-picker) .cancel-feed{background:rgba(255,255,255,.12);color:#fff4e6}
+.hub .save-management .save-feed{background:linear-gradient(#ffd770,#ffb22e);color:#3a2410}
+.hub .save-management .save-feed.is-dim{opacity:.35}
+/* Saving: every control waits and the one pressed pulses. */
+.hub .feed-management .is-busy:disabled{opacity:1;animation:feed-busy 1s ease-in-out infinite}
+@keyframes feed-busy{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.hub .feed-management .is-busy:disabled{animation:none;opacity:.7}}
+.feed-fields{display:grid;gap:12px;margin:6px 0 14px}
+.feed-field{display:flex;align-items:center;gap:12px}
+.feed-field-icon{display:grid;place-items:center;flex:none;width:36px;color:#ffd770}
+.hub .feed-field-icon svg{width:30px;height:30px;stroke-width:2}
+.hub .feed-field input{box-sizing:border-box;flex:1;min-width:0;height:52px;padding:0 14px;border:0;border-radius:14px;background:rgba(16,9,28,.65);box-shadow:inset 0 2px 6px rgba(0,0,0,.4);color:#ffd770;font:800 20px system-ui,sans-serif}
+.hub .feed-field .feed-url-input{font-size:17px;font-weight:700}
+.hub .feed-field input:focus,.hub .feed-field.is-typing input{outline:3px solid #ffc94d;outline-offset:2px}
+.hub .feed-field input.invalid,.hub .feed-field input.invalid:focus{outline:3px solid #ff8f7f;outline-offset:2px}
+.feed-management .feed-keyboard{grid-auto-rows:36px;margin:0 0 12px}
+.feed-remove-picture .feed-picture{display:grid;place-items:center;width:112px;height:112px;overflow:hidden;border-radius:26px;background:rgba(255,255,255,.1);color:#ffd770}
+.feed-picture img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated}
+.hub .feed-picture svg{width:56px;height:56px;stroke-width:1.8}
+.hub .feed-management .feed-remove-name{margin:0 0 6px;font-size:20px;text-align:center;white-space:normal;overflow-wrap:anywhere}
+.feed-wait{display:grid;place-items:center;min-height:140px;color:#ffd770}.hub .feed-wait svg{width:64px;height:64px;stroke-width:1.8}
+@media (max-width:460px){.feed-card{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "covers" "tools"}.hub .feed-management .feed-tools .feed-edit{margin-left:auto}}
+@media (max-height:540px){.feed-card{gap:8px 10px;padding:8px 10px}.feed-rows{gap:8px;margin:8px 0 2px}.feed-covers{min-height:36px}.feed-covers img{height:36px}.hub .feed-management .feed-tools .icon-button{width:40px;height:40px;min-width:40px;min-height:40px}.hub .feed-field input{height:44px}.feed-fields{gap:8px;margin:0 0 10px}.feed-management .feed-keyboard{grid-auto-rows:28px;margin:0 0 8px}.hub .feed-management .add-feed{height:50px}.hub .feed-heading svg{width:32px;height:32px}}

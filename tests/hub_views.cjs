@@ -626,47 +626,124 @@ test('player screens show no words but players’ names and keyboard letters',as
  for(const [screen,text,key] of shown)assert.ok(names.has(text)||(key&&[...text].length===1),screen+' shows words: '+text);
 });
 
-function feedHub(extra={}){
- const Feeds=require('../runtime/core/game-feeds.js');let saved=null,writes=0;
- const manager=Feeds.createManager({read:async()=>saved,write:async value=>{writes++;saved=structuredClone(value);},fetchCatalog:async url=>[{id:url===Feeds.DEFAULT_URL?'cubby':'custom',title:'Game',artwork:'https://assets.test/art.png',manifest_url:'https://assets.test/game.json'}]});
- const mounted=mountedHub(games,[],{}, {feedConfig:()=>manager.config(),setFeedConfig:config=>manager.setConfig(config),catalog:()=>manager.catalog(),...extra});
+// Game feeds: an adult page with no words but feed names, like the Players screens.
+const Feeds=require('../runtime/core/game-feeds.js');
+function feedHub(extra={},windowOverrides={},fetchCatalog=null){
+ let saved=null,writes=0;
+ const manager=Feeds.createManager({read:async()=>saved,write:async value=>{writes++;saved=structuredClone(value);},fetchCatalog:fetchCatalog||(async url=>[{id:url===Feeds.DEFAULT_URL?'cubby':'custom',title:'Game',artwork:url===Feeds.DEFAULT_URL?'https://assets.test/cubby.png':'https://assets.test/custom.png',manifest_url:'https://assets.test/game.json'}])});
+ const mounted=mountedHub(games,[],{}, {feedConfig:()=>manager.config(),setFeedConfig:config=>manager.setConfig(config),catalog:()=>manager.catalog(),feedStatus:()=>manager.status(),...extra},windowOverrides);
  return {...mounted,manager,saved:()=>saved,writes:()=>writes};
 }
+async function openFeedsPage(host,hub){hub.show('options');passGate(host);host.querySelector('.manage-feeds').click();await settle();return host.querySelector('.feed-management');}
+function typeFeed(dialog,name,url){dialog.querySelector('.feed-name-input').value=name;dialog.querySelector('.feed-url-input').value=url;}
+const feedNames=dialog=>dialog.querySelectorAll('.feed-card').map(card=>card.querySelector('.feed-title').textContent);
+const coversOf=card=>card.querySelector('.feed-covers').querySelectorAll('img');
 test('feed management is gated on every host and add/edit/order/toggle/remove refresh the blended Store',async()=>{
  const {host,hub,manager}=feedHub({settings:[{icon:'wifi',label:'Network',href:'/adult/network'}]});await settle();hub.show('options');assert.equal(host.querySelector('.manage-feeds'),null);
- passGate(host);host.querySelector('.manage-feeds').click();await settle();const dialog=host.querySelector('.feed-management');assert.equal(dialog.open,true);assert.equal(dialog.querySelector('.feed-title').textContent,'Cubby Arcade');
- dialog.querySelector('.add-feed').click();dialog.querySelector('.feed-name-input').value='Other';dialog.querySelector('.feed-url-input').value='https://other.test/catalog';dialog.querySelector('.save-feed').click();await settle();
- assert.equal((await manager.config()).feeds.length,2);dialog.querySelectorAll('.feed-up')[1].click();await settle();assert.equal((await manager.config()).feeds[0].name,'Other');
- dialog.querySelectorAll('.feed-edit')[0].click();dialog.querySelector('.feed-name-input').value='Renamed';dialog.querySelector('.feed-url-input').value='https://renamed.test/catalog';dialog.querySelector('.save-feed').click();await settle();assert.equal((await manager.config()).feeds[0].url,'https://renamed.test/catalog');
- dialog.querySelectorAll('.feed-toggle')[0].click();await settle();assert.equal((await manager.config()).feeds[0].enabled,false);
- dialog.querySelectorAll('.feed-toggle')[0].click();await settle();dialog.querySelector('.close-feeds').click();hub.show('store');assert.deepEqual(shelfIds(host),['custom','cubby']);
- hub.show('options');passGate(host);host.querySelector('.manage-feeds').click();await settle();dialog.querySelectorAll('.feed-remove')[0].click();await settle();assert.equal((await manager.config()).feeds.length,1);dialog.querySelector('.close-feeds').click();hub.show('store');assert.deepEqual(shelfIds(host),['cubby']);hub.dispose();
+ const dialog=await openFeedsPage(host,hub);assert.equal(dialog.open,true);assert.deepEqual(feedNames(dialog),['Cubby Arcade']);
+ assert.equal(host.ownerDocument.activeElement,dialog.querySelector('.feed-edit'),'Lands on the first feed, as Players lands on the first rename');
+ dialog.querySelector('.add-feed').click();typeFeed(dialog,'Other','https://other.test/catalog');dialog.querySelector('.save-feed').click();await settle();
+ assert.equal((await manager.config()).feeds.length,2);assert.deepEqual(feedNames(dialog),['Cubby Arcade','Other']);assert.equal(host.ownerDocument.activeElement,dialog.querySelectorAll('.feed-edit')[1],'Back on the new feed');
+ assert.equal(dialog.querySelectorAll('.feed-up')[0].disabled,true);assert.equal(dialog.querySelectorAll('.feed-down')[1].disabled,true,'Chevrons stop at the ends');
+ dialog.querySelectorAll('.feed-up')[1].click();await settle();assert.equal((await manager.config()).feeds[0].name,'Other');assert.equal(host.ownerDocument.activeElement,dialog.querySelectorAll('.feed-down')[0],'Focus follows the moved feed');
+ dialog.querySelectorAll('.feed-edit')[0].click();assert.equal(dialog.querySelector('.feed-url-input').value,'https://other.test/catalog');typeFeed(dialog,'Renamed','https://renamed.test/catalog');dialog.querySelector('.save-feed').click();await settle();assert.equal((await manager.config()).feeds[0].url,'https://renamed.test/catalog');
+ const toggle=()=>dialog.querySelectorAll('.feed-toggle')[0];assert.equal(toggle().getAttribute('role'),'switch');assert.equal(toggle().getAttribute('aria-checked'),'true');
+ toggle().click();await settle();assert.equal((await manager.config()).feeds[0].enabled,false);assert.equal(toggle().getAttribute('aria-checked'),'false');assert.ok(dialog.querySelectorAll('.feed-card')[0].classList.contains('is-off'),'A feed not in use dims');
+ toggle().click();await settle();dialog.querySelector('.close-feeds').click();hub.show('store');assert.deepEqual(shelfIds(host),['custom','cubby']);
+ await openFeedsPage(host,hub);dialog.querySelectorAll('.feed-remove')[0].click();assert.equal(dialog.querySelector('.feed-remove-name').textContent,'Renamed');assert.equal(dialog.querySelectorAll('.feed-card').length,0,'Removing asks first');
+ dialog.querySelector('.cancel-feed').click();assert.equal((await manager.config()).feeds.length,2);assert.equal(host.ownerDocument.activeElement,dialog.querySelectorAll('.feed-remove')[0]);
+ dialog.querySelectorAll('.feed-remove')[0].click();dialog.querySelector('.remove-confirm').click();await settle();assert.equal((await manager.config()).feeds.length,1);assert.deepEqual(feedNames(dialog),['Cubby Arcade']);
+ dialog.querySelector('.close-feeds').click();hub.show('store');assert.deepEqual(shelfIds(host),['cubby']);hub.dispose();
 });
-test('feed editor cancellation and validation failure preserve persisted config and restore usable controls',async()=>{
- const {host,hub,manager,writes}=feedHub();await settle();hub.show('options');passGate(host);host.querySelector('.manage-feeds').click();await settle();const dialog=host.querySelector('.feed-management');
- dialog.querySelector('.add-feed').click();dialog.querySelector('.feed-name-input').value='Nope';dialog.querySelector('.feed-url-input').value='http://unsafe.test/feed';const before=writes();dialog.querySelector('.save-feed').click();await settle();assert.equal((await manager.config()).feeds.length,1);assert.equal(writes(),before);assert.match(dialog.querySelector('.feed-feedback').textContent,/HTTPS/);assert.equal(dialog.querySelector('.save-feed').disabled,false);
- dialog.querySelector('.cancel-feed').click();assert.equal(dialog.querySelectorAll('.feed-row').length,1);dialog.querySelector('.close-feeds').click();assert.equal(host.ownerDocument.activeElement,host.querySelector('.manage-feeds'));hub.show('library');hub.show('options');assert.equal(host.querySelector('.manage-feeds'),null);hub.dispose();
+test('feed cards show the covers of games that feed provides',async()=>{
+ const {host,hub}=feedHub();await settle();const dialog=await openFeedsPage(host,hub);
+ dialog.querySelector('.add-feed').click();typeFeed(dialog,'Other','https://other.test/catalog');dialog.querySelector('.save-feed').click();await settle();
+ const covers=dialog.querySelectorAll('.feed-card').map(card=>coversOf(card).map(img=>img.src));
+ assert.deepEqual(covers,[['https://assets.test/cubby.png'],['https://assets.test/custom.png']]);
+ assert.ok(dialog.querySelectorAll('.feed-card').flatMap(coversOf).every(img=>img.alt===''),'Covers are pictures, not labels');
+ dialog.querySelectorAll('.feed-toggle')[1].click();await settle();assert.equal(coversOf(dialog.querySelectorAll('.feed-card')[1]).length,0,'A feed not in use offers nothing');
+ dialog.querySelector('.close-feeds').click();hub.dispose();
 });
-test('feed load and persistence failures stay in adult dialog and permit retry without losing draft',async()=>{
- let fail=true;const {host,hub}=feedHub({feedConfig:async()=>{if(fail)throw Error('disk');return {schema:1,feeds:[]};},setFeedConfig:async()=>{throw Error('disk');}});await settle();hub.show('options');passGate(host);host.querySelector('.manage-feeds').click();await settle();const dialog=host.querySelector('.feed-management');assert.match(dialog.querySelector('.feed-feedback').textContent,/could not/);fail=false;dialog.querySelector('.retry-feeds').click();await settle();assert.match(dialog.querySelector('.feed-empty').textContent,/No feeds/);
- dialog.querySelector('.add-feed').click();dialog.querySelector('.feed-name-input').value='Draft';dialog.querySelector('.feed-url-input').value='https://other.test/feed';dialog.querySelector('.save-feed').click();await settle();assert.equal(dialog.querySelector('.feed-name-input').value,'Draft');assert.match(dialog.querySelector('.feed-feedback').textContent,/could not/);dialog.querySelector('.cancel-feed').click();dialog.querySelector('.close-feeds').click();hub.dispose();
+test('feed editor refuses bad fields with a red shake, writes nothing, and cancels back to the list',async()=>{
+ const {host,hub,manager,writes}=feedHub();await settle();const dialog=await openFeedsPage(host,hub);
+ dialog.querySelector('.add-feed').click();const name=dialog.querySelector('.feed-name-input'),url=dialog.querySelector('.feed-url-input'),save=dialog.querySelector('.save-feed');
+ assert.ok(save.classList.contains('is-dim'),'✓ is dim until both fields can be saved');assert.ok(!save.disabled,'but pressing it still shows what is wrong');
+ const before=writes();save.click();await settle();assert.ok(name.classList.contains('invalid')&&name.classList.contains('refused'),'An empty name shakes red');assert.equal(writes(),before);
+ name.value='Nope';name.listeners.input[0]();assert.equal(name.classList.contains('invalid'),false,'Fixed fields turn back at once');
+ url.value='http://unsafe.test/feed';save.click();await settle();assert.ok(url.classList.contains('invalid')&&url.classList.contains('refused'),'A non-HTTPS address shakes red');
+ url.value=Feeds.DEFAULT_URL;url.classList.remove('refused');save.click();await settle();assert.ok(url.classList.contains('refused'),'A feed already added shakes red');
+ assert.equal((await manager.config()).feeds.length,1);assert.equal(writes(),before);assert.ok(!save.disabled);
+ dialog.querySelector('.cancel-feed').click();assert.equal(dialog.querySelectorAll('.feed-card').length,1);assert.equal(host.ownerDocument.activeElement,dialog.querySelector('.add-feed'));
+ dialog.querySelector('.close-feeds').click();assert.equal(host.ownerDocument.activeElement,host.querySelector('.manage-feeds'));hub.show('library');hub.show('options');assert.equal(host.querySelector('.manage-feeds'),null);hub.dispose();
+});
+test('a validation error from the host shakes the address even when the hub could not check it',async()=>{
+ const {host,hub,manager}=feedHub();await settle();const dialog=await openFeedsPage(host,hub);
+ dialog.querySelectorAll('.feed-edit')[0].click();typeFeed(dialog,'Cubby Arcade','https://user:pw@other.test/feed');dialog.querySelector('.save-feed').click();await settle();
+ assert.ok(dialog.querySelector('.feed-url-input').classList.contains('refused'));assert.equal((await manager.config()).feeds[0].url,Feeds.DEFAULT_URL);hub.dispose();
+});
+test('feed load and persistence failures stay in adult dialog as pictures and permit retry without losing draft',async()=>{
+ let fail=true;const {host,hub}=feedHub({feedConfig:async()=>{if(fail)throw Error('disk');return {schema:1,feeds:[]};},setFeedConfig:async()=>{throw Error('disk');}});await settle();const dialog=await openFeedsPage(host,hub);
+ assert.ok(dialog.querySelector('.feed-wait'));assert.equal(host.ownerDocument.activeElement,dialog.querySelector('.retry-feeds'));fail=false;dialog.querySelector('.retry-feeds').click();await settle();
+ assert.equal(dialog.querySelectorAll('.feed-card').length,0);assert.equal(host.ownerDocument.activeElement,dialog.querySelector('.add-feed'),'With no feeds, + is the way on');
+ dialog.querySelector('.add-feed').click();typeFeed(dialog,'Draft','https://other.test/feed');dialog.querySelector('.save-feed').click();await settle();
+ assert.equal(dialog.querySelector('.feed-name-input').value,'Draft');const save=dialog.querySelector('.save-feed');assert.ok(save.classList.contains('refused'),'A save that could not be stored shakes ✓');assert.ok(!save.disabled);assert.equal(save.classList.contains('is-busy'),false);
+ dialog.querySelector('.cancel-feed').click();dialog.querySelector('.close-feeds').click();hub.dispose();
 });
 test('feed editor protects native typing and its modal stays put during a pending save',async()=>{
- let release;const pending=new Promise(resolve=>release=resolve);const {host,hub,action}=feedHub({setFeedConfig:async config=>{await pending;return config;}});await settle();hub.show('options');passGate(host);host.querySelector('.manage-feeds').click();await settle();const dialog=host.querySelector('.feed-management');dialog.querySelector('.add-feed').click();const name=dialog.querySelector('.feed-name-input');let stopped=false;name.dispatchEvent({type:'keydown',code:'KeyA',stopPropagation(){stopped=true;}});assert.equal(stopped,true);
- name.value='Other';dialog.querySelector('.feed-url-input').value='https://other.test/feed';action('pause','gamepad');await settle();assert.equal(dialog.querySelector('.save-feed').disabled,true);action('back','gamepad');assert.equal(dialog.open,true);release();await settle();assert.equal(dialog.querySelector('.feed-title').textContent,'Cubby Arcade');action('back','gamepad');assert.equal(dialog.open,false);hub.dispose();
+ let release;const pending=new Promise(resolve=>release=resolve);const {host,hub,action}=feedHub({setFeedConfig:async config=>{await pending;return config;}});await settle();const dialog=await openFeedsPage(host,hub);dialog.querySelector('.add-feed').click();const name=dialog.querySelector('.feed-name-input');let stopped=false;name.dispatchEvent({type:'keydown',code:'KeyA',stopPropagation(){stopped=true;}});assert.equal(stopped,true);
+ typeFeed(dialog,'Other','https://other.test/feed');action('pause','gamepad');await settle();const save=dialog.querySelector('.save-feed');assert.equal(save.disabled,true);assert.ok(save.classList.contains('is-busy'),'✓ pulses while saving');
+ action('back','gamepad');assert.equal(dialog.open,true);release();await settle();assert.deepEqual(feedNames(dialog),['Cubby Arcade','Other']);action('back','gamepad');assert.equal(dialog.open,false);hub.dispose();
 });
 test('a saved feed configuration is not reported as failed if the following catalog refresh fails',async()=>{
- let refreshFails=false;const {host,hub,manager}=feedHub({catalog:async()=>{if(refreshFails)throw Error('refresh disk failure');return [];}});await settle();hub.show('options');passGate(host);host.querySelector('.manage-feeds').click();await settle();const dialog=host.querySelector('.feed-management');refreshFails=true;dialog.querySelector('.feed-toggle').click();await settle();assert.equal((await manager.config()).feeds[0].enabled,false);assert.match(dialog.querySelector('.feed-feedback').textContent,/Settings saved/);assert.equal(dialog.querySelector('.feed-up').disabled,true);dialog.querySelector('.close-feeds').click();hub.dispose();
+ let refreshFails=false;const {host,hub,manager}=feedHub({catalog:async()=>{if(refreshFails)throw Error('refresh disk failure');return [];}});await settle();const dialog=await openFeedsPage(host,hub);refreshFails=true;dialog.querySelector('.feed-toggle').click();await settle();
+ assert.equal((await manager.config()).feeds[0].enabled,false);assert.equal(dialog.querySelector('.feed-toggle').getAttribute('aria-checked'),'false');assert.equal(dialog.querySelector('.feed-toggle').classList.contains('refused'),false);assert.equal(dialog.querySelector('.feed-up').disabled,true);dialog.querySelector('.close-feeds').click();hub.dispose();
 });
-test('handheld feed fields can be typed with the shared controller keyboard',async()=>{
- const Keyboard=require('../runtime/core/keyboard.js'),Feeds=require('../runtime/core/game-feeds.js');let config=Feeds.defaultConfig();const {host,hub,action}=mountedHub(games,[],{}, {feedConfig:async()=>config,setFeedConfig:async next=>(config=Feeds.validateConfig(next))},{CubbyDeviceProfile:'rg353v',HandheldKeyboard:Keyboard,AbortController});await settle();hub.show('options');passGate(host);host.querySelector('.manage-feeds').click();await settle();const dialog=host.querySelector('.feed-management');dialog.querySelector('.add-feed').click();dialog.querySelector('.type-feed-name').click();let keys=dialog.querySelector('.feed-keyboard');keys.querySelectorAll('button').find(b=>b.textContent==='q').click();assert.equal(dialog.querySelector('.feed-name-input').value,'q');dialog.querySelector('.type-feed-url').click();keys=dialog.querySelector('.feed-keyboard');for(const char of 'https://q.test/feed')keys.querySelectorAll('button').find(b=>b.textContent===char).click();assert.equal(dialog.querySelector('.feed-url-input').value,'https://q.test/feed');action('nextView','gamepad');assert.ok(keys.querySelectorAll('button').some(b=>b.textContent==='Q'));dialog.querySelector('.save-feed').click();await settle();assert.equal(config.feeds[1].url,'https://q.test/feed');dialog.querySelector('.close-feeds').click();hub.dispose();
+test('handheld feed fields are typed with the shared controller keyboard on whichever field is chosen',async()=>{
+ let config=Feeds.defaultConfig();const {host,hub,action}=mountedHub(games,[],{}, {feedConfig:async()=>config,setFeedConfig:async next=>(config=Feeds.validateConfig(next))},device);await settle();const dialog=await openFeedsPage(host,hub);
+ dialog.querySelector('.add-feed').click();let keys=dialog.querySelector('.feed-keyboard');assert.ok(keys,'Keys are there at once, with nothing to press first');assert.equal(dialog.querySelector('.type-feed-name'),null);
+ assert.equal(keys.dataset.layout,'web');assert.ok(keys.children.includes(host.ownerDocument.activeElement),'The D-pad starts on the keys');
+ keys.querySelectorAll('button').find(b=>b.textContent==='Q').click();assert.equal(dialog.querySelector('.feed-name-input').value,'Q','A name starts with a capital');
+ const url=dialog.querySelector('.feed-url-input');url.focus();assert.ok(url.parent.classList.contains('is-typing'));
+ action('confirm','gamepad');assert.ok(keys.children.includes(host.ownerDocument.activeElement),'Confirm on a field goes to its keys');
+ for(const char of 'https://q.test/feed')keys.querySelectorAll('button').find(b=>b.textContent===char).click();assert.equal(url.value,'https://q.test/feed');assert.equal(dialog.querySelector('.feed-name-input').value,'Q');
+ action('nextView','gamepad');assert.ok(keys.querySelectorAll('button').some(b=>b.textContent==='Q'));action('pause','gamepad');await settle();assert.equal(config.feeds[1].url,'https://q.test/feed');assert.equal(config.feeds[1].name,'Q');dialog.querySelector('.close-feeds').click();hub.dispose();
 });
-test('adult feed rows reveal actual failed loads after save and on reopening, not merely Saved',async()=>{
- const Feeds=require('../runtime/core/game-feeds.js');let saved=null;
- const manager=Feeds.createManager({read:async()=>saved,write:async value=>{saved=value;},fetchCatalog:async url=>{if(url!==Feeds.DEFAULT_URL)throw Error('Failed to fetch');return [];}});
- const {host,hub}=feedHub({feedConfig:()=>manager.config(),setFeedConfig:next=>manager.setConfig(next),catalog:()=>manager.catalog(),feedStatus:()=>manager.status()});await settle();hub.show('options');passGate(host);host.querySelector('.manage-feeds').click();await settle();const dialog=host.querySelector('.feed-management');
- dialog.querySelector('.add-feed').click();dialog.querySelector('.feed-name-input').value='Unavailable';dialog.querySelector('.feed-url-input').value='https://unavailable.test/catalog';dialog.querySelector('.save-feed').click();await settle();
- assert.match(dialog.querySelectorAll('.feed-status')[1].textContent,/could not load/i);assert.match(dialog.querySelector('.feed-feedback').textContent,/saved.*could not load/i);assert.equal(dialog.scrollTop,0);
- dialog.querySelector('.close-feeds').click();host.querySelector('.manage-feeds').click();await settle();assert.match(dialog.querySelectorAll('.feed-status')[1].textContent,/could not load/i);
- dialog.querySelectorAll('.feed-toggle')[1].click();await settle();assert.match(dialog.querySelectorAll('.feed-status')[1].textContent,/Disabled/);dialog.querySelector('.close-feeds').click();hub.dispose();
+test('feed cards show failed and saved-copy loads as pictures, after save and on reopening',async()=>{
+ let saved=null,fail=new Set();
+ const manager=Feeds.createManager({read:async()=>saved,write:async value=>{saved=value;},fetchCatalog:async url=>{if(fail.has(url))throw Error('Failed to fetch');return url===Feeds.DEFAULT_URL?[]:[{id:'other',title:'Other',artwork:'https://assets.test/o.png',manifest_url:'https://assets.test/o.json'}];}});
+ const {host,hub}=feedHub({feedConfig:()=>manager.config(),setFeedConfig:next=>manager.setConfig(next),catalog:()=>manager.catalog(),feedStatus:()=>manager.status()});await settle();const dialog=await openFeedsPage(host,hub);
+ assert.ok(dialog.querySelector('.feed-none'),'A feed that loaded with no games shows an empty box');
+ fail.add('https://unavailable.test/catalog');dialog.querySelector('.add-feed').click();typeFeed(dialog,'Unavailable','https://unavailable.test/catalog');dialog.querySelector('.save-feed').click();await settle();
+ const card=()=>dialog.querySelectorAll('.feed-card')[1];assert.ok(card().classList.contains('is-down'));assert.equal(card().querySelector('.feed-mark').getAttribute('aria-label'),'Not loading');assert.equal(dialog.querySelectorAll('.feed-card')[0].querySelector('.feed-mark'),null,'A feed that loads shows nothing extra');
+ dialog.querySelector('.close-feeds').click();host.querySelector('.manage-feeds').click();await settle();assert.ok(card().classList.contains('is-down'),'Still red on reopening');
+ dialog.querySelectorAll('.feed-toggle')[1].click();await settle();assert.ok(card().classList.contains('is-off'));assert.equal(card().classList.contains('is-down'),false);assert.equal(card().querySelector('.feed-mark'),null);
+ fail.delete('https://unavailable.test/catalog');dialog.querySelectorAll('.feed-toggle')[1].click();await settle();assert.equal(card().querySelector('.feed-mark'),null);assert.equal(coversOf(card()).length,1);
+ fail.add('https://unavailable.test/catalog');dialog.querySelectorAll('.feed-up')[1].click();await settle();const stale=dialog.querySelectorAll('.feed-card')[0];assert.ok(stale.classList.contains('is-stale'),'A refresh that failed after an earlier load keeps the saved games, dimly marked');assert.equal(stale.querySelector('.feed-mark').getAttribute('aria-label'),'Saved copy');
+ dialog.querySelector('.close-feeds').click();hub.dispose();
+});
+test('feed screens show no words but feed names and keyboard letters, and every button is named for screen readers',async()=>{
+ let fail=true;const {host,hub,action}=feedHub({},device,async url=>{if(url!==Feeds.DEFAULT_URL&&fail)throw Error('offline');return [{id:url===Feeds.DEFAULT_URL?'cubby':'other',title:'Game',artwork:'https://assets.test/a.png',manifest_url:'https://assets.test/g.json'}];});await settle();
+ const shown=[],unnamed=[],names=new Set(['Cubby Arcade','Muse']);
+ function collect(screen){const walk=e=>{const key=!!e.parent?.classList.contains('cubby-keyboard');if(typeof e.textContent==='string'&&e.textContent&&!e.children?.length)shown.push([screen,e.textContent,key]);if(['button','input'].includes(e.tagName)&&!key&&!e.getAttribute('aria-label'))unnamed.push(screen+' '+e.className);(e.children||[]).forEach(walk);};walk(host.querySelector('.feed-management'));}
+ const dialog=await openFeedsPage(host,hub);collect('list');
+ dialog.querySelector('.add-feed').click();collect('add');typeFeed(dialog,'Muse','https://muse.test/feed.json');dialog.querySelector('.save-feed').click();await settle();collect('with a failed feed');
+ assert.ok(dialog.querySelector('.is-down'));
+ dialog.querySelectorAll('.feed-edit')[1].click();dialog.querySelector('.feed-url-input').value='nope';dialog.querySelector('.save-feed').click();collect('edit error');action('back','gamepad');
+ dialog.querySelectorAll('.feed-remove')[1].click();collect('remove');action('back','gamepad');
+ dialog.querySelectorAll('.feed-toggle')[1].click();await settle();collect('disabled');
+ assert.ok(shown.some(([screen,text])=>screen==='list'&&text==='Cubby Arcade'),'Names are shown');assert.ok(shown.some(([screen,,key])=>screen==='add'&&key),'Keys are shown');
+ for(const [screen,text,key] of shown)assert.ok(names.has(text)||(key&&[...text].length===1),screen+' shows words: '+text);
+ assert.deepEqual(unnamed,[]);dialog.querySelector('.close-feeds').click();hub.dispose();
+});
+test('the D-pad moves spatially between a feed card’s controls and from card to card',async()=>{
+ const {host,hub,action}=feedHub();await settle();const dialog=await openFeedsPage(host,hub);
+ dialog.querySelector('.add-feed').click();typeFeed(dialog,'Other','https://other.test/catalog');dialog.querySelector('.save-feed').click();await settle();
+ const place=(node,left,top)=>{node.getBoundingClientRect=()=>({left,top,width:40,height:40});};
+ dialog.querySelectorAll('.feed-card').forEach((card,i)=>{const y=i*200;place(card.querySelector('.feed-toggle'),300,y);['feed-up','feed-down','feed-edit','feed-remove'].forEach((cls,j)=>place(card.querySelector('.'+cls),150+j*50,y+60));});
+ place(dialog.querySelector('.close-feeds'),0,-80);place(dialog.querySelector('.add-feed'),150,400);
+ dialog.querySelectorAll('.feed-edit')[0].focus();action('right','gamepad');assert.equal(host.ownerDocument.activeElement,dialog.querySelectorAll('.feed-remove')[0]);
+ action('down','gamepad');assert.equal(host.ownerDocument.activeElement,dialog.querySelectorAll('.feed-toggle')[1]);
+ action('down','gamepad');assert.equal(host.ownerDocument.activeElement,dialog.querySelectorAll('.feed-remove')[1]);
+ action('confirm','gamepad');assert.ok(dialog.querySelector('.remove-confirm'),'Confirm presses the focused button');action('back','gamepad');assert.equal(dialog.querySelectorAll('.feed-card').length,2);
+ action('back','gamepad');assert.equal(dialog.open,false);hub.dispose();
 });
