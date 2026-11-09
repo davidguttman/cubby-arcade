@@ -6,8 +6,8 @@ never flash the QEMU disk to a handheld.
 
 For a physical **Anbernic RG353V**, use the separate
 [all-in-one SD-card image and adult setup guide](docs/rg353v-install.md): flash
-one image, insert the card, and power on. ROCKNIX, WPE, Cubby startup, and offline
-Trail Mix are preinstalled, with a stock-launcher recovery path. The image is
+one image, insert the card, and power on. ROCKNIX, WPE and Cubby startup are
+preinstalled, with an empty Library and a stock-launcher recovery path. The image is
 not publicly published or hardware-certified yet; VM results do not certify
 the handheld.
 

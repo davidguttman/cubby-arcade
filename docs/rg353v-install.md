@@ -2,7 +2,7 @@
 
 **Download one image. Flash the card. Insert it and power on.**
 
-The image already contains ROCKNIX, WPE, Cubby, and an offline copy of Trail Mix.
+The image contains ROCKNIX, WPE and Cubby, with **no installed games**.
 No terminal, Python, SSH, or second installation is required on the handheld.
 First launch opens [adult Wi-Fi onboarding](rg353v-network.md): internet is
 required to finish setup and get new content. Installed games work offline afterward.
@@ -19,8 +19,8 @@ microSD card (**16 GB minimum; 32 GB recommended**), and a computer/card reader.
    anything on it first. Keep Etcher's verification enabled.
 3. **Insert the card in the handheld's OS slot and power on.** Leave it powered
    while ROCKNIX expands the storage partition and automatically reboots.
-   Cubby is configured to open fullscreen into adult Wi-Fi setup; Trail Mix is
-   already installed and becomes playable after initial internet verification.
+   Cubby opens fullscreen into adult Wi-Fi setup, then an empty Library.
+   Install games through Cubby after setup. No test saves or prior setup data are included.
 
 **Availability/status:** the image builder produces a local artifact; a public
 image download has not yet been published. Physical RG353V cold boot, GPU,
@@ -69,7 +69,7 @@ an enlarged data filesystem with the verified
 ARM64 WPE runtime and Cubby. The hook creates only a volatile systemd override;
 it does not prepopulate `.config`/`.cache`, which would prevent stock first-boot
 resize. Upstream's RK3566 resize expands the existing filesystem without
-formatting it, preserving the preinstalled runtime and game.
+formatting it, preserving the preinstalled runtime and Cubby.
 
 On the Linux build host, after building the [GTK4 kiosk runtime](../rocknix/ROOTFS.md),
 select the intended release's clean committed checkout and explicit version:
@@ -92,8 +92,11 @@ The namespace preserves numeric ownership without sudo. Build tools are `uv`,
 dependencies are pinned in the script. The image builder writes only regular
 files, never physical disks. It validates upstream and rootfs checksums, GPT
 checksums/layout, and the created filesystem; it generates an image SHA-256
-sidecar. Trail Mix's immutable version-0.9.0 release manifest and verified file inventory, source commit,
-and input checksums are recorded under `/storage/cubby/image-provenance`.
+sidecar. Source commit and input checksums are recorded under
+`/storage/cubby/image-provenance`. Building the image does not fetch or install
+any game. Both pre-packaging and actual-filesystem audits reject games, saves,
+profiles, setup progress, network credentials and prior management identities.
+Required system and installed-version records are retained.
 
 Advanced SSH installation onto an existing supported ROCKNIX card remains
 available in [the maintenance guide](rg353v-maintenance.md). It is **not** the
@@ -179,9 +182,13 @@ or marks hardware certified.
 Before calling an image customer-ready, flash that exact artifact on a clean
 supported unit/card and record: first boot/resize and cold boot artwork, Wi-Fi
 setup and reboot reconnect, USB and provisioned recovery access with Cubby
-stopped, accelerated UI, physical controls, sound, offline game launch/saves,
+stopped, accelerated UI, physical controls, sound, explicit game installation,
+offline game launch/saves,
 signed update and trial rollback, sleep/wake, and reboot persistence. Preserve
 checksums, commit, device model and the observed results with the artifact.
+Install test games only during commissioning, then remove their packages, saves,
+profiles and temporary bench-network/setup data before customer handoff. A
+fresh image audit is not proof of post-commissioning cleanup.
 Software tests or repair of an already-upgraded device do not satisfy this gate.
 
 ### Selecting the current public installation image

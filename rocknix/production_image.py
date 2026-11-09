@@ -140,6 +140,24 @@ def audit_partitions(fat, storage, release_id, plan, *, public=False):
             raise ValueError('Public image contains provisioned management keys')
         for name, expected in plan['flash_files'].items():
             check_hash(flash.readbytes('/'+name), expected, name)
+    def entries(name):
+        result = subprocess.run(['debugfs', '-R', 'ls -p '+name, str(storage)],
+                                capture_output=True, text=True, check=True)
+        diagnostics = [line for line in result.stderr.splitlines()
+                       if line.strip() and not re.fullmatch(r'debugfs [0-9][^\r\n]*', line)]
+        if diagnostics:
+            raise ValueError('Cannot inspect fresh image customer state: '+name)
+        found = {}
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            fields = line.split('/')
+            if len(fields) < 7 or not fields[1].isdigit() or not re.fullmatch(r'[0-7]{6}', fields[2]):
+                raise ValueError('Cannot parse fresh image customer state: '+name)
+            if fields[5] not in ('.', '..') and int(fields[1]):
+                found[fields[5]] = int(fields[2], 8)
+        return found
+    image.validate_customer_contents(entries)
     with tempfile.TemporaryDirectory(prefix='cubby-image-audit-') as directory:
         destination = Path(directory)/'entry'
         files = {'cubby/releases/'+release_id+'/app/'+name: expected

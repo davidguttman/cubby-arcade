@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import shutil
 import struct
+import stat
 import subprocess
 import sys
 import zlib
@@ -31,7 +32,6 @@ from rocknix.device_profile import (media_identities, rewrite_boot_labels,
     rg353v_wifi_profile, fdt_properties, WIFI_PROFILE)
 ROCKNIX_SHA256 = 'b573c9656d85bca5fa1aba038aac6cfabd92345d28a55cd74725cc98c618c775'
 ROOTFS_SHA256 = 'e1859403acf7593e5b2ad9b932092258302f415a093959de24fd402b7475ee92'
-TRAIL_MIX_SHA256 = '0f58736c83f3be504071425310d9a86e5425fc78b5de41ce08e6a1bf47a5da76'
 BASE_BOOT_HOOK = '''#!/bin/sh
 # Managed by Cubby Arcade RG353V image builder.
 # Sourced by ROCKNIX initramfs before /run is moved into the real root.
@@ -286,20 +286,31 @@ def publish_image(compressed: Path, output: Path, digest: str) -> None:
         os.link(staged_checksum, sidecar)
 
 
-def seed_game(state: Path, provenance: Path) -> None:
-    from runtime import catalog
-    url = 'https://trailmix.david.app/releases/0.9.0/manifest.json'
-    manifest = provenance / 'trail-mix-release.json'
-    final = catalog.download(url, manifest, catalog.MAX_RELEASE)
-    verify(manifest, TRAIL_MIX_SHA256)
-    release = catalog.validate_release(json.loads(manifest.read_text()), 'trail-mix', manifest_url=final)
-    if release['schema_version'] != 2:
-        raise ValueError('Offline seed requires a file-inventory release')
-    catalog.install_files(release, state / 'games')
-    (provenance / 'trail-mix-provenance.json').write_text(json.dumps({
-        'manifest_url': final, 'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest(),
-        'id': release['id'], 'version': release['version'],
-    }, indent=2) + '\n')
+def validate_customer_contents(entries):
+    """Fresh images may contain system/update records, never prior user state.
+
+    The same policy is applied before packing and to actual ext4 directory
+    entries during artifact verification. No existing device data is removed.
+    """
+    root = entries('/')
+    if set(root) & {'.config', '.cache', '.ssh', '.local'}:
+        raise ValueError('Fresh image contains customer state in storage root')
+    if not stat.S_ISDIR(root.get('cubby', 0)):
+        raise ValueError('Cannot inspect fresh image customer state')
+    cubby = entries('/cubby')
+    allowed = {'releases', 'current', 'updater', 'updates', 'state', 'image-provenance'}
+    if set(cubby) - allowed:
+        raise ValueError('Fresh image contains customer state outside clean Cubby layout')
+    if 'state' in cubby:
+        if not stat.S_ISDIR(cubby['state']) or entries('/cubby/state'):
+            raise ValueError('Fresh image contains customer state; Library and saves must be empty')
+
+
+def validate_customer_seed(storage):
+    def entries(name):
+        return {entry.name: entry.lstat().st_mode
+                for entry in (storage / name.lstrip('/')).iterdir()}
+    validate_customer_contents(entries)
 
 
 def source_provenance(source_root: Path, supplied: dict | None = None) -> dict:
@@ -467,7 +478,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         cubby = storage / 'cubby'
         release = cubby / 'releases' / release_id
         release.mkdir(parents=True)
-        report('Adding WPE, Cubby, and offline Trail Mix...')
+        report('Adding WPE and Cubby with an empty Library...')
         (release / 'rootfs').mkdir()
         # This archive is maintainer-built and checksum-pinned, not user input.
         # Numeric ownership and symlinks must remain intact for Bubblewrap.
@@ -488,7 +499,6 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         (cubby / 'state').mkdir()
         provenance = cubby / 'image-provenance'
         provenance.mkdir()
-        seed_game(cubby / 'state', provenance)
         (provenance / 'build.json').write_text(json.dumps({
             **({'product_version': production_plan['version']} if production_plan else {}),
             'rocknix_release': '20261101', 'rocknix_sha256': ROCKNIX_SHA256,
@@ -498,6 +508,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             'media_identities': identities, 'wifi_compatibility': wifi_provenance,
         }, indent=2) + '\n')
         validate_storage_seed(storage)
+        validate_customer_seed(storage)
         storage_image = temporary / 'storage.ext4'
         size = storage_gib * 1024 ** 3
         with storage_image.open('wb') as destination:

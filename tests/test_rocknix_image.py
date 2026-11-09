@@ -17,6 +17,18 @@ SPEC.loader.exec_module(image)
 
 
 class ImageTests(unittest.TestCase):
+    def test_customer_seed_is_empty_and_old_game_installer_is_not_available(self):
+        with tempfile.TemporaryDirectory() as directory:
+            storage = Path(directory)
+            (storage/'cubby/state').mkdir(parents=True)
+            (storage/'cubby/updates').mkdir()
+            (storage/'cubby/updates/record.json').write_text('{"version":"0.35.0"}')
+            image.validate_customer_seed(storage)
+            (storage/'cubby/state/games').mkdir()
+            with self.assertRaisesRegex(ValueError, 'customer state'):
+                image.validate_customer_seed(storage)
+        self.assertFalse(hasattr(image, 'seed_game'))
+
     def test_build_rejects_dangling_output_and_checksum_symlinks_upfront(self):
         for checksum in (False, True):
             with self.subTest(checksum=checksum), tempfile.TemporaryDirectory() as directory:

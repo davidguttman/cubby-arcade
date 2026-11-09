@@ -157,3 +157,44 @@ class ProductionImageTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, name):
                     module.audit_partitions(fat, storage, 'image-test', plan)
                 (seed/name).write_bytes(original)
+
+    @unittest.skipUnless(PyFatFS and all(shutil.which(tool) for tool in ('mkfs.vfat', 'mkfs.ext4', 'debugfs')),
+                         'requires pyfatfs, dosfstools and e2fsprogs')
+    def test_actual_image_rejects_customer_data_even_without_manifest_entries(self):
+        module = self.module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); fat = root/'flash.fat'; storage = root/'storage.ext4'
+            with fat.open('wb') as stream: stream.truncate(16*1024**2)
+            subprocess.run(['mkfs.vfat', str(fat)], check=True, capture_output=True)
+            seed = root/'seed'; (seed/'cubby/state').mkdir(parents=True)
+            # Required updater records are not customer state.
+            (seed/'cubby/updates').mkdir()
+            (seed/'cubby/updates/record.json').write_text('{"version":"0.35.0"}')
+            plan = {'flash_files':{}, 'app_files':{}}
+            def audit():
+                with storage.open('wb') as stream: stream.truncate(16*1024**2)
+                subprocess.run(['mkfs.ext4','-q','-F','-d',str(seed),str(storage)],
+                               check=True, capture_output=True)
+                module.audit_partitions(fat, storage, 'image-test', plan)
+            audit()
+            for path in ('cubby/state/games/trail-mix/release.json',
+                         'cubby/state/saves/test.json', 'cubby/state/profiles.json',
+                         'cubby/state/network.json', '.config/NetworkManager/system-connections/bench',
+                         '.cache/browser/cookies', '.ssh/ssh_host_ed25519_key',
+                         'cubby/management/private/ssh_host_ed25519_key'):
+                with self.subTest(path=path):
+                    contamination = seed/path
+                    contamination.parent.mkdir(parents=True, exist_ok=True)
+                    contamination.write_text('must not ship')
+                    try:
+                        with self.assertRaisesRegex(ValueError, 'customer state'):
+                            audit()
+                    finally:
+                        contamination.unlink()
+                        parent = contamination.parent
+                        while parent not in (seed, seed/'cubby', seed/'cubby/state'):
+                            parent.rmdir(); parent = parent.parent
+            (seed/'cubby/state').rmdir()
+            (seed/'cubby/state').symlink_to('updates')
+            with self.assertRaisesRegex(ValueError, 'customer state'):
+                audit()
