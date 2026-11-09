@@ -10,16 +10,22 @@ pinned WPE runtime, and ROCKNIX retain their own independent versions.
    SemVer version (patch for fixes, minor for compatible capabilities, major for
    breaking behavior), then push `main`.
 2. **Cubby builds and releases** validates the version and runs regressions,
-   builds and smoke-tests Windows/Linux, and signs the handheld app package.
-3. After both platform jobs succeed, the same workflow creates the exact-commit
-   `vX.Y.Z` tag, uploads all ten assets to a draft release, verifies their
-   uploaded sizes and SHA256 digests, and publishes the complete release.
+   builds and smoke-tests Windows/Linux, signs the handheld app package, and
+   builds and independently verifies the versioned full handheld installation
+   image against the exact release source commit.
+3. After the Windows, Linux, and full-image jobs all succeed, the same workflow
+   verifies the image/receipt/checksum against the publication checkout before
+   creating the exact-commit `vX.Y.Z` tag. It uploads all thirteen assets to a
+   draft release (ten when a runtime change omits the legacy update trio),
+   verifies their uploaded sizes and SHA256 digests, and publishes the complete
+   release.
 4. Only then does it verify the published handheld bytes and advance
    `cubby-device-stable/manifest.json`, `update.json` and their detached signatures.
    Existing handhelds keep using their configured feed and trust key, and update
    through the gear tab → updates tile. No reinstall, reflash, or save reset.
-   A version that changes `rocknix/runtime.json` publishes only the platform trio;
-   see [device updates](rg353v-updates.md).
+   A version that changes `rocknix/runtime.json` publishes only the platform trio
+   for handheld updates; desktop and full-image assets are still required.
+   See [device updates](rg353v-updates.md).
 5. Independently of those release gates, Render's Static Site in **Superstruct**
    tracks `main` with auto-deploy **On Commit**, managed in the dashboard/API.
    It builds with `python3 -m pip install -r requirements.txt && python3 hosting/build.py`
