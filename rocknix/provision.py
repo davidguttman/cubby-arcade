@@ -45,6 +45,13 @@ def identity(facts):
     return {name: facts[name] for name in ('cid', 'name', 'sectors', 'removable')}
 
 
+def validate_device_binding(plan, storage):
+    if (not isinstance(plan.get('device_cid'), str)
+            or not re.fullmatch('[a-f0-9]{32}', plan['device_cid'])
+            or plan['device_cid'] != storage.get('cid')):
+        raise Blocked('image_device_cid_mismatch_or_unbound')
+
+
 def same_storage(before, after):
     if identity(before) != identity(after):
         raise Blocked('storage_identity_changed')
@@ -414,6 +421,7 @@ def enroll_host_identity(adb, host_key, original, size, journal, geometry):
 LIVE_PROBE = '''import json,pathlib
 p=pathlib.Path('/storage/cubby/current/image.json')
 i=json.loads(p.read_text())
+i['device_cid']=json.loads(pathlib.Path('/storage/cubby/image-provenance/device.json').read_text())['device_cid']
 m={line.split()[1]:line.split()[0] for line in pathlib.Path('/proc/mounts').read_text().splitlines()}
 i.update(flash_source=m.get('/flash'),storage_source=m.get('/storage'),cid=pathlib.Path('/sys/block/mmcblk0/device/cid').read_text().strip())
 print(json.dumps(i))'''
@@ -422,6 +430,7 @@ print(json.dumps(i))'''
 def validate_live(data, version, commit, storage):
     if (data.get('version') != version or data.get('source_commit') != commit
             or data.get('cid') != storage['cid']
+            or data.get('device_cid') != storage['cid']
             or data.get('flash_source') != '/dev/mmcblk0p1'
             or data.get('storage_source') != '/dev/mmcblk0p2'):
         raise Blocked('reconnected_wrong_image_or_storage')
@@ -490,12 +499,15 @@ def run(args):
     # A plan is truly read-only: no root daemon restart, reboot or checkpoint.
     if args.action == 'plan':
         stock = adb.facts(recovery=False); validate_stock(stock,args.profile)
+        validate_device_binding(plan, stock)
         return dict(stage='planned',binding=binding,storage=identity(stock),raw_size=size,raw_sha256=digest)
     with Journal(args.job,binding) as journal:
         if 'storage' in journal.state:
             original = journal.state['storage']
+            validate_device_binding(plan, original)
         else:
             original = adb.facts(recovery=False); validate_stock(original,args.profile)
+            validate_device_binding(plan, original)
             journal.save('stock_verified',storage=identity(original))
         # Verify a completed Linux target via pinned SSH rather than flashing again.
         if journal.state['stage'] in ('rebooting','commissioning_pending'):

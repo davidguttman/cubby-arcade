@@ -86,7 +86,7 @@ jobs:
         run: |
           command -v mkfs.vfat mkfs.ext4 debugfs
           uv run --with pyfatfs==1.1.0 --with setuptools==80.9.0 --with pyyaml==6.0.3 python -c 'from pyfatfs.PyFatFS import PyFatFS'
-          PYTHONPATH=tests uv run --with pyfatfs==1.1.0 --with setuptools==80.9.0 --with pyyaml==6.0.3 python -m unittest test_production_image test_fat_image_replacement -v
+          PYTHONPATH=tests uv run --with pyfatfs==1.1.0 --with setuptools==80.9.0 --with pyyaml==6.0.3 python -m unittest test_production_image test_device_binding test_fat_image_replacement -v
       - name: Build portable Linux archive
         run: npm run desktop:build
       - name: Exercise packaged Linux app

@@ -109,7 +109,7 @@ class StockProvisionTests(unittest.TestCase):
                 self.assertEqual(transport.read_size,512*33)
 
     def test_live_check_rejects_sd_boot_and_wrong_release(self):
-        data={'version':'0.35.0','source_commit':'a'*40,'cid':FACTS['cid'],
+        data={'version':'0.35.0','source_commit':'a'*40,'cid':FACTS['cid'],'device_cid':FACTS['cid'],
               'flash_source':'/dev/mmcblk0p1','storage_source':'/dev/mmcblk0p2'}
         p.validate_live(data,'0.35.0','a'*40,FACTS)
         for changes in ({'storage_source':'/dev/mmcblk1p2'}, {'version':'0.34.0'}, {'cid':'b'*32}):
@@ -138,7 +138,7 @@ class OrchestrationTests(unittest.TestCase):
             action='install',reconnect_timeout=10)
         self.args.identity.write_bytes(b'private fixture');self.args.identity.chmod(0o600)
         self.key=b'ssh-ed25519 AAAATEST\n'
-        self.plan={'image':{'sha256':hashlib.sha256(self.image.read_bytes()).hexdigest()},
+        self.plan={'device_cid':FACTS['cid'], 'image':{'sha256':hashlib.sha256(self.image.read_bytes()).hexdigest()},
                    'flash_files':{'cubby-setup/authorized_keys':hashlib.sha256(self.key).hexdigest()}}
         self.binding=dict(serial='test123',image_sha256=self.plan['image']['sha256'],profile=p.PROFILE,
             version='0.35.0',commit='a'*40,public_key_sha256=hashlib.sha256(self.key).hexdigest())
@@ -160,6 +160,18 @@ class OrchestrationTests(unittest.TestCase):
              patch.object(p,'reconnect',return_value={'stage':'commissioning_pending'}) as reconnect:
             self.assertEqual(p.run(self.args)['stage'],'commissioning_pending')
             self.assertEqual(reconnect.call_args.args[2],p.identity(FACTS))
+
+    def test_wrong_bound_cid_is_rejected_before_checkpoint_or_write(self):
+        self.patches()
+        self.plan['device_cid'] = 'b'*32
+        stock=dict(FACTS,android='11',product='RG353P',platform='rk3566')
+        with patch.object(p,'discover',return_value='test123'), patch.object(p,'Adb') as adb:
+            adb.return_value.facts.return_value=stock
+            with self.assertRaisesRegex(p.Blocked,'cid_mismatch'):
+                p.run(self.args)
+            adb.return_value.stream.assert_not_called()
+            adb.return_value.command.assert_not_called()
+        self.assertFalse((self.args.job/'state.json').exists())
 
     def test_read_only_plan_does_not_reboot_root_or_create_job(self):
         self.patches();self.args.action='plan'

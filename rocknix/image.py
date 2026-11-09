@@ -301,6 +301,13 @@ def validate_customer_contents(entries):
     allowed = {'releases', 'current', 'updater', 'updates', 'state', 'image-provenance'}
     if set(cubby) - allowed:
         raise ValueError('Fresh image contains customer state outside clean Cubby layout')
+    if 'image-provenance' in cubby:
+        if not stat.S_ISDIR(cubby['image-provenance']):
+            raise ValueError('Fresh image contains customer state in machine provenance')
+        records = entries('/cubby/image-provenance')
+        if (set(records) - {'build.json', 'device.json'}
+                or any(not stat.S_ISREG(mode) for mode in records.values())):
+            raise ValueError('Fresh image contains customer state in machine provenance')
     if 'state' in cubby:
         if not stat.S_ISDIR(cubby['state']) or entries('/cubby/state'):
             raise ValueError('Fresh image contains customer state; Library and saves must be empty')
@@ -349,6 +356,17 @@ def image_update_identity(plan):
     return {'schema': 1, 'kind': 'image', 'product': 'cubby-rg353v',
             'version': plan['version'], 'sequence': sequence(plan['version']),
             'source_commit': commit, 'runtime_sha256': ROOTFS_SHA256}
+
+
+def media_identity_record(plan):
+    return {'device_cid': plan.get('device_cid'), 'media_identities': plan['media_identities']}
+
+
+def provision_media_identity(cubby, plan):
+    if not plan or 'media_identities' not in plan:
+        return
+    from rocknix.updates import atomic
+    atomic(Path(cubby) / 'image-provenance/device.json', media_identity_record(plan))
 
 
 def provision_image_identity(cubby, release, plan):
@@ -420,7 +438,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         label = re.search(r'^Filesystem volume name:\s+(\S+)', stats, re.MULTILINE).group(1)
         if label != 'STORAGE':
             raise ValueError('Unexpected stock storage label')
-        identities = media_identities()
+        identities = production_plan['media_identities'] if production_plan and 'media_identities' in production_plan else media_identities()
         wifi_provenance = {'profile': wifi_profile, 'association_verified': False}
         storage = temporary / 'storage'
         storage.mkdir()
@@ -499,6 +517,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         (cubby / 'state').mkdir()
         provenance = cubby / 'image-provenance'
         provenance.mkdir()
+        provision_media_identity(cubby, production_plan)
         (provenance / 'build.json').write_text(json.dumps({
             **({'product_version': production_plan['version']} if production_plan else {}),
             'rocknix_release': '20261101', 'rocknix_sha256': ROCKNIX_SHA256,

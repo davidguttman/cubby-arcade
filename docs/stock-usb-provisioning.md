@@ -30,11 +30,32 @@ able to route the USB management address `169.254.170.2`.
 
 ## Inputs and read-only plan
 
-Build a fresh production image with the operator's **public** management key.
+Build a fresh production image for this device's eMMC CID with the operator's **public** management key.
 The corresponding private client identity stays on the host. The image and
 receipt must come from a trusted build/release channel: the receipt is a build
 record, not a signature authenticating an arbitrary supplier's bytes. Select
 the exact version and full source commit; do not select a date-only archive.
+
+The supervisor performs these steps without handing setup work back to the customer:
+
+1. Identify one authorized ADB serial and read its eMMC CID using checked
+   shell-v2 (`adb -s SERIAL shell -T su 0 cat /sys/block/mmcblk0/device/cid`).
+   The installer still independently checks model, capacity, mounts and CID.
+2. Run the versioned production builder with `--device-cid THE_32_HEX_CID`
+   **and** `--management-public-key /private/operator.pub`, then independently
+   verify the result. Each build generates fresh disk/partition GUIDs,
+   filesystem UUID/serial and matching boot/storage labels. No private key
+   is embedded. Bound image names include a CID suffix; use distinct job outputs.
+3. Pass that verified per-unit image to `plan`/`install` below. Unbound generic
+   images and images built for another CID are refused before any write,
+   including resume. Reconnect also checks the binding stored on actual media.
+
+The binding and all media identities are recorded in the receipt and actual
+`/storage/cubby/image-provenance/device.json`; FAT/ext4 and GPT audits compare
+actual identifiers and boot references, not just the declared record. Public
+release images have no CID or management key, and their release gate rejects
+bound/provisioned artifacts. A generic public image is unique **per build**;
+manual cloning is not the per-device fleet provisioning procedure.
 
 For example, from the project root (replace the paths and commit):
 
@@ -129,7 +150,7 @@ never presented as a successful installation.
 This transport does not configure customer/bench Wi-Fi, install games, clear
 test data, certify display/audio/buttons/sleep, exercise signed update rollback,
 or produce a customer acceptance certificate. Those are the subsequent bounded
-commissioning stage. The generic image's filesystem/GPT identities are currently
-per **build**, not per **device**; multi-device media personalization is a
-separate required step before production rollout. Do not claim this candidate
+commissioning stage. Per-device bound builds prevent this installer from
+reusing another unit's artifact, but do not certify factory USB access or
+commissioning on real hardware. Do not claim this candidate
 alone fulfills the plug-in-and-walk-away product contract.

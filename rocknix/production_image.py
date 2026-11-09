@@ -17,6 +17,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import struct
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -123,8 +125,84 @@ def source_plan(root, expected_version=None):
                                 for name, value in identity_files.items()}}}
 
 
+def validate_binding(plan, *, public=False):
+    cid = plan.get('device_cid')
+    if cid is not None and (not isinstance(cid, str) or not re.fullmatch('[a-f0-9]{32}', cid)):
+        raise ValueError('Invalid device CID binding')
+    if public and cid is not None:
+        raise ValueError('Public image contains a device CID binding')
+    ids = plan.get('media_identities')
+    if ids is not None:
+        try:
+            if set(ids) != {'boot_label', 'storage_label', 'fat_serial', 'storage_uuid', 'disk_guid', 'partition_guids'}:
+                raise ValueError()
+            if (not re.fullmatch(r'CB[A-F0-9]{8}', ids['boot_label'])
+                    or not re.fullmatch(r'CS[A-F0-9]{8}', ids['storage_label'])
+                    or not re.fullmatch(r'[A-F0-9]{8}', ids['fat_serial'])
+                    or len(ids['partition_guids']) != 2):
+                raise ValueError()
+            guids = [ids['storage_uuid'], ids['disk_guid'], *ids['partition_guids']]
+            if len(set(guids)) != 4 or any(str(uuid.UUID(g)) != g for g in guids):
+                raise ValueError()
+        except (TypeError, KeyError, ValueError, AttributeError) as error:
+            raise ValueError('Invalid media identities') from error
+        expected = digest(json.dumps(image.media_identity_record(plan), sort_keys=True).encode())
+        if plan.get('storage_files', {}).get('cubby/image-provenance/device.json') != expected:
+            raise ValueError('Missing or stale audited device identity record')
+    elif cid is not None:
+        raise ValueError('Bound image lacks media identities')
+
+
+def bind_plan(plan, device_cid, keys):
+    if device_cid is not None:
+        if not keys:
+            raise ValueError('Device CID binding requires a management public key')
+        if not isinstance(device_cid, str) or not re.fullmatch('[a-f0-9]{32}', device_cid):
+            raise ValueError('Invalid device CID binding')
+        plan['device_cid'] = device_cid
+    plan['media_identities'] = image.media_identities()
+    record = image.media_identity_record(plan)
+    plan['storage_files']['cubby/image-provenance/device.json'] = digest(
+        json.dumps(record, sort_keys=True).encode())
+    validate_binding(plan)
+    return plan
+
+
 def image_name(plan):
-    return f"Cubby-Arcade-RG353V-v{plan['version']}-{plan['source_commit'][:12]}.img.gz"
+    suffix = '-device-' + plan['device_cid'][:12] if plan.get('device_cid') else ''
+    return f"Cubby-Arcade-RG353V-v{plan['version']}-{plan['source_commit'][:12]}{suffix}.img.gz"
+
+
+def audit_gpt_identities(layout, plan):
+    ids = plan['media_identities']
+    if (str(uuid.UUID(bytes_le=bytes(layout[1][56:72]))) != ids['disk_guid']
+            or [str(uuid.UUID(bytes_le=bytes(layout[2][i*128+16:i*128+32])))
+                for i in range(2)] != ids['partition_guids']):
+        raise ValueError('GPT media identities differ from build receipt')
+
+
+def audit_filesystem_identities(fat, storage, plan):
+    ids = plan['media_identities']
+    with Path(fat).open('rb') as stream:
+        boot = stream.read(512)
+    # FAT16/32 place their extended volume records at different offsets.
+    offset = 67 if struct.unpack_from('<H', boot, 22)[0] == 0 else 39
+    serial = f"{struct.unpack_from('<I', boot, offset)[0]:08X}"
+    label = boot[offset+4:offset+15].decode('ascii').rstrip()
+    with Path(storage).open('rb') as stream:
+        stream.seek(1024); superblock = stream.read(256)
+    if (serial != ids['fat_serial'] or label != ids['boot_label']
+            or str(uuid.UUID(bytes=superblock[104:120])) != ids['storage_uuid']
+            or superblock[120:136].rstrip(b'\0').decode('ascii') != ids['storage_label']):
+        raise ValueError('Filesystem media identities differ from build receipt')
+    from pyfatfs.PyFatFS import PyFatFS
+    with PyFatFS(str(fat), read_only=True) as flash:
+        config = flash.readtext('/EXTLINUX/extlinux.conf')
+    append = [line for line in config.splitlines() if re.match(r'^\s*APPEND\s', line, re.I)]
+    if not append or any(re.findall(r'\bboot=LABEL=(\S+)', line) != [ids['boot_label']]
+                         or re.findall(r'\bdisk=LABEL=(\S+)', line) != [ids['storage_label']]
+                         for line in append):
+        raise ValueError('Boot filesystem labels differ from build receipt')
 
 
 def check_hash(actual, expected, name):
@@ -134,6 +212,9 @@ def check_hash(actual, expected, name):
 
 def audit_partitions(fat, storage, release_id, plan, *, public=False):
     """Read actual constructed filesystems, not just the pre-filesystem source tree."""
+    validate_binding(plan, public=public)
+    if 'media_identities' in plan:
+        audit_filesystem_identities(fat, storage, plan)
     from pyfatfs.PyFatFS import PyFatFS
     with PyFatFS(str(fat), read_only=True) as flash:
         if public and flash.exists('/cubby-setup/authorized_keys'):
@@ -175,14 +256,27 @@ def audit_partitions(fat, storage, release_id, plan, *, public=False):
             if diagnostics or not destination.is_file():
                 raise ValueError('Cannot inspect packaged file: '+name)
             check_hash(destination.read_bytes(), expected, name)
+        if 'media_identities' in plan:
+            destination.unlink(missing_ok=True)
+            result = subprocess.run(['debugfs', '-R',
+                f'dump /cubby/image-provenance/build.json "{destination}"', str(storage)],
+                capture_output=True, text=True, check=True)
+            if not destination.is_file():
+                raise ValueError('Missing actual build provenance')
+            provenance = json.loads(destination.read_text())
+            if (provenance.get('media_identities') != plan['media_identities']
+                    or provenance.get('product_version') != plan['version']
+                    or provenance.get('source_commit') != plan['source_commit']):
+                raise ValueError('Actual build provenance differs from receipt')
 
 
 def build(upstream, rootfs, output_directory, *, source_root=ROOT, expected_version=None,
-          management_key=None, storage_gib=6):
+          management_key=None, storage_gib=6, device_cid=None):
     root = Path(source_root)
     plan = source_plan(root, expected_version)
     original_plan = json.loads(json.dumps(plan))
     keys = public_keys(management_key)
+    bind_plan(plan, device_cid, keys)
     if keys:
         plan['flash_files'].update({
             'cubby-setup/authorized_keys':digest(keys),
@@ -220,6 +314,9 @@ def verify(artifact, manifest, *, expected_version, expected_commit=None, public
     if artifact.is_symlink() or not artifact.is_file() or manifest.is_symlink():
         raise ValueError('Expected regular image and manifest files')
     plan = json.loads(manifest.read_text())
+    validate_binding(plan, public=public)
+    if 'media_identities' not in plan:
+        raise ValueError('Image lacks audited media identities; rebuild required')
     if plan['version'] != expected_version or (expected_commit and plan['source_commit'] != expected_commit):
         raise ValueError('Image is not the requested version/commit')
     if plan['source_dirty'] is not False or not plan['source_commit']:
@@ -237,6 +334,7 @@ def verify(artifact, manifest, *, expected_version, expected_commit=None, public
             shutil.copyfileobj(source,destination,8*1024*1024)
         with raw.open('rb') as stream:
             layout = image.generated_gpt_layout(stream)
+        audit_gpt_identities(layout, plan)
         fat, storage = root/'flash.fat', root/'storage.ext4'
         for destination, (start,count) in zip((fat,storage),layout[3]):
             image.copy_range(raw,destination,start*512,count*512)
@@ -262,7 +360,8 @@ if __name__ == '__main__':
     parser.add_argument('--expect-version', required=True)
     parser.add_argument('--management-public-key', type=Path)
     parser.add_argument('--storage-gib', type=int, default=6)
+    parser.add_argument('--device-cid', help='Bind provisioned image to this eMMC CID')
     args=parser.parse_args()
     print(build(args.rocknix.resolve(), args.rootfs.resolve(), args.output_directory.absolute(),
                 expected_version=args.expect_version, management_key=args.management_public_key,
-                storage_gib=args.storage_gib))
+                storage_gib=args.storage_gib, device_cid=args.device_cid))

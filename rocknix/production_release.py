@@ -75,6 +75,14 @@ def release_files(root, directory, version, source):
     if paths[0].stat().st_size >= 2*1024**3:
         raise ValueError('Image exceeds GitHub release asset limit')
     receipt = json.loads(paths[1].read_text())
+    production_image.validate_binding(receipt, public=True)
+    # Media IDs are fresh build randomness, not source inventories. Recompute
+    # their one machine-only record while retaining exact source comparisons.
+    if 'media_identities' in receipt:
+        plan['media_identities'] = receipt['media_identities']
+        record = production_image.image.media_identity_record(plan)
+        plan['storage_files']['cubby/image-provenance/device.json'] = production_image.digest(
+            json.dumps(record, sort_keys=True).encode())
     if {k:v for k,v in receipt.items() if k != 'image'} != plan:
         raise ValueError('Image receipt differs from clean release source inventories')
     if receipt['image']['filename'] != name:

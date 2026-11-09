@@ -150,7 +150,9 @@ progress service are registered on the **first** boot, without precreating
 `/storage/.config` and breaking stock resize.
 
 For a supported customer device, optionally add
-`--management-public-key /path/to/customer-support-key.pub`. Only valid **public**
+`--management-public-key /path/to/customer-support-key.pub`. For stock USB provisioning, also supply
+`--device-cid <target-emmc-cid>` to build a separate artifact for that unit; the
+installer rejects unbound images and other units’ CID bindings. Only valid **public**
 keys are accepted. Never supply a private key or clone a provisioned customer's
 image for another customer. No management listener is enabled without explicit
 public-key provisioning. Provisioning enables normal management on port 2222 and
