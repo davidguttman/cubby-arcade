@@ -25,7 +25,7 @@ class Remote:
     def __init__(self, args):
         self.args=args
 
-    def call(self, action, data, expected):
+    def call(self, action, data, expected, *, timeout=240):
         args=self.args
         command=['ssh','-p','2223','-i',str(args.identity),'-o','IdentitiesOnly=yes',
                  '-o','BatchMode=yes','-o','StrictHostKeyChecking=yes',
@@ -33,8 +33,18 @@ class Remote:
                  'root@'+args.host,'python3 -c '+shlex.quote(NATIVE.read_text())]
         try:
             result=subprocess.run(command,input=json.dumps(dict(action=action,data=data,expected=expected)).encode(),
-                                  capture_output=True,timeout=240)
-            if result.returncode: raise Blocked('commissioning_transport_failed')
+                                  capture_output=True,timeout=timeout)
+            if result.returncode:
+                stderr=result.stderr.lower() if isinstance(result.stderr,bytes) else b''
+                if any(marker in stderr for marker in (b'host key',b'host identification',b'permission denied',
+                        b'authentication failed',b'identity file',b'load key',b'bad permissions')):
+                    raise Blocked('commissioning_authentication_failed')
+                # Native target validation failures must not turn into a retry.
+                try: response=json.loads(result.stdout)
+                except (ValueError,TypeError): response=None
+                if isinstance(response,dict) and response.get('error'):
+                    raise Blocked('commissioning_native_failed')
+                raise Blocked('commissioning_transport_failed')
             response=json.loads(result.stdout)
             if not isinstance(response,dict) or response.get('error'):
                 raise Blocked('commissioning_native_failed')
@@ -50,24 +60,44 @@ def receipt(state, snapshot, handoff=None):
                 handoff=handoff, pending=list(PENDING), customer_ready=False)
 
 
-def wait_reboot(remote, expected, old_boot, timeout=240):
+def wait_ready(remote, expected, *, old_boot=None, timeout=240):
+    """Wait only for read-only readiness; never repeat a mutating action.
+
+    Recovery SSH can answer before the application services finish starting.
+    Native identity failures and SSH authentication errors remain terminal.
+    """
     deadline=time.monotonic()+timeout
+    observed_boot=False
     while time.monotonic()<deadline:
         try:
-            snapshot=remote.call('snapshot',{},expected)
-            if snapshot.get('boot_id') and snapshot['boot_id'] != old_boot:
-                return snapshot
-        except Blocked:
-            pass
+            snapshot=remote.call('snapshot',{},expected,
+                                 timeout=max(.01,deadline-time.monotonic()))
+            if snapshot.get('boot_id') and (old_boot is None or snapshot['boot_id'] != old_boot):
+                observed_boot=True
+                checks=snapshot.get('checks',{})
+                # Only explicit boolean-not-ready results can be retried.
+                if set(checks)!=REQUIRED_CHECKS or any(type(v) is not bool for v in checks.values()):
+                    raise Blocked('commissioning_automated_gate_failed')
+                if all(checks.values()): return snapshot
+        except Blocked as error:
+            if str(error)!='commissioning_transport_failed': raise
         time.sleep(min(3,max(0,deadline-time.monotonic())))
-    raise Blocked('commissioning_reboot_not_observed')
+    if old_boot is not None and not observed_boot:
+        raise Blocked('commissioning_reboot_not_observed')
+    raise Blocked('commissioning_readiness_timeout')
+
+
+def wait_reboot(remote, expected, old_boot, timeout=240):
+    return wait_ready(remote,expected,old_boot=old_boot,timeout=timeout)
+
+
+REQUIRED_CHECKS={'no_failed_units','artwork','boot_progress','management','updater',
+                 'controller_presence','audio_presence','power_presence'}
 
 
 def checked_snapshot(snapshot):
     checks=snapshot.get('checks',{})
-    required={'no_failed_units','artwork','boot_progress','management','updater',
-              'controller_presence','audio_presence','power_presence'}
-    if set(checks)!=required or not all(value is True for value in checks.values()):
+    if set(checks)!=REQUIRED_CHECKS or not all(value is True for value in checks.values()):
         raise Blocked('commissioning_automated_gate_failed')
 
 
@@ -94,7 +124,7 @@ def run(args):
     with Journal(args.job,binding) as journal:
         if journal.state.get('stage') != 'commissioning_pending':
             raise Blocked('verified_install_checkpoint_required')
-        snapshot=remote.call('snapshot',{},expected)
+        snapshot=wait_ready(remote,expected)
         checked_snapshot(snapshot)
         data=journal.state.get('commissioning',{})
         if data.get('phase')=='reboot_pending':

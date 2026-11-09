@@ -88,7 +88,7 @@ class CommissionTests(unittest.TestCase):
                 commission.Remote(args).call('snapshot', {}, {})
 
     def test_resume_requires_new_boot(self):
-        remote=type('Remote', (), {'call':lambda *a: {'boot_id':'old','checks':{}}})()
+        remote=type('Remote', (), {'call':lambda *a,**kw: {'boot_id':'old','checks':{}}})()
         with self.assertRaisesRegex(commission.Blocked, 'reboot_not_observed'):
             commission.wait_reboot(remote, {}, 'old', timeout=0)
 
@@ -111,9 +111,74 @@ class CommissionTests(unittest.TestCase):
     def test_reboot_wait_uses_authenticated_new_boot(self):
         remote=type('Remote', (), {})()
         from unittest.mock import Mock
-        remote.call=Mock(side_effect=[commission.Blocked('offline'),{'boot_id':'new','checks':{}}])
+        remote.call=Mock(side_effect=[commission.Blocked('commissioning_transport_failed'),self.healthy_snapshot()])
         with patch('time.sleep'):
             self.assertEqual(commission.wait_reboot(remote,{},'old',timeout=1)['boot_id'],'new')
+
+    def healthy_snapshot(self, boot='new', **changes):
+        checks={key:True for key in ['no_failed_units','artwork','boot_progress','management','updater',
+                                    'controller_presence','audio_presence','power_presence']}
+        checks.update(changes)
+        return dict(boot_id=boot, checks=checks)
+
+    def test_new_boot_waits_for_managed_services_without_repeating_reboot(self):
+        from unittest.mock import Mock
+        remote=Mock()
+        remote.call.side_effect=[self.healthy_snapshot(management=False),self.healthy_snapshot()]
+        with patch('time.sleep'):
+            result=commission.wait_reboot(remote,{},'old',timeout=1)
+        self.assertTrue(result['checks']['management'])
+        self.assertEqual([call.args[0] for call in remote.call.call_args_list],['snapshot','snapshot'])
+
+    def test_initial_readiness_waits_for_services(self):
+        from unittest.mock import Mock
+        remote=Mock()
+        remote.call.side_effect=[self.healthy_snapshot(updater=False),self.healthy_snapshot()]
+        with patch('time.sleep'):
+            result=commission.wait_ready(remote,{},timeout=1)
+        self.assertTrue(result['checks']['updater'])
+
+    def test_new_boot_permanent_failed_check_has_bounded_readiness_error(self):
+        from unittest.mock import Mock
+        remote=Mock(); remote.call.return_value=self.healthy_snapshot(management=False)
+        with patch('time.monotonic',side_effect=[0,0,0,1,1,2]), patch('time.sleep'):
+            with self.assertRaisesRegex(commission.Blocked,'^commissioning_readiness_timeout$'):
+                commission.wait_reboot(remote,{},'old',timeout=1)
+        self.assertEqual(remote.call.call_count,1)
+
+    def test_readiness_does_not_retry_native_or_authentication_failure(self):
+        from unittest.mock import Mock
+        for reason in ['commissioning_native_failed','commissioning_authentication_failed']:
+            remote=Mock(); remote.call.side_effect=commission.Blocked(reason)
+            with self.subTest(reason=reason), self.assertRaisesRegex(commission.Blocked,'^'+reason+'$'):
+                commission.wait_reboot(remote,{},'old',timeout=1)
+            self.assertEqual(remote.call.call_count,1)
+
+    def test_ssh_authentication_failure_is_terminal_and_sanitized(self):
+        args=type('Args', (), {'identity':Path('/key'), 'job':Path('/job'), 'host':'169.254.170.2'})()
+        with patch('subprocess.run') as run:
+            run.return_value.returncode=255
+            run.return_value.stdout=b''
+            run.return_value.stderr=b'Host key verification failed. Private hostname'
+            with self.assertRaisesRegex(commission.Blocked,'^commissioning_authentication_failed$'):
+                commission.Remote(args).call('snapshot',{}, {})
+
+    def test_native_wrong_target_failure_is_not_retried(self):
+        args=type('Args', (), {'identity':Path('/key'), 'job':Path('/job'), 'host':'169.254.170.2'})()
+        with patch('subprocess.run') as run:
+            run.return_value.returncode=1
+            run.return_value.stdout=b'{"error":"native_commissioning_failed"}'
+            run.return_value.stderr=b''
+            with self.assertRaisesRegex(commission.Blocked,'^commissioning_native_failed$'):
+                commission.wait_ready(commission.Remote(args),{},timeout=1)
+            self.assertEqual(run.call_count,1)
+
+    def test_malformed_checks_are_terminal_not_readiness(self):
+        from unittest.mock import Mock
+        remote=Mock(); remote.call.return_value={'boot_id':'new','checks':{}}
+        with self.assertRaisesRegex(commission.Blocked,'^commissioning_automated_gate_failed$'):
+            commission.wait_ready(remote,{},timeout=1)
+        self.assertEqual(remote.call.call_count,1)
 
     def test_required_checks_fail_closed(self):
         with self.assertRaises(commission.Blocked): commission.checked_snapshot({'checks':{}})

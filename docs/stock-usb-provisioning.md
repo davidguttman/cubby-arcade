@@ -193,6 +193,15 @@ uv run python -m rocknix.commission bench \
   --job /private/jobs/device-task --identity /private/operator
 ```
 
+Read-only service-readiness probes wait up to 240 seconds at entry and after a
+reboot: independent recovery may answer before normal management finishes
+starting. The same deadline bounds each SSH probe. A new boot ID alone is not a
+pass; all required native checks must become true. Explicit unhealthy checks
+that never clear report `commissioning_readiness_timeout`; failure to observe a
+new boot reports `commissioning_reboot_not_observed`. SSH authentication and
+native target-validation failures stop immediately. Connect, reboot and handoff
+mutations are never repeated by the readiness loop.
+
 A `check` after interruption resumes a recorded reboot-pending phase. An
 interruption during connection before the created profile can be recorded is
 **blocked for diagnosis**, not silently adopted or wiped. A changed profile
