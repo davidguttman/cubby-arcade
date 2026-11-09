@@ -1,0 +1,107 @@
+# Stock Android USB provisioning (candidate, not hardware-certified)
+
+`rocknix/provision.py` is the host-side **stock Android → internal Cubby**
+transport. `rocknix/install.py` remains the separate SSH bundle installer for
+an already-running ROCKNIX system. Neither a passing simulation nor an existing
+Cubby/SD installation proves this stock-device path works end to end.
+
+## Supported entry profile and limitations
+
+The explicit `rg353v-android11` profile means the supervisor has independently
+identified the physical handheld as the characterized RG353V. Its shared stock
+Android firmware reports model `RG353P`, Android 11, and platform `rk3566`.
+**Those Android strings alone do not distinguish the physical RG353V/RG353P.**
+The characterized unit used V1.20E, rooted `su 0`, root ADB recovery, and a
+non-removable BJTD4R eMMC with 61,071,360 sectors. The tool intentionally rejects
+other MMC names/capacities rather than guessing compatibility. A present SD
+card, unauthorized/multiple ADB devices, mounted internal partitions, battery
+below 30%, unknown battery level, or missing recovery primitives stop the job.
+The supported fingerprint is not a claim that every factory shipment exposes
+ADB/root without interaction. A stock unit with locked/disabled ADB is a real
+entry blocker, not an invitation to bypass or hide an authorization dialog.
+
+The current connected Cubby unit is **not stock Android** and must not be
+reflashed to claim a test of this path. No real stock device was written while
+implementing the tool. Root-mode properties, recovery mount utilities, USB
+re-enumeration, DHCP/link configuration, and complete unattended installation
+still require acceptance on a genuinely stock unit. The host must already be
+able to route the USB management address `169.254.170.2`.
+
+## Inputs and read-only plan
+
+Build a fresh production image with the operator's **public** management key.
+The corresponding private client identity stays on the host. The image and
+receipt must come from a trusted build/release channel: the receipt is a build
+record, not a signature authenticating an arbitrary supplier's bytes. Select
+the exact version and full source commit; do not select a date-only archive.
+
+For example, from the project root (replace the paths and commit):
+
+```sh
+uv run --with pyfatfs==1.1.0 --with setuptools==80.9.0 --with pyyaml==6.0.3 \
+  python -m rocknix.provision plan \
+  --profile rg353v-android11 --serial STOCK_ADB_SERIAL \
+  --image /path/to/verified.img.gz --manifest /path/to/verified.img.gz.json \
+  --expect-version 0.35.0 --expect-commit FULL_40_CHARACTER_COMMIT \
+  --public-key /private/operator.pub --identity /private/operator \
+  --job /private/jobs/device-task
+```
+
+`plan` is the default action. It verifies the complete compressed image and
+actual FAT/ext4 contents, checks the selected public key and matching private
+client identity, hashes the entire uncompressed image, and probes the one
+serial-bound stock device. It does **not** restart ADB as root, reboot, write
+storage, or create a job checkpoint. The parent job directory must be private
+to the host user (0700); private client keys must be usable without prompts.
+
+Use the explicit `install` action with the **same arguments** after setup is
+authorized. The supervisor can do this without a separate human confirmation
+when the task already authorizes replacement of Android. Installation erases
+internal Android; this procedure intentionally makes no backups. `--adb` can
+select an existing platform-tools executable; it does not download one.
+
+## State and verification
+
+1. Match exactly one authorized ADB serial and validate stock/hardware facts.
+2. Atomically bind a locked host checkpoint to serial, profile, compressed image
+   hash, version/commit, selected public key, and the actual eMMC CID.
+3. Enter root Android recovery; re-probe identity, mounts (including by-name
+   aliases), battery, capacity, absence of an SD card, and required tools.
+4. Stream gzip through recovery's pipefail-protected `gzip | dd`, fsync, check
+   exit status, then read back **every image sector**. The SHA-256 covers the
+   non-MiB-aligned final backup GPT sectors as well as the main range.
+5. Generate a unique SSH server key **on the host**, transfer it only through
+   serial-bound root ADB to the written internal ext4 filesystem at
+   `/storage/cubby/recovery/private/ssh_host_ed25519_key`, fsync/unmount, then
+   remount read-only to verify the persisted private-key digest. This is an
+   explicit per-device personalization **after** raw-image verification; the
+   final personalized disk is not claimed to have the original raw-image hash.
+6. Recheck eMMC identity and unmounted state, reboot, and reconnect to independent
+   recovery SSH port 2223. Strict host-key checking pins the generated public
+   host key, without TOFU, a password, or `StrictHostKeyChecking=no`.
+7. Verify the expected image version/commit, same eMMC CID, and internal—not
+   SD—boot/storage mounts. Report `commissioning_pending`, never customer-ready.
+
+A USB disconnect, bad hash, tool failure, wrong storage identity or wrong live
+image is a machine-readable `blocked` result. Child command output is never
+included in errors. No host block-device pathname is accepted or written.
+The SSH host key and checkpoints are private operational artifacts under the
+job directory, not source files or image release assets. Preserve this directory
+and pass an explicit `--serial` to resume after Linux no longer exposes ADB.
+
+On resume in Android recovery, the tool re-probes the device and repeats the
+entire raw write/readback and host-key enrollment; a stale `written` checkpoint
+never skips verification. If reboot was already requested, resume only attempts
+pinned SSH validation—it does not silently reflash a running Linux device.
+Interrupted or failed transitions may require supervisor diagnosis; timeout is
+never presented as a successful installation.
+
+## Remaining commissioning gates
+
+This transport does not configure customer/bench Wi-Fi, install games, clear
+test data, certify display/audio/buttons/sleep, exercise signed update rollback,
+or produce a customer acceptance certificate. Those are the subsequent bounded
+commissioning stage. The generic image's filesystem/GPT identities are currently
+per **build**, not per **device**; multi-device media personalization is a
+separate required step before production rollout. Do not claim this candidate
+alone fulfills the plug-in-and-walk-away product contract.

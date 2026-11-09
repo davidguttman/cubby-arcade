@@ -204,3 +204,11 @@ record; a receipt with `hardware_validated: false` is not a certification.
 Public downloads have no device/customer SSH keys. For a managed device, use the
 explicit public-key provisioning build described above, keep that artifact
 separate from public downloads, and verify recovery access on the target unit.
+
+### Stock Android USB entry (candidate)
+
+For the resumable host-side stock Android transport, profile boundaries,
+no-backup behavior, exact image readback, pinned recovery enrollment and remaining
+hardware acceptance requirements, see [stock USB provisioning](stock-usb-provisioning.md).
+This is separate from the SSH bundle installer and does not yet certify an
+unattended customer-ready installation.
