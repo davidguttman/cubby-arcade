@@ -117,8 +117,8 @@ def main():
     interface_index = socket.if_nametoindex(USB_INTERFACE)
     last = 0
     while True:
-        # ROCKNIX autostart recreates the native gadget. Let systemd restart us
-        # and bind the replacement interface rather than retain a stale index.
+        # If native USB mode management recreates the gadget, let systemd
+        # restart us and bind its replacement rather than retain a stale index.
         if socket.if_nametoindex(USB_INTERFACE) != interface_index:
             raise RuntimeError('USB interface recreated; reconnecting')
         server.handle_request()
