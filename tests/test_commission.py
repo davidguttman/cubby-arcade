@@ -282,6 +282,16 @@ class CommissionTests(unittest.TestCase):
             commission.wait_ready(remote,{},timeout=1)
         self.assertEqual(remote.call.call_count,1)
 
+    def test_successful_ssh_malformed_json_is_terminal_without_retry(self):
+        args=type('Args', (), {'identity':Path('/key'), 'job':Path('/job'), 'host':'169.254.170.2'})()
+        for payload in (b'not-json', b'', b'\xff'):
+            with self.subTest(payload=payload), patch('subprocess.run') as run, patch('time.sleep'):
+                run.side_effect=[subprocess.CompletedProcess([],0,payload,b''),
+                                 subprocess.CompletedProcess([],0,json.dumps(self.healthy_snapshot()).encode(),b'')]
+                with self.assertRaisesRegex(commission.Blocked,'^commissioning_native_failed$'):
+                    commission.wait_ready(commission.Remote(args),{},timeout=1)
+                self.assertEqual(run.call_count,1)
+
     def test_required_checks_fail_closed(self):
         with self.assertRaises(commission.Blocked): commission.checked_snapshot({'checks':{}})
         checks={key:True for key in ['no_failed_units','artwork','boot_progress','management','updater',

@@ -45,7 +45,9 @@ class Remote:
                 if isinstance(response,dict) and response.get('error'):
                     raise Blocked('commissioning_native_failed')
                 raise Blocked('commissioning_transport_failed')
-            response=json.loads(result.stdout)
+            try: response=json.loads(result.stdout)
+            except (ValueError,TypeError):
+                raise Blocked('commissioning_native_failed') from None
             if not isinstance(response,dict) or response.get('error'):
                 raise Blocked('commissioning_native_failed')
             return response
