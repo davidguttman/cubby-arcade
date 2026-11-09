@@ -27,6 +27,13 @@ Holding **L + R + Start for two seconds** jumps to that tab.
 Adult settings can change networks and recheck internet without erasing games,
 saves, browser state or previous networking configuration.
 
+During offline startup and **Find networks**, a successful but empty scan is retried twice,
+after one and two seconds. The page stays busy while these sequential scans run,
+then shows the empty-area message only if all three are empty. A populated scan
+returns immediately; errors retain their existing messages and are not retried.
+This bounds attempts and adds at most three seconds of deliberate waiting, not
+an absolute wall-clock deadline for the underlying network requests.
+
 The initial supported networks are visible, open or WPA-personal (WPA2, and
 WPA3/SAE when reported by NetworkManager) home networks. Enterprise/802.1X, WEP,
 hidden-SSID entry, captive-portal login, and non-ASCII password entry are not
@@ -116,6 +123,7 @@ diagnostics includes both logs to distinguish frontend startup failures.
 
 ```sh
 uv run --python 3.12 python -m unittest discover -s tests -p test_rocknix_network.py
+node --test tests/network_onboarding.cjs
 uv run tests/browser_device_network.py --cdp http://127.0.0.1:18800 --screenshots .cache/wifi-ui-evidence
 ```
 
