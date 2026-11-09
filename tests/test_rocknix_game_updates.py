@@ -116,7 +116,7 @@ class GameUpdates(unittest.TestCase):
             return download(f'http://127.0.0.1:{self.publisher.server_address[1]}{path}',
                             destination, limit, True, *args, **kwargs)
         def run(mode):
-            result = subprocess.run(['node', 'tests/handheld_feed_bridge.cjs', self.origin, self.state.token, mode],
+            result = subprocess.run(['node', 'tests/handheld_feed_bridge.js', self.origin, self.state.token, mode],
                                     cwd=ROOT, capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stderr)
             return json.loads(result.stdout)
