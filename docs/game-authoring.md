@@ -66,6 +66,24 @@ system menu. Listen for `handheld:system-menu` (`event.detail.open`) to pause
 your own simulation and audio while it is open; pause on lost focus/visibility.
 The injected menu alone cannot automatically pause an arbitrary game loop.
 
+### Quitting from your own game menu
+
+When a player chooses Quit, save their progress and return your game to a
+playable title screen, clearing held input and stopping gameplay audio as needed.
+Then dispatch this window event:
+
+```js
+window.dispatchEvent(new CustomEvent('handheld:quit'));
+```
+
+The event has no required detail. Cubby's injected host shell listens for it and
+returns to the library (`/play` in a browser, `/` on native hosts), without opening
+the system menu. This works without an SDK or with an older bundled SDK; the
+listener belongs to Cubby, not to immutable game packages. Outside Cubby, no host
+handles the event, so the game stays at its title and can be played again. Do not
+navigate to a blank page, close the tab, or call `HandheldGameShell.home()` from
+game code. This event is separate from the controller's system-menu exit action.
+
 Cubby also tells games about system events. You don't have to listen; a game that
 doesn't is simply frozen and resumed. Each one is a window event carrying
 `event.detail`:
