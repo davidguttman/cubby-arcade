@@ -147,10 +147,85 @@ never presented as a successful installation.
 
 ## Remaining commissioning gates
 
-This transport does not configure customer/bench Wi-Fi, install games, clear
-test data, certify display/audio/buttons/sleep, exercise signed update rollback,
-or produce a customer acceptance certificate. Those are the subsequent bounded
-commissioning stage. Per-device bound builds prevent this installer from
+The transport itself does not commission the installation. The separate
+commissioning tool below can check native services, test bench Wi-Fi/reboot and
+clear test state, but does not install games, certify physical controls/audio/
+sleep, exercise signed update rollback, or issue a customer acceptance certificate. Per-device bound builds prevent this installer from
 reusing another unit's artifact, but do not certify factory USB access or
 commissioning on real hardware. Do not claim this candidate
 alone fulfills the plug-in-and-walk-away product contract.
+
+## Commissioning and clean handoff
+
+`rocknix/commission.py` continues an existing provision job whose stage is
+`commissioning_pending`. It reuses that job's exclusive lock, CID/source/image
+binding and enrolled recovery host key. It requires the operator's private SSH
+identity and never uses password authentication, TOFU or a fresh host-key scan.
+The remote module is supplied from the checked source checkout; use the same
+checkout as the installation, not an unrelated downloaded script.
+
+```sh
+uv run python -m rocknix.commission check \
+  --job /private/jobs/device-task --identity /private/operator
+```
+
+Every action first authenticates recovery SSH and checks the live version,
+source commit, bound CID, physical eMMC CID and internal boot/storage mounts.
+Automated checks include no failed systemd units, the actual early-artwork
+marker and boot-progress result, idle/configured updater status at the expected
+installed version with no pending trial, normal USB management connectivity,
+and controller/audio/power device presence. These presence checks **do not**
+certify working buttons, audible sound, game saves or sleep/wake.
+
+The optional `bench` action accepts one JSON object containing `ssid` and
+`password` on **stdin only**. The supervisor obtains these from its existing
+secret mechanism and pipes them directly; do not type them into shell command
+arguments or save them as a job artifact. Do not use an example containing real
+credentials. The action scans and connects through Cubby's native network
+socket, checks the persisted native Wi-Fi flag, records only newly created
+profile UUIDs, requests a reboot and verifies a new authenticated boot ID and
+internet connectivity afterward. No raw `nmcli` join substitutes for Cubby's
+setup code. Recovery remains on USB throughout.
+
+```sh
+# stdin is supplied directly by the supervisor's credential source:
+uv run python -m rocknix.commission bench \
+  --job /private/jobs/device-task --identity /private/operator
+```
+
+A `check` after interruption resumes a recorded reboot-pending phase. An
+interruption during connection before the created profile can be recorded is
+**blocked for diagnosis**, not silently adopted or wiped. A changed profile
+baseline also blocks. Credentials are not written in the host checkpoint,
+receipt, SSH argv or error output. NetworkManager's temporary native keyfile
+necessarily contains the credential until handoff deletes that owned profile.
+
+After software/game/physical tests, explicitly run:
+
+```sh
+uv run python -m rocknix.commission handoff \
+  --job /private/jobs/device-task --identity /private/operator
+```
+
+Handoff validates the target again, rejects symlinked/special state entries and
+unowned Cubby network profiles, stops `essway.service` (including its native
+network helper), deletes only recorded bench profile UUIDs and contents of
+`/storage/cubby/state`, and verifies that state is empty **while quiescent**.
+This removes installed test games, saves, players, browser profile/cache and
+network-onboarding progress: the runtime binds this exact directory as its
+persistent HOME. It preserves release/update records, build/device provenance,
+management/recovery keys and unrelated non-Cubby profiles. It then restarts the
+launcher; normal empty-install browser files may be recreated. A failed cleanup
+leaves commissioning blocked and may leave the launcher stopped for diagnosis;
+it does not switch off independent recovery.
+
+The receipt is stored atomically inside the private job checkpoint and printed
+without credentials. It records the installation binding (including image
+hash), CID, boot IDs, automated checks, bench reboot evidence and clean-handoff
+result. `customer_ready` deliberately remains false, with physical controls,
+audible speaker, sleep/wake, game-save persistence and signed update/rollback
+listed as pending. This bounded tool does not execute a test-game harness or
+signed trial/rollback and cannot certify those gates from source tests. The
+supervisor must retain separate actual-device evidence and finish those gates
+before customer handoff. It does not accept arbitrary operator flags to turn
+pending tests into passes.
