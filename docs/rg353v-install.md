@@ -176,3 +176,17 @@ stopped, accelerated UI, physical controls, sound, offline game launch/saves,
 signed update and trial rollback, sleep/wake, and reboot persistence. Preserve
 checksums, commit, device model and the observed results with the artifact.
 Software tests or repair of an already-upgraded device do not satisfy this gate.
+
+### Selecting the current public installation image
+
+Use the full `Cubby-Arcade-RG353V-vX.Y.Z-<commit>.img.gz` image from the intended
+versioned GitHub release, with its matching `.json` receipt and `.sha256` file.
+Do not use a date-only archived image and assume app updates will repair it.
+Each new release now builds and publishes this image as a mandatory gate before
+advancing app updates. The receipt ties the boot partition, updater and app
+inventory to the exact release source. Hardware acceptance remains a separate
+record; a receipt with `hardware_validated: false` is not a certification.
+
+Public downloads have no device/customer SSH keys. For a managed device, use the
+explicit public-key provisioning build described above, keep that artifact
+separate from public downloads, and verify recovery access on the target unit.

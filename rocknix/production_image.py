@@ -126,10 +126,12 @@ def check_hash(actual, expected, name):
         raise ValueError('Packaged file does not match production manifest: '+name)
 
 
-def audit_partitions(fat, storage, release_id, plan):
+def audit_partitions(fat, storage, release_id, plan, *, public=False):
     """Read actual constructed filesystems, not just the pre-filesystem source tree."""
     from pyfatfs.PyFatFS import PyFatFS
     with PyFatFS(str(fat), read_only=True) as flash:
+        if public and flash.exists('/cubby-setup/authorized_keys'):
+            raise ValueError('Public image contains provisioned management keys')
         for name, expected in plan['flash_files'].items():
             check_hash(flash.readbytes('/'+name), expected, name)
     with tempfile.TemporaryDirectory(prefix='cubby-image-audit-') as directory:
@@ -183,7 +185,7 @@ def build(upstream, rootfs, output_directory, *, source_root=ROOT, expected_vers
     return destination
 
 
-def verify(artifact, manifest, *, expected_version, expected_commit=None):
+def verify(artifact, manifest, *, expected_version, expected_commit=None, public=False):
     """Verify compressed bytes AND filesystems against a selected release manifest.
 
     The manifest is a local build receipt, not a cryptographic signature. Obtain
@@ -210,11 +212,11 @@ def verify(artifact, manifest, *, expected_version, expected_commit=None):
         with gzip.open(artifact,'rb') as source, raw.open('wb') as destination:
             shutil.copyfileobj(source,destination,8*1024*1024)
         with raw.open('rb') as stream:
-            layout = image.gpt_layout(stream)
+            layout = image.generated_gpt_layout(stream)
         fat, storage = root/'flash.fat', root/'storage.ext4'
         for destination, (start,count) in zip((fat,storage),layout[3]):
             image.copy_range(raw,destination,start*512,count*512)
-        audit_partitions(fat,storage,'image-'+plan['version']+'-'+plan['source_commit'][:12],plan)
+        audit_partitions(fat,storage,'image-'+plan['version']+'-'+plan['source_commit'][:12],plan,public=public)
     return plan
 
 

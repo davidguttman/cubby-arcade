@@ -109,6 +109,13 @@ class ProductionImageTests(unittest.TestCase):
             plan={'flash_files':{'post-sysroot.sh':module.digest(b'good hook')},
                   'app_files':{'runtime/version.json':module.digest(b'{"version":"1.0.0"}')}}
             module.audit_partitions(fat,storage,'image-test',plan)
+            with PyFatFS(str(fat)) as filesystem:
+                filesystem.makedir('/cubby-setup')
+                filesystem.writebytes('/cubby-setup/authorized_keys',b'unlisted key')
+            with self.assertRaisesRegex(ValueError,'provisioned'):
+                module.audit_partitions(fat,storage,'image-test',plan,public=True)
+            with PyFatFS(str(fat)) as filesystem:
+                filesystem.remove('/cubby-setup/authorized_keys')
             with PyFatFS(str(fat)) as filesystem:filesystem.writebytes('/post-sysroot.sh',b'bad! hook')
             with self.assertRaisesRegex(ValueError,'post-sysroot'):
                 module.audit_partitions(fat,storage,'image-test',plan)

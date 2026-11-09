@@ -68,3 +68,35 @@ failure. For uncatchable termination, use the recovery procedure in
 
 The stable feed is a compatibility alias, not a second product release/version.
 Never delete it or rotate its key without an explicit installed-device migration.
+
+## Full installation image is a mandatory release surface
+
+Every real release also runs a separate, secret-free `image` job. It composes
+an unprovisioned full RG353V image from the exact release checkout, boot artwork,
+current updater and pinned firmware/runtime; then independently decompresses and
+audits its actual FAT/ext4 filesystems. The publish job requires that image,
+its `.img.gz.json` build receipt and `.img.gz.sha256` checksum before making
+any tag/release writes or advancing the handheld feeds. A standard release has
+13 assets, not just the desktop archives and app/platform updates.
+
+Publication rejects an image from another version/commit, altered source
+inventories, corrupt bytes/filesystems, or customer provisioning keys—even keys
+omitted from its receipt. The public image contains no management credentials.
+A maintainer may separately build a provisioned image using a public key per the
+installation guide; that artifact cannot pass the public-release gate.
+
+The immutable GTK4 runtime input is published separately, never as latest, at
+`rg353v-runtime-e1859403acf7/rootfs-gtk4-kiosk.tar.xz` in this repository's GitHub
+releases. The complete digest remains pinned in `rocknix/image.py`. The input
+release carries provenance, package/source inventories and applicable licenses,
+patches and source-access notices; runtime license files remain inside the
+archive. Do not overwrite these inputs or accept a rebuilt archive under the
+same hash. See `rocknix/ROOTFS.md` for corresponding-source instructions.
+
+The image job requires 25 GiB available runner disk, filesystem tooling, and a
+private root mount/PID namespace on its disposable runner. Builds and independent
+verification have a 60-minute job ceiling; downloads have byte limits, checksums,
+per-socket timeouts and atomic cache publication. The full-image receipt records
+`hardware_validated: false`: integrity and version checks do **not** certify a
+fresh device boot. Complete the hardware acceptance checklist before calling a
+release customer-ready.

@@ -110,6 +110,15 @@ class ImageTests(unittest.TestCase):
         struct.pack_into('<I', header, 16, zlib.crc32(header[:92]))
         return bytes(mbr + header + entries)
 
+    def test_generated_layout_accepts_expansion_but_checks_backup_and_stock_stays_strict(self):
+        original = self.gpt()
+        with tempfile.TemporaryFile() as target:
+            image.grow_gpt(target, image.gpt_layout(io.BytesIO(original)), 6 * 1024 ** 3 // 512)
+            with self.assertRaises(ValueError): image.gpt_layout(target)
+            self.assertEqual(image.generated_gpt_layout(target)[3][1][1], 6 * 1024 ** 3 // 512)
+            target.seek(-512, 2); target.write(b'BROKEN!!')
+            with self.assertRaises(ValueError): image.generated_gpt_layout(target)
+
     def test_grow_assigns_unique_ids_and_relocates_backup(self):
         original = self.gpt()
         layout = image.gpt_layout(io.BytesIO(original))

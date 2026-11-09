@@ -118,7 +118,7 @@ def finalize_fat(path: Path) -> None:
     run('fsck.fat', '-n', str(path))
 
 
-def gpt_layout(source):
+def _gpt_layout(source, *, generated=False):
     """Validate both primary GPT checksums before trusting image offsets."""
     source.seek(0)
     mbr = source.read(512)
@@ -149,9 +149,44 @@ def gpt_layout(source):
             continue
         start, end = struct.unpack_from('<QQ', entry, 32)
         result.append((start, end - start + 1))
-    if result[0][0] != 32768 or result[0][1] != 4194304 or result[1][0] != sum(result[0]) or result[1][1] != 65536:
+    if result[0][0] != 32768 or result[0][1] != 4194304 or result[1][0] != sum(result[0]) or (not generated and result[1][1] != 65536):
         raise ValueError('Unexpected or overlapping pinned ROCKNIX layout')
+    if generated:
+        sectors = result[1][1]
+        table_sectors = (len(entries) + 511) // 512
+        end = result[1][0] + sectors - 1
+        backup_lba = end + table_sectors + 1
+        source.seek(0, 2)
+        if (not 65536 <= sectors <= 64 * 1024**3 // 512
+                or source.tell() != (backup_lba + 1) * 512
+                or struct.unpack_from('<QQQQ', header, 24) != (1, backup_lba, 34, end)
+                or mbr[450] != 0xee
+                or struct.unpack_from('<II', mbr, 454) != (1, min(backup_lba, 0xffffffff))):
+            raise ValueError('Invalid generated GPT geometry')
+        source.seek((backup_lba - table_sectors) * 512)
+        if source.read(len(entries)) != entries:
+            raise ValueError('Generated backup GPT table differs')
+        source.seek(backup_lba * 512)
+        backup = bytearray(source.read(512))
+        wanted = bytearray(header)
+        struct.pack_into('<Q', wanted, 24, backup_lba)
+        struct.pack_into('<Q', wanted, 32, 1)
+        struct.pack_into('<Q', wanted, 72, backup_lba - table_sectors)
+        struct.pack_into('<I', wanted, 16, 0)
+        struct.pack_into('<I', wanted, 16, zlib.crc32(wanted[:header_size]))
+        if backup != wanted:
+            raise ValueError('Generated backup GPT header differs')
     return mbr, header, entries, result
+
+
+def gpt_layout(source):
+    """Only the exact pinned stock input geometry is accepted."""
+    return _gpt_layout(source)
+
+
+def generated_gpt_layout(source):
+    """Validate expanded output and its relocated backup, without weakening input."""
+    return _gpt_layout(source, generated=True)
 
 
 def grow_gpt(destination, layout, storage_sectors, *, identities=None):

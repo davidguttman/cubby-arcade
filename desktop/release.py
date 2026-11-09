@@ -50,8 +50,14 @@ def publish(tag, repository, directory, package, gh=github, extra_files=()):
         for path in (file, checksum):
             expected[path.name] = {'size': path.stat().st_size, 'digest': 'sha256:' + digest(path)}
 
+    image_prefix = f'Cubby-Arcade-RG353V-{tag}-'
+    image_names = [name for name in extra_files if name.startswith(image_prefix)]
+    if image_names:
+        stems = [name for name in image_names if re.fullmatch(re.escape(image_prefix)+r'[0-9a-f]{12}\.img\.gz', name)]
+        if len(stems) != 1 or set(image_names) != {stems[0], stems[0]+'.json', stems[0]+'.sha256'}:
+            raise ValueError('Unexpected production image asset set')
     for name in extra_files:
-        if name not in ('app.zip', 'manifest.json', 'manifest.json.sig', 'platform.zip', 'update.json', 'update.json.sig'):
+        if name not in image_names and name not in ('app.zip', 'manifest.json', 'manifest.json.sig', 'platform.zip', 'update.json', 'update.json.sig'):
             raise ValueError('Unexpected additional release asset')
         path = directory / name
         if not path.is_file() or path.is_symlink() or not path.stat().st_size:
