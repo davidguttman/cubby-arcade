@@ -3,11 +3,11 @@ const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('n
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 // Supply discovery at its transport boundary: navigation and polling deliberately
 // replace registry arrays, so mutating a previous array cannot seed a fixture.
-async function setCatalog(cloud,installer,entries){
- const fetch=cloud.fetch;
- cloud.fetch=(url,settings)=>new URL(url).href===new URL('/catalog',cloud.origin).href
+async function setCatalog(feeds,installer,entries){
+ const fetch=feeds.fetch;
+ feeds.fetch=(url,settings)=>new URL(url).href===require('../runtime/core/game-feeds.js').DEFAULT_URL
   ?Promise.resolve(new Response(JSON.stringify(entries))):fetch(url,settings);
- installer.setCatalog(await cloud.catalog(entries));
+ installer.setCatalog(entries);
 }
 async function run(win,installer,library,registry,options={}){
  const fixture=(process.env.CUBBY_ARCADE_SMOKE_INSTALL_DIR??process.env.HUB_SMOKE_INSTALL_DIR);if(!fixture)throw Error('HUB_SMOKE_INSTALL_DIR required');
@@ -33,7 +33,7 @@ async function run(win,installer,library,registry,options={}){
   return originalFetch(url,settings);
  };
  const entry={id:'demo',title:'Demo',manifest_url:origin+'/manifest.json',artwork:options.origin+'/games/line-cutter/cover.png',screenshots:[]};
- await setCatalog(options.cloud,installer,[...registry,entry]);
+ await setCatalog(options.feeds,installer,[...registry,entry]);
  async function wait(check,label){const deadline=Date.now()+10000;while(Date.now()<deadline){if(await check())return;await new Promise(r=>setTimeout(r,30));}throw Error('Smoke timed out: '+label);}
  async function evaluate(fn){return win.webContents.executeJavaScript(fn);}
  // The real hub is running and checks on every entry: wait until it has gone quiet.

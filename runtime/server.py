@@ -117,7 +117,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             path = '/runtime/index.html'
         if path not in {'/runtime/index.html', '/runtime/core/input.js',
                          '/runtime/core/browser-store.js', '/runtime/core/browser-bootstrap.js',
-                         '/runtime/core/preferences.js', '/runtime/core/platform.js', '/runtime/core/sdk.js',
+                         '/runtime/core/preferences.js', '/runtime/core/game-feeds.js', '/runtime/core/platform.js', '/runtime/core/sdk.js',
                          '/runtime/core/controls.js', '/runtime/core/screen.css',
                          '/runtime/core/hub.js', '/runtime/core/hub.css', '/runtime/core/game-shell.js',
                          '/runtime/core/host-osd.js', '/runtime/core/host-osd.css',

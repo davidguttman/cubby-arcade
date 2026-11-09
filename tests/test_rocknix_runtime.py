@@ -363,10 +363,11 @@ class RuntimeTests(unittest.TestCase):
         # Players: the game page gets the launching player's storage, and the hub its pictures.
         self.assertIn(b'<script data-cubby-profile src="/runtime/core/profiles.js"></script>', game[1])
         # keyboard.js/.css: the one on-screen keyboard, for player names and the Wi-Fi password.
-        for name in ('profiles.js', 'avatars.js', 'keyboard.js', 'keyboard.css'):
+        for name in ('game-feeds.js', 'profiles.js', 'avatars.js', 'keyboard.js', 'keyboard.css'):
             served = self.request('GET', '/runtime/core/' + name)
             self.assertEqual((served[0], served[1]), (200, (ROOT / 'runtime/core' / name).read_bytes()))
         self.assertLess(page.index(b'/runtime/core/profiles.js'), page.index(b'/runtime/core/platform.js'))
+        self.assertLess(page.index(b'/runtime/core/game-feeds.js'), page.index(b'/runtime/core/platform.js'))
         self.assertEqual(self.request('POST', '/api/uninstall', {'id': 'line-cutter'})[0], 409)
         self.request('GET', '/')
         save = self.state.data / 'profile' / 'save'
@@ -394,6 +395,8 @@ class RuntimeTests(unittest.TestCase):
                         {'Referer': self.origin + '/games/line-cutter/index.html'},
                         {'X-Cubby-Session': 'wrong'}, {'Content-Type': 'text/plain'}]:
             self.assertEqual(self.request('POST', '/api/install', {'id': 'line-cutter'}, headers)[0], 403)
+            for route in ['read', 'write', 'fetch']:
+                self.assertEqual(self.request('POST', '/api/feeds/' + route, {}, headers)[0], 403)
         for body in [{'id': '../oops'}, {'id': 'not-reviewed'},
                      {'id': 'line-cutter', 'url': 'https://evil.invalid'}]:
             self.assertEqual(self.request('POST', '/api/install', body)[0], 400)
@@ -424,35 +427,30 @@ class RuntimeTests(unittest.TestCase):
             finally:
                 release.set()
 
-class CatalogWatchTests(unittest.TestCase):
-    def test_poll_retries_after_startup_and_keeps_last_valid_catalog(self):
+class FeedIOTests(unittest.TestCase):
+    def test_raw_feed_io_is_persistent_without_refresh_or_merge_policy(self):
         from rocknix import server
         with tempfile.TemporaryDirectory() as directory:
             state = State(ROOT, directory)
-            first = list(state.catalog)
-            with patch.object(server.catalog, 'load', side_effect=[[], ValueError('bad'), first]):
-                self.assertTrue(state.refresh_catalog())
-                self.assertEqual(state.catalog, [])
-                self.assertFalse(state.refresh_catalog())
-                self.assertEqual(state.catalog, [])
-                self.assertEqual(json.loads((state.data / 'catalog.json').read_text()), [])
-                self.assertTrue(state.refresh_catalog())
-                self.assertEqual(state.catalog, first)
+            urls = ['https://first.test/catalog', 'https://other.test/catalog']
+            entries = list(state.catalog)
+            # Fetches are independent; last-good caching is the shared core's job.
+            with patch.object(server.catalog, 'load', side_effect=[entries, [], ValueError('bad')]):
+                self.assertEqual(state.fetch_feed(urls[0]), entries)
+                self.assertEqual(state.fetch_feed(urls[1]), [])
+                with self.assertRaises(ValueError): state.fetch_feed(urls[0])
+            self.assertEqual(state.fetched_feeds[urls[0]], entries)
+            invalid = [dict(entries[0], manifest_url='https://bad.test/\\bad')]
+            with patch.object(server.catalog, 'load', return_value=invalid):
+                with self.assertRaises(ValueError): state.fetch_feed(urls[0])
+            self.assertEqual(state.fetched_feeds[urls[0]], entries)
+            saved = {'schema': 1, 'config': {'schema': 1, 'feeds': []},
+                     'cache': {urls[0]: entries}, 'sources': {}}
+            state.write_feed_state(saved)
             restarted = State(ROOT, directory)
-            self.assertEqual(restarted.catalog, first)
-
-    def test_watch_polls_repeatedly_but_not_during_game_or_network_setup(self):
-        from rocknix import server
-        with tempfile.TemporaryDirectory() as directory:
-            state = State(ROOT, directory)
-            calls, waits = [], []
-            def wait(seconds):
-                waits.append(seconds)
-                if len(waits) == 1: state.active_game = 'demo'
-                elif len(waits) == 2: state.active_game = None; state.network_busy = True
-                elif len(waits) == 3: state.network_busy = False
-                else: raise InterruptedError('test finished')
-            with patch.object(state, 'refresh_catalog', side_effect=lambda: calls.append(True)):
-                with self.assertRaises(InterruptedError): server.watch_catalog(state, wait=wait)
-            self.assertEqual(calls, [True, True])
-            self.assertEqual(waits, [300, 300, 300, 300])
+            self.assertEqual(restarted.read_feed_state(), saved)
+            self.assertEqual(restarted.fetched_feeds[urls[0]], entries)
+            for url in ['http://first.test/catalog', 'https://u:p@first.test/catalog',
+                        'https://first.test/#bad', 'https://first.test/\\bad']:
+                with self.assertRaises(ValueError): state.fetch_feed(url)
+            self.assertFalse(hasattr(server, 'watch_catalog'))

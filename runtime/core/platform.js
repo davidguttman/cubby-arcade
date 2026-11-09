@@ -1,9 +1,9 @@
 /* Capability-driven bridge. Native/Steam hosts can supply implementations. */
 (function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('./profiles.js') : root.HandheldProfiles);
+  const api = factory(typeof module === 'object' && module.exports ? require('./profiles.js') : root.HandheldProfiles, typeof module === 'object' && module.exports ? require('./game-feeds.js') : root.HandheldGameFeeds);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.HandheldPlatform = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function (Profiles) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (Profiles, Feeds) {
   'use strict';
   // Historical SDK alias used by published Line Cutter releases. Keep this
   // explicit: prefix guessing could erase unrelated application preferences.
@@ -28,6 +28,61 @@
     const fetcher = options.fetch || globalThis.fetch;
     const native = options.bridge || {};
     const nativeSaves = typeof native.saves === 'function';
+    const feeds = Feeds && ['readFeedState','writeFeedState','fetchCatalog'].every(name => typeof native[name] === 'function')
+      ? Feeds.createManager({read:()=>native.readFeedState(),write:value=>native.writeFeedState(value),fetchCatalog:url=>native.fetchCatalog(url)}) : null;
+    let offers=[];
+    async function library() {
+      if(native.library)return native.library();
+      const response=await fetcher(options.libraryURL||'/library');
+      if(!response.ok)throw Error('Library unavailable');
+      const entries=await response.json();if(!Array.isArray(entries))throw Error('Invalid library');return entries;
+    }
+    // Only the library that predates this platform's managed installs is legacy.
+    // A native install may expose bytes before its source pin is durable.
+    let legacyIds=null,migration=Promise.resolve();
+    function migrate(){
+      const job=migration.then(async()=>{
+        if(!legacyIds)legacyIds=new Set((await library()).map(game=>game.id));
+        await feeds.migrateInstalled([...legacyIds]);
+      });
+      migration=job.catch(()=>{});return job;
+    }
+    async function retireLegacy(id){
+      legacyIds?.delete(id);
+      // Drain migrations that already captured this ID before allowing native
+      // bytes to change. Later migrations see the pruned legacy set.
+      await migration;
+      legacyIds?.delete(id);
+    }
+    async function catalog(requestOptions={}) {
+      if(feeds){const entries=await feeds.catalog(requestOptions);await migrate();offers=entries;return entries;}
+      if(native.catalog)return native.catalog(requestOptions);
+      const response=await fetcher(options.catalogURL||'/catalog',{...requestOptions,cache:'no-store'});
+      if(!response.ok)throw Error('Catalog unavailable');
+      const entries=await response.json();if(!Array.isArray(entries))throw Error('Invalid catalog');return entries;
+    }
+    async function install(id,requestOptions={}) {
+      if(!feeds)return native.install(id,requestOptions);
+      requestOptions.signal?.throwIfAborted();
+      if(!offers.length)await catalog(requestOptions);
+      await migrate();
+      const offer=offers.find(entry=>entry.id===id);if(!offer)throw Error('Game not offered');
+      const pin=await feeds.source(id),selected=Feeds.sourceOf(offer);
+      if(pin&&(pin.feed_url!==selected.feed_url||pin.manifest_url!==selected.manifest_url))throw Error('Game already belongs to another source');
+      if(!pin&&(await library()).some(game=>game.id===id))throw Error('Installed game source unavailable');
+      await retireLegacy(id);
+      const result=await native.install(id,{...requestOptions,offer});
+      // Keep this exact issued object, never an IPC-returned/serialized clone.
+      await feeds.pin(id,offer);return result;
+    }
+    async function update(id,requestOptions={}) {
+      if(!feeds)return native.update?native.update(id,requestOptions):native.install(id,requestOptions);
+      requestOptions.signal?.throwIfAborted();await migrate();
+      const offer=await feeds.updateOffer(id);if(!offer)return;
+      if(!(await library()).some(game=>game.id===id))return;
+      const result=await (native.update?native.update(id,{...requestOptions,offer}):native.install(id,{...requestOptions,offer}));
+      if((await library()).some(game=>game.id===id))await feeds.pin(id,offer);return result;
+    }
     function saves(gameId, legacyKeys) {
       if (!/^[a-z0-9][a-z0-9-]*$/.test(gameId)) throw Error('Invalid game id');
       const key = name => {
@@ -112,22 +167,12 @@
       capabilities: Object.freeze({saves:!!storage || nativeSaves, profiles:!!Profiles && !!storage && (!nativeSaves || typeof native.useProfile === 'function' && typeof native.removeProfile === 'function'), fullscreen:!!(doc && doc.documentElement && doc.documentElement.requestFullscreen),
         tokens:typeof native.account==='function'&&typeof native.launch==='function', quit:typeof native.quit === 'function', power:typeof native.power === 'function', install:typeof native.install === 'function', uninstall:typeof native.uninstall === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
       saves,
-      async library() {
-        if (native.library) return native.library();
-        const response = await fetcher(options.libraryURL || '/library');
-        if (!response.ok) throw Error('Library unavailable');
-        const entries = await response.json();
-        if (!Array.isArray(entries)) throw Error('Invalid library');
-        return entries;
-      },
-      async catalog(requestOptions = {}) {
-        if (native.catalog) return native.catalog(requestOptions);
-        const response = await fetcher(options.catalogURL || '/catalog', {...requestOptions, cache: 'no-store'});
-        if (!response.ok) throw Error('Catalog unavailable');
-        const entries = await response.json();
-        if (!Array.isArray(entries)) throw Error('Invalid catalog');
-        return entries;
-      },
+      library,
+      catalog,
+      feedConfig: feeds ? ()=>feeds.config() : undefined,
+      feedStatus: feeds ? ()=>feeds.status() : undefined,
+      setFeedConfig: feeds ? async config=>{const result=await feeds.setConfig(config);offers=[];return result;} : undefined,
+      updateOffer: feeds ? id=>feeds.updateOffer(id) : undefined,
       async fullscreen() {
         if (!doc || !doc.documentElement || !doc.documentElement.requestFullscreen) return false;
         await doc.documentElement.requestFullscreen(); return true;
@@ -138,11 +183,11 @@
       onAccountState:native.onAccountState&&native.onAccountState.bind(native),
       quit: typeof native.quit === 'function' ? native.quit.bind(native) : undefined,
       power: typeof native.power === 'function' ? native.power.bind(native) : undefined,
-      install: native.install && native.install.bind(native),
+      install: native.install && install,
       // Installing fetches the current release, so it is also how a game updates. A host
       // overrides this only to add safeguards; it can't opt out by forgetting it.
-      update: native.install && (native.update ? native.update.bind(native) : id => native.install(id)),
-      uninstall: typeof native.uninstall === 'function' ? native.uninstall.bind(native) : undefined,
+      update: native.install && update,
+      uninstall: typeof native.uninstall === 'function' ? async id=>{const result=await native.uninstall(id);if(feeds){await retireLegacy(id);await feeds.forget(id);}return result;} : undefined,
       installStatus: native.installStatus && native.installStatus.bind(native),
       onInstallState: native.onInstallState && native.onInstallState.bind(native),
       updateAttention: native.updateAttention && native.updateAttention.bind(native),

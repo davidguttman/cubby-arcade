@@ -19,15 +19,28 @@
   const bridge = {
     library: () => request('/api/library'),
     catalog: () => request('/api/catalog'),
+    readFeedState: () => request('/api/feeds/read', {}),
+    writeFeedState: value => request('/api/feeds/write', value),
+    fetchCatalog: url => request('/api/feeds/fetch', {url}),
     installStatus: status,
-    async install(id) {
-      await request('/api/install', {id});
+    async install(id, {offer} = {}) {
+      await request('/api/install', offer ? {id,offer} : {id});
       for (;;) {
         const states = await status();
         // Pending is verified and waiting for the hub: it switches on the next hub entry.
         if (['installed', 'pending'].includes(states[id]?.phase)) return;
         if (states[id]?.phase === 'error') throw Error('Install failed');
         await new Promise(resolve => setTimeout(resolve, 400));
+      }
+    },
+    async update(id, {offer} = {}) {
+      const reply=await request('/api/install', offer ? {id,offer,update:true} : {id});
+      if(reply.skipped)return;
+      for (;;) {
+        const states=await status();
+        if(['installed','pending'].includes(states[id]?.phase))return;
+        if(states[id]?.phase==='error')throw Error('Install failed');
+        await new Promise(resolve=>setTimeout(resolve,400));
       }
     },
     uninstall: id => request('/api/uninstall', {id}),

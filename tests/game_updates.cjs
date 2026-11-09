@@ -7,6 +7,7 @@ const {createBridge}=require('../runtime/core/browser-store.js');
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 const installed=[{id:'installed-game'},{id:'other-installed'},{id:'unlisted-game'}];
 const offers=[{id:'installed-game',manifest_url:'https://a.test/m.json'},{id:'other-installed',manifest_url:'https://b.test/m.json'},{id:'not-installed',manifest_url:'https://c.test/m.json'}];
+for(const offer of offers){offer.title=offer.id;offer.artwork='https://a.test/art.png';}
 const wanted=['installed-game','other-installed'];
 function target(){const listeners=new Map();return {addEventListener(name,fn){if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name).add(fn);},removeEventListener(name,fn){listeners.get(name)?.delete(fn);},emit(name){for(const fn of [...listeners.get(name)||[]])fn();},count(){return [...listeners.values()].reduce((n,set)=>n+set.size,0);}};}
 function hub(){const document={...target(),hidden:false},timers=new Map();let next=0;const win={...target(),document,AbortController,setInterval(fn,ms){assert.equal(ms,300000);timers.set(++next,fn);return next;},clearInterval(id){timers.delete(id);}};return {win,tick(){for(const fn of timers.values())fn();},timerCount:()=>timers.size};}
@@ -52,7 +53,8 @@ test('the handheld host updates through its real bridge',async()=>{
  const win={CubbyDeviceToken:'token',addEventListener(){},
   async fetch(path,options={}){
    const json=value=>({ok:true,json:async()=>value});
-   if(path==='/api/library')return json(installed);if(path==='/api/catalog')return json(offers);
+   if(path==='/api/library')return json(installed);if(path==='/api/catalog'||path==='/api/feeds/fetch')return json(offers);
+   if(path==='/api/feeds/read')return json(null);if(path==='/api/feeds/write')return json({saved:true});
    if(path==='/api/status')return json(Object.fromEntries(posts.map(id=>[id,{phase:'pending'}])));
    assert.equal(path,'/api/install');assert.equal(options.headers['X-Cubby-Session'],'token');posts.push(JSON.parse(options.body).id);return json({accepted:true});
   }};
@@ -62,12 +64,12 @@ test('the handheld host updates through its real bridge',async()=>{
 });
 test('the desktop host updates through its real preload bridge',async()=>{
  const load=Module._load;let exposed;const invoked=[];
- Module._load=function(name,...rest){return name==='electron'?{contextBridge:{exposeInMainWorld(_key,value){exposed=value;}},ipcRenderer:{invoke:async(channel,...args)=>{invoked.push([channel,...args]);return [];},on(){},removeListener(){},sendSync(){return {};}}}:load.call(this,name,...rest);};
+ Module._load=function(name,...rest){return name==='electron'?{contextBridge:{exposeInMainWorld(_key,value){exposed=value;}},ipcRenderer:{invoke:async(channel,...args)=>{invoked.push([channel,...args]);if(channel==='hub:feeds-read')return null;if(channel==='hub:feeds-fetch')return offers;return [];},on(){},removeListener(){},sendSync(){return {};}}}:load.call(this,name,...rest);};
  try{delete require.cache[require.resolve('../desktop/preload.cjs')];require('../desktop/preload.cjs');}finally{Module._load=load;}
  const options={...exposed,fetch:async()=>({ok:true,json:async()=>offers})};
  options.bridge={...options.bridge,library:async()=>installed};
  await sweepGameUpdates(createPlatform(options));
- assert.deepEqual(invoked,wanted.map(id=>['hub:install',id]));
+ assert.deepEqual(invoked.filter(([channel])=>channel==='hub:update').map(([channel,id,options])=>[channel,id,options.offer._source.feed_url]),wanted.map(id=>['hub:update',id,'https://cubby.david.app/catalog']));
 });
 // tests/browser_store.cjs drives the browser host's real downloads through the same core.
 test('the browser host never reinstalls a game removed before its update starts',async()=>{

@@ -5,6 +5,9 @@ const os=require('node:os');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const {CloudHub}=require('../desktop/cloud.cjs');
+const {FeedIO}=require('../desktop/feeds.cjs');
+const {createManager}=require('../runtime/core/game-feeds.js');
+function manager(io){return createManager({read:()=>io.read(),write:value=>io.write(value),fetchCatalog:url=>io.catalog(url)});}
 const digest=b=>crypto.createHash('sha256').update(b).digest('hex');
 function fixture(word){const files={'/index.html':Buffer.from(word),'/runtime/core/hub.js':Buffer.from('script'),'/catalog':Buffer.from('[]')};return {files,manifest:{schema_version:1,bridge_version:1,files:Object.fromEntries(Object.entries(files).map(([p,b])=>[p,{size:b.length,sha256:digest(b)}]))}};}
 function transport(f){return async url=>{const name=new URL(url).pathname;return new Response(name==='/hub-manifest.json'?JSON.stringify(f.manifest):f.files[name],{status:name==='/hub-manifest.json'||f.files[name]?200:404});};}
@@ -69,28 +72,38 @@ test('landing page cannot replace native launcher; native route and legacy host 
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 
-test('catalog changes independently of shell; invalid/offline retain last-known-good including empty',async()=>{
+test('shared feed catalogs change independently of shell; invalid/offline retain last-good including empty',async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'live-catalog-'));
  const entry=id=>({id,title:id,manifest_url:`https://games.example/${id}/manifest.json`,artwork:`https://games.example/${id}/cover.png`});
  try{
   const shell=fixture('unchanged');let offers=[],requests=[];
   const fetch=async(url,options)=>{requests.push([new URL(url).pathname,options]);return new URL(url).pathname==='/catalog'?new Response(JSON.stringify(offers)):transport(shell)(url);};
-  const hub=new CloudHub(root,{fetch});await hub.refresh();const directory=hub.directory;requests=[];offers=[entry('one')];
-  assert.deepEqual(await hub.catalog([]),offers);
-  offers=[entry('two')];assert.deepEqual(await hub.catalog([]),offers);
-  offers=[{...entry('bad'),manifest_url:'file:///bad'}];assert.deepEqual(await hub.catalog([]),[entry('two')]);
-  offers=[];assert.deepEqual(await hub.catalog([entry('fallback')]),[]);
+  const hub=new CloudHub(root,{fetch});await hub.refresh();const directory=hub.directory,io=new FeedIO(path.join(root,'feeds.json'),{fetch}),feeds=manager(io);requests=[];offers=[entry('one')];
+  assert.deepEqual((await feeds.catalog()).map(({_source,...entry})=>entry),offers);
+  offers=[entry('two')];assert.deepEqual((await feeds.catalog()).map(({_source,...entry})=>entry),offers);
+  offers=[{...entry('bad'),manifest_url:'file:///bad'}];assert.deepEqual((await feeds.catalog()).map(({_source,...entry})=>entry),[entry('two')]);
+  offers=[];assert.deepEqual(await feeds.catalog(),[]);
   assert.equal(hub.directory,directory);assert.equal((await hub.read('/')).toString(),'unchanged');assert.equal((await hub.read('/catalog')).toString(),'[]');
   assert.ok(requests.every(([name,opts])=>name==='/catalog'&&opts.cache==='no-store'&&opts.redirect==='error'));
-  const offline=new CloudHub(root,{fetch:async()=>{throw Error('offline');}});assert.deepEqual(await offline.catalog([entry('fallback')]),[]);
+  const offline=manager(new FeedIO(path.join(root,'feeds.json'),{fetch:async()=>{throw Error('offline');}}));assert.deepEqual(await offline.catalog(),[]);
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
 
-test('independent catalog bounds responses and coalesces concurrent fetches',async()=>{
+test('raw native feed downloads are bounded and shared manager coalesces concurrent refresh',async()=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'live-catalog-'));let count=0,release;
  try{
-  const hub=new CloudHub(root,{fetch:()=>{count++;return new Promise(resolve=>release=resolve);}});
-  const a=hub.catalog([]),b=hub.catalog([]);while(!release)await new Promise(setImmediate);release(new Response('[]'));assert.deepEqual(await a,[]);assert.deepEqual(await b,[]);assert.equal(count,1);
-  hub.fetch=async()=>new Response('x'.repeat(2*1024*1024+1));assert.deepEqual(await hub.catalog([]),[]);
+  const io=new FeedIO(path.join(root,'feeds.json'),{fetch:()=>{count++;return new Promise(resolve=>release=resolve);}}),feeds=manager(io);
+  const a=feeds.catalog(),b=feeds.catalog();while(!release)await new Promise(setImmediate);release(new Response('[]'));assert.deepEqual(await a,[]);assert.deepEqual(await b,[]);assert.equal(count,1);
+  io.fetch=async()=>new Response('x'.repeat(1024*1024+1));await assert.rejects(io.catalog('https://a.test/catalog'),/large/);assert.deepEqual(await feeds.catalog(),[]);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
+
+test('hosts requiring feed-capable core reject older remote and cached shells, falling back to bundle',async()=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'cloud-feed-compat-'));
+ try{
+  const old=fixture('old');let hub=new CloudHub(root,{fetch:transport(old)});await hub.refresh();assert.equal(hub.source,'cloud');
+  hub=new CloudHub(root,{requiredFiles:['/runtime/core/game-feeds.js'],fetch:transport(old)});await hub.refresh();assert.equal(hub.source,'bundle');
+  const next=fixture('new'),name='/runtime/core/game-feeds.js',body=Buffer.from('feed core');next.files[name]=body;next.manifest.files[name]={size:body.length,sha256:digest(body)};
+  hub=new CloudHub(root,{requiredFiles:[name],fetch:transport(next)});await hub.refresh();assert.equal(hub.source,'cloud');assert.equal((await hub.read(name)).toString(),'feed core');
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });

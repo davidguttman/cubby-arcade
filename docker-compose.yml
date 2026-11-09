@@ -2,6 +2,7 @@
 services:
   web:
     image: python:3.13-slim
+    network_mode: bridge
     working_dir: /app
     volumes:
       - .:/app:ro

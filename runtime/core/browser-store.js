@@ -4,10 +4,10 @@
  * release; generation checks prevent another tab's removal being resurrected.
  */
 (function(root,factory){
-  const api=factory();
+  const api=factory(typeof module==='object'&&module.exports?require('./game-feeds.js'):root.HandheldGameFeeds);
   if(typeof module==='object'&&module.exports)module.exports=api;
   else root.HandheldBrowserStore=api;
-})(typeof globalThis!=='undefined'?globalThis:this,function(){
+})(typeof globalThis!=='undefined'?globalThis:this,function(Feeds){
   'use strict';
   const PREFIX='/__cubby_games__/',DB_NAME='cubby-browser-games-v1',CACHE_PREFIX='cubby-game-';
   const CATALOG_CACHE='cubby-discovery-v1',MAX_BYTES=128*1024*1024,MAX_MANIFEST=256*1024;
@@ -42,16 +42,7 @@
     for(const name of value.screenshots||[])if(!Object.hasOwn(files,safePath(name)))throw Error('Missing screenshot');
     return {...value,files};
   }
-  function validateCatalog(entries){
-    if(!Array.isArray(entries)||entries.length>1000)throw Error('Invalid Store catalog');
-    const ids=new Set();
-    for(const entry of entries){
-      if(!entry||typeof entry.id!=='string'||!ID.test(entry.id)||ids.has(entry.id)||typeof entry.title!=='string'||!entry.title||entry.title.length>120)throw Error('Invalid Store entry');
-      ids.add(entry.id);
-      for(const field of ['manifest_url','artwork',...(entry.attract!==undefined?['attract']:[])])downloadURL(entry[field]);
-    }
-    return entries;
-  }
+  function validateCatalog(entries){return Feeds.validateEntries(entries);}
   function emptyRecord(id){return {id,generation:0,active:null,releases:[]};}
   function createMetadataStore(indexedDB){
     let connection;
@@ -121,30 +112,43 @@
   function createBridge(options={}){
     const ctx=context(options),listeners=new Set(),jobs=new Map(),states={};
     const state=(id,phase,details={})=>{states[id]={phase,...details};for(const listener of listeners)try{listener(structuredClone(states));}catch{/* Observer failures cannot change an install. */}};
-    let catalog=[];
+    const feedKey=ctx.origin+'/__cubby_feed_state__';
+    const fetched=new Map();
+    async function readFeedState(){
+      const cache=await ctx.caches.open(CATALOG_CACHE),saved=await cache.match(feedKey);
+      if(!saved)return null;
+      const bytes=await readBytes(saved,20*1024*1024),value=JSON.parse(new TextDecoder().decode(bytes));
+      for(const [url,entries] of Object.entries(value.cache||{}))try{fetched.set(Feeds.feedURL(url),Feeds.validateEntries(entries));}catch{}
+      return value;
+    }
+    async function writeFeedState(value){
+      const text=JSON.stringify(value);if(new TextEncoder().encode(text).length>20*1024*1024)throw Error('Feed state too large');
+      const cache=await ctx.caches.open(CATALOG_CACHE);await cache.put(feedKey,new Response(text,{headers:{'Content-Type':'application/json'}}));
+    }
+    async function fetchCatalog(url){
+      url=Feeds.feedURL(url);
+      const response=await ctx.fetch(url,{cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
+      const entries=Feeds.validateEntries(JSON.parse(new TextDecoder().decode(await readBytes(response,1024*1024))));
+      fetched.set(url,entries);return entries;
+    }
+    function selectedOffer(id,offer){
+      Feeds.validateEntries([offer]);const source=Feeds.sourceOf(offer);
+      if(offer.id!==id||!(fetched.get(source.feed_url)||[]).some(entry=>entry.id===id&&entry.manifest_url===source.manifest_url))throw Error('Game source not offered');
+      return offer;
+    }
     const bridge={
+      readFeedState,writeFeedState,fetchCatalog,
       async ready(){await ctx.metadata.list();if(!ctx.caches||!ctx.crypto?.subtle)throw Error('Browser game storage unavailable');},
       async library(){return (await ctx.metadata.list()).filter(record=>record.active).map(libraryEntry);},
-      async catalog({signal}={}){
-        const key=ctx.origin+'/catalog',cache=await ctx.caches.open(CATALOG_CACHE);
-        try{
-          signal?.throwIfAborted();
-          const response=await ctx.fetch(key,{cache:'no-store',redirect:'error',signal:AbortSignal.any([AbortSignal.timeout(20000),...(signal?[signal]:[])])}),bytes=await readBytes(response,1024*1024);
-          signal?.throwIfAborted();
-          catalog=validateCatalog(JSON.parse(new TextDecoder().decode(bytes)));
-          await cache.put(key,new Response(JSON.stringify(catalog),{headers:{'Content-Type':'application/json'}}));
-        }catch(error){signal?.throwIfAborted();const saved=await cache.match(key);if(!saved)throw error;catalog=validateCatalog(await saved.json());}
-        return structuredClone(catalog);
-      },
-      install(id){
+      install(id,options={}){
         if(typeof id!=='string'||!ID.test(id))return Promise.reject(Error('Invalid game id'));
-        return startJob(id);
+        return startJob(id,options);
       },
       // An uninstall or reinstall, here or in another tab, invalidates a queued update.
-      async update(id,{signal}={}){
+      async update(id,{signal,offer}={}){
         if(typeof id!=='string'||!ID.test(id))throw Error('Invalid game id');
         const record=await ctx.metadata.get(id);
-        if(record.active)return startJob(id,{signal,generation:record.generation});
+        if(record.active)return startJob(id,{signal,offer,generation:record.generation});
       },
       async uninstall(id){
         if(typeof id!=='string'||!ID.test(id))throw Error('Invalid game id');
@@ -165,14 +169,13 @@
       if(jobs.has(id))return jobs.get(id);
       const job=run(id,jobOptions).catch(error=>{state(id,'error');throw error;}).finally(()=>jobs.delete(id));jobs.set(id,job);return job;
     }
-    async function run(id,{signal:cancel,generation}={}){
+    async function run(id,{signal:cancel,generation,offer:selected}={}){
       cancel?.throwIfAborted();
       const before=await ctx.metadata.get(id);
       // An uninstall/reinstall in this or another tab invalidates a queued update.
       if(generation!==undefined&&(!before.active||before.generation!==generation))return;
       state(id,'checking');
-      if(!catalog.length)await bridge.catalog();
-      const offer=catalog.find(entry=>entry.id===id);if(!offer)throw Error('Game not offered');
+      const offer=selectedOffer(id,selected);
       const signal=AbortSignal.any([AbortSignal.timeout(120000),...(cancel?[cancel]:[])]),url=downloadURL(offer.manifest_url);
       const raw=await readBytes(await ctx.fetch(url,{redirect:'error',cache:'no-store',signal}),MAX_MANIFEST);
       signal.throwIfAborted();
