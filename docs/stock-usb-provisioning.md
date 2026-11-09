@@ -61,6 +61,22 @@ when the task already authorizes replacement of Android. Installation erases
 internal Android; this procedure intentionally makes no backups. `--adb` can
 select an existing platform-tools executable; it does not download one.
 
+## Checked USB transport
+
+Every remote shell command and binary stream uses serial-bound **`adb shell -T`
+with shell-v2 framing**, never raw `exec-out`/`exec-in` or `shell -x`. Raw ADB
+output does not convey remote exit status; `exec-out` also does not transmit host
+stdin and combines remote diagnostics with binary output.
+
+Before trusting shell commands, the installer checks the connected daemon's
+`shell_v2` feature and executes a harmless binary-stdin echo / separate-stderr /
+nonzero-exit probe. Missing support or mismatched framing blocks before image or
+key transmission. The probe is repeated after root/reboot/wait transitions, so
+stock Android support is not assumed to persist into recovery. Image/key stdin,
+readback stdout, and remote diagnostics remain separate; failed remote commands
+never authorize another stage. These semantics are host-regression-tested but
+still need acceptance with the supported stock/recovery daemon versions.
+
 ## State and verification
 
 1. Match exactly one authorized ADB serial and validate stock/hardware facts.

@@ -103,7 +103,7 @@ def image_geometry(path):
 def probe_recovery_tools(adb):
     # Execute the actual ioctl on the unmounted stock table before destructive
     # writing. A listed binary/help option alone does not prove kernel support.
-    adb.command('exec-out','sh','-c',quote(
+    adb.command('shell','sh','-c',quote(
         'set -o pipefail; set -eu; test -b /dev/block/mmcblk0; '
         'for t in gzip dd sync mount umount sha256sum readlink blockdev; '
         'do command -v "$t" >/dev/null; done; '
@@ -122,9 +122,9 @@ done
 
 def refresh_partitions(adb, geometry):
     """Raw writes don't update kernel partition devices; never mount stale p2."""
-    adb.command('exec-out','sh','-c',quote(
+    adb.command('shell','sh','-c',quote(
         'set -eu; blockdev --rereadpt /dev/block/mmcblk0'))
-    output = adb.command('exec-out','sh','-c',quote(PARTITION_PROBE))
+    output = adb.command('shell','sh','-c',quote(PARTITION_PROBE))
     try:
         actual = {}
         for line in output.decode('ascii').splitlines():
@@ -222,13 +222,51 @@ def parse_facts(output):
 class Adb:
     def __init__(self, executable, serial):
         self.executable, self.serial = executable, serial
+        self.shell_v2_verified = False
         if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}', serial): raise Blocked('invalid_serial')
 
     def args(self, *args): return [self.executable, '-s', self.serial, *args]
 
-    def command(self, *args, timeout=30):
+    def require_shell_v2(self):
+        """Prove advertised AND actual framing before trusting any remote command.
+
+        Raw exec-out neither forwards stdin nor carries stderr/remote exit status.
+        shell -T must retain the shell-v2 protocol (never use -x).
+        Revalidate after daemon/reboot transitions, including Android recovery.
+        """
+        if self.shell_v2_verified:
+            return
+        payload = b'cubby-shell-v2\x00\r\n\xff'
+        marker = b'cubby-shell-v2-stderr'
         try:
-            result = subprocess.run(self.args(*args), stdout=subprocess.PIPE,
+            features = subprocess.run(self.args('features'), stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+            if features.returncode or b'shell_v2' not in features.stdout.strip().split(b','):
+                raise Blocked('adb_shell_v2_required')
+            result = subprocess.run(self.args('shell','-T','sh','-c',
+                quote("cat; printf '%s' cubby-shell-v2-stderr >&2; exit 73")),
+                input=payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise Blocked('adb_shell_v2_probe_unavailable') from error
+        if result.returncode != 73 or result.stdout != payload or result.stderr != marker:
+            raise Blocked('adb_shell_v2_semantics_failed')
+        self.shell_v2_verified = True
+
+    def shell_args(self, *args):
+        self.require_shell_v2()
+        return self.args('shell', '-T', *args)
+
+    def command(self, *args, timeout=30):
+        if args and args[0] in ('exec-out', 'exec-in'):
+            raise Blocked('raw_adb_transport_forbidden')
+        if args and args[0] == 'shell':
+            command = self.shell_args(*args[1:])
+        else:
+            command = self.args(*args)
+            if args and args[0] in ('root', 'reboot', 'wait-for-device'):
+                self.shell_v2_verified = False
+        try:
+            result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, timeout=timeout)
         except (OSError, subprocess.TimeoutExpired) as error:
             raise Blocked('adb_command_unavailable_or_timeout') from error
@@ -240,21 +278,21 @@ class Adb:
             if self.command('shell', 'id', '-u').strip() != b'0': raise Blocked('recovery_root_unavailable')
             mode = self.command('shell','getprop','ro.bootmode').strip()
             if mode != b'recovery': raise Blocked('not_android_recovery')
-            return parse_facts(self.command('exec-out', 'sh', '-c', quote(PROBE)))
+            return parse_facts(self.command('shell', 'sh', '-c', quote(PROBE)))
         if self.command('shell','su','0','id','-u').strip() != b'0':
             raise Blocked('stock_root_unavailable')
-        data = parse_facts(self.command('exec-out', 'su', '0', 'sh', '-c', quote(PROBE)))
+        data = parse_facts(self.command('shell', 'su', '0', 'sh', '-c', quote(PROBE)))
         for name, prop in [('android','ro.build.version.release'), ('product','ro.product.model'),
                            ('platform','ro.board.platform')]:
             data[name] = self.command('shell','getprop',prop).decode().strip()
         return data
 
     def stream(self, script, source):
-        # stdout/stderr bounded by using files, never log provider/tool contents.
-        with tempfile.TemporaryFile() as output:
+        # Never log remote output or key bytes; keep stderr separate from stdout.
+        with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
             try:
-                result = subprocess.run(self.args('exec-out','sh','-c',quote(script)),
-                                        stdin=source, stdout=output, stderr=output, timeout=1800)
+                result = subprocess.run(self.shell_args('sh','-c',quote(script)),
+                                        stdin=source, stdout=output, stderr=errors, timeout=1800)
             except (OSError, subprocess.TimeoutExpired) as error:
                 raise Blocked('adb_stream_interrupted') from error
             if result.returncode: raise Blocked('adb_stream_failed')
@@ -265,8 +303,8 @@ class Adb:
         digest = hashlib.sha256(); total = 0
         with tempfile.TemporaryFile() as errors:
             try:
-                process = subprocess.Popen(self.args('exec-out','sh','-c',quote(script)),
-                                           stdout=subprocess.PIPE, stderr=errors)
+                process = subprocess.Popen(self.shell_args('sh','-c',quote(script)),
+                                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=errors)
                 # dd is finite, but use a watchdog so a hung USB read cannot block forever.
                 import threading
                 expired = threading.Event()
@@ -366,7 +404,7 @@ def enroll_host_identity(adb, host_key, original, size, journal, geometry):
  rmdir {MOUNT}
  trap - 0
 '''
-    result = adb.command('exec-out','sh','-c',quote(verify_script))
+    result = adb.command('shell','sh','-c',quote(verify_script))
     expected = hashlib.sha256(host_key.read_bytes()).hexdigest()
     if result.split()[:1] != [expected.encode()]: raise Blocked('host_identity_enrollment_mismatch')
     journal.save('enrolled', personalization={'host_private_sha256':expected,

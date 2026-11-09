@@ -63,7 +63,7 @@ class StockProvisionTests(unittest.TestCase):
 
     def test_adb_shell_is_always_serial_bound_and_errors_sanitized(self):
         adb=p.Adb('adb','test123')
-        with patch.object(p.subprocess,'run') as run:
+        with patch.object(p.subprocess,'run') as run, patch.object(adb,'require_shell_v2'):
             run.return_value.returncode=0;run.return_value.stdout=b'ok'
             self.assertEqual(adb.command('shell','id'), b'ok')
             self.assertEqual(run.call_args.args[0][:3],['adb','-s','test123'])
@@ -228,21 +228,6 @@ class OrchestrationTests(unittest.TestCase):
 
 
 class ExecutableTransportTests(unittest.TestCase):
-    def test_fake_adb_executable_readback_includes_tail_and_pins_serial(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory); executable=root/'adb'; log=root/'args'
-            executable.write_text('#!/usr/bin/env python3\nimport sys,pathlib\n'
-                +'pathlib.Path('+repr(str(log))+').write_text(repr(sys.argv[1:]))\n'
-                +"sys.stdout.buffer.write(b'x'*(512*33))\n")
-            executable.chmod(0o700)
-            adb=p.Adb(str(executable),'test123')
-            size,digest=adb.readback(512*33)
-            self.assertEqual(size,512*33)
-            self.assertEqual(digest,hashlib.sha256(b'x'*(512*33)).hexdigest())
-            args=log.read_text()
-            self.assertIn("'-s', 'test123', 'exec-out'",args)
-            self.assertIn('bs=512 count=33',args)
-
     def test_probe_rejects_root_failure_before_device_inventory(self):
         adb=p.Adb('fake-adb','test123')
         with patch.object(adb,'command',return_value=b'2000') as command:
@@ -252,6 +237,130 @@ class ExecutableTransportTests(unittest.TestCase):
     def test_mount_aliases_are_canonicalized_by_probe(self):
         self.assertIn('readlink -f "$source"',p.PROBE)
         self.assertIn('/dev/block/mmcblk0p[0-9]*',p.PROBE)
+
+
+
+class ShellV2TransportTests(unittest.TestCase):
+    """Run actual shell/cat/dd through a model of ADB's two transport modes."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.executable = self.root/'adb'
+        self.log = self.root/'argv'
+        self.executable.write_text('''#!/usr/bin/env python3
+import json, pathlib, subprocess, sys
+args = sys.argv[1:]
+assert args[:2] == ['-s', 'test123']
+args = args[2:]
+with pathlib.Path(LOG).open('a') as out: out.write(json.dumps(args)+'\\n')
+if args == ['features']:
+    print(FEATURES); sys.exit(0)
+if args[0] == 'exec-out':
+    # Real raw exec-out does NOT copy host stdin, combines stderr and has no status.
+    result = subprocess.run(' '.join(args[1:]), shell=True, executable='/bin/bash',
+                            input=b'', stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    sys.stdout.buffer.write(result.stdout); sys.exit(0)
+assert args[:2] == ['shell', '-T'] and '-x' not in args
+result = subprocess.run(' '.join(args[2:]), shell=True, executable='/bin/bash',
+                        stdin=sys.stdin.buffer, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+sys.stdout.buffer.write(result.stdout)
+sys.stderr.buffer.write(result.stderr)
+sys.exit(result.returncode)
+'''.replace('LOG', repr(str(self.log))).replace('FEATURES', repr('shell_v2,cmd')))
+        self.executable.chmod(0o700)
+        self.adb = p.Adb(str(self.executable), 'test123')
+
+    def test_stream_forwards_binary_stdin_and_enrollment_bytes(self):
+        target = self.root/'target'; source = self.root/'source'
+        payload = bytes(range(256))*99
+        source.write_bytes(payload)
+        with source.open('rb') as stream:
+            self.adb.stream('cat > '+p.quote(str(target)), stream)
+        self.assertEqual(target.read_bytes(), payload)
+        self.assertNotIn(payload.hex(), self.log.read_text())
+
+    def test_remote_failure_is_not_a_successful_command(self):
+        with self.assertRaises(p.Blocked):
+            self.adb.command('shell', 'sh', '-c', p.quote('echo sensitive >&2; exit 17'))
+
+    def test_readback_excludes_real_dd_diagnostics_and_includes_tail(self):
+        image = self.root/'disk'; payload = bytes(range(256))*66
+        image.write_bytes(payload)
+        with patch.object(p, 'BLOCK', str(image)):
+            size, digest = self.adb.readback(len(payload))
+        self.assertEqual(size, 512*33)
+        self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
+        commands = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertTrue(all(row[0] != 'exec-out' for row in commands))
+        self.assertEqual(commands[-1][:2], ['shell','-T'])
+        self.assertIn('bs=512 count=33', commands[-1][-1])
+
+    def test_failed_readback_exit_status_is_not_a_digest(self):
+        with patch.object(p, 'BLOCK', str(self.root/'missing')):
+            with self.assertRaises(p.Blocked): self.adb.readback(512)
+
+    def test_shell_v2_absent_blocks_before_stream(self):
+        self.executable.write_text(self.executable.read_text().replace('shell_v2,cmd','cmd'))
+        source = self.root/'source'; source.write_bytes(b'secret fixture')
+        target = self.root/'never-written'
+        with source.open('rb') as stream, self.assertRaises(p.Blocked):
+            self.adb.stream('cat > '+p.quote(str(target)), stream)
+        self.assertFalse(target.exists())
+
+    def test_advertised_but_broken_shell_semantics_block_before_stream(self):
+        text = self.executable.read_text().replace('sys.exit(result.returncode)', 'sys.exit(0)')
+        self.executable.write_text(text)
+        source = self.root/'source'; source.write_bytes(b'fixture')
+        target = self.root/'never-written'
+        with source.open('rb') as stream, self.assertRaises(p.Blocked):
+            self.adb.stream('cat > '+p.quote(str(target)), stream)
+        self.assertFalse(target.exists())
+
+    def test_daemon_transitions_invalidate_verified_transport(self):
+        self.adb.require_shell_v2()
+        self.assertTrue(self.adb.shell_v2_verified)
+        with patch.object(p.subprocess, 'run') as run:
+            run.return_value.returncode = 0; run.return_value.stdout = b''
+            for transition in [('root',), ('reboot','recovery'), ('wait-for-device',)]:
+                self.adb.shell_v2_verified = True
+                self.adb.command(*transition)
+                self.assertFalse(self.adb.shell_v2_verified)
+
+    def test_stdin_or_stderr_framing_failure_blocks_before_stream(self):
+        original = self.executable.read_text()
+        for broken in (original.replace('stdin=sys.stdin.buffer', "input=b''"),
+                       original.replace('sys.stderr.buffer.write(result.stderr)',
+                                        'sys.stdout.buffer.write(result.stderr)')):
+            with self.subTest(broken=broken[-40:]):
+                self.executable.write_text(broken)
+                source = self.root/'source'; source.write_bytes(b'fixture')
+                target = self.root/'never-written'
+                with source.open('rb') as stream, self.assertRaises(p.Blocked):
+                    self.adb.stream('cat > '+p.quote(str(target)), stream)
+                self.assertFalse(target.exists())
+
+    def test_actual_failing_blockdev_preflight_cannot_reach_write(self):
+        fixture = self.root/'ordinary-file'; fixture.write_bytes(b'not a block device')
+        command = self.adb.command
+        def safe_command(*args, **kwargs):
+            # Test only: map the fixed target to an ordinary temp file. Let the
+            # actual blockdev ioctl fail; no real device pathname reaches a shell.
+            script = args[-1].replace('/dev/block/mmcblk0',str(fixture))
+            script = script.replace('test -b ', 'test -f ')
+            return command(*args[:-1],script,**kwargs)
+        with patch.object(self.adb,'command',side_effect=safe_command), \
+             patch.object(p,'write_verified') as write:
+            with self.assertRaises(p.Blocked):
+                p.probe_recovery_tools(self.adb)
+                p.write_verified(None,None,None,None,None,None)
+            write.assert_not_called()
+        self.assertIn('blockdev --rereadpt',self.log.read_text())
+
+    def test_failing_partition_reread_blocks_via_remote_exit(self):
+        # The required blockdev primitive runs against an ordinary nonexistent file.
+        # No actual block device is accessed by this test.
+        with self.assertRaises(p.Blocked):
+            self.adb.command('shell','sh','-c',p.quote('blockdev --rereadpt '+str(self.root/'missing')))
 
 
 
