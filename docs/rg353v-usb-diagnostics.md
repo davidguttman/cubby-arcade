@@ -1,5 +1,9 @@
 # RG353V USB boot diagnostics (adult/developer flow)
 
+Explicitly provisioned units can additionally use [key-only native management](rg353v-management.md)
+over Wi-Fi/USB. That optional root shell is separate from the default read-only
+USB diagnostics described here.
+
 The Cubby image enables ROCKNIX's native **USB NCM networking** automatically.
 The host can retrieve status without Wi-Fi, Android ADB, browser startup, or a
 person reading the screen. This is read-only diagnostics, not a remote root
@@ -37,10 +41,14 @@ complete persistent journal.
 - `rocknix/image.py` adds the service/scripts to the FAT partition and registers
   the service through `/post-sysroot.sh` in initramfs. No kernel, bootloader, DTB,
   or stock SYSTEM bytes are changed.
-- The native `usbgadget --start` configures NCM and its RK3566 cable-reconnect
-  workaround. Setup runs before ROCKNIX autostart. The diagnostic Python process
-  uses **native ROCKNIX Python**, not Cubby's WPE chroot. If stock autostart
-  recreates the USB interface, systemd restarts the listener on its new index.
+- Stock ROCKNIX autostart prepares USB gadgets once. Diagnostics starts after
+  that unit, selects NCM with native `usbgadget network`, and uses its RK3566
+  cable-reconnect workaround. It never repeats `usbgadget --start`: the pinned
+  release's second initialization unbinds USB then fails on its existing MTP
+  directory. Listener restarts safely select the prepared network mode again;
+  there is no one-shot marker that can suppress recovery. The diagnostic Python
+  process uses **native ROCKNIX Python**, not Cubby's WPE chroot. If native USB
+  mode management recreates the interface, systemd rebinds the listener.
 - Diagnostics remain enabled if `CUBBY-DISABLED` returns the UI to stock ROCKNIX.
   Create `CUBBY-USB-DISABLED` on the FAT partition to disable diagnostics; it
   prevents automatic diagnostic gadget setup on the next boot. Existing ROCKNIX
@@ -48,6 +56,8 @@ complete persistent journal.
 - `.cache` is created **at runtime**, not preseeded: stock first-boot storage
   expansion remains intact. That expansion can reboot before diagnostics appear.
 - This begins after initramfs has mounted storage and handed off to systemd.
+  It also waits for ROCKNIX autostart to finish USB preparation; an autostart
+  failure before preparation can leave diagnostics unavailable.
   It cannot report a dead bootloader, kernel panic before userspace, failed
   storage mount, wrong DTB/no UDC, or a charge-only/bad cable. Those failures can
   still require recovery mode, serial hardware, or physical intervention.

@@ -3,6 +3,7 @@ import importlib.util
 import errno
 import io
 import json
+import shutil
 from pathlib import Path
 import socket
 import threading
@@ -59,35 +60,159 @@ class DiagnosticsTests(unittest.TestCase):
         hook_prefix = BOOT_HOOK.split('[ ! -e /flash/CUBBY-DISABLED ]')[0]
         self.assertIn('cubby-usb-diagnostics.service', hook_prefix)
         unit = (ROOT/'rocknix/device/cubby-usb-diagnostics.service').read_text()
-        self.assertIn('Before=rocknix-autostart.service', unit)
+        self.assertIn('After=local-fs.target rocknix-autostart.service', unit)
+        self.assertIn('WantedBy=rocknix.target', unit)
         self.assertNotIn('Requires=essway', unit)
         self.assertIn('/flash/cubby-usb-diagnostics/start.sh', unit)
         script = (ROOT/'rocknix/device/usb-diagnostics-start.sh').read_text()
-        self.assertIn('/usr/bin/usbgadget --start', script)
+        self.assertIn('/usr/bin/usbgadget network', script)
         self.assertIn('USB_MODE=cdc', script)
 
-    def test_startup_uses_native_gadget_once_and_optout_does_nothing(self):
+    @unittest.skipUnless(shutil.which('systemd-analyze'), 'requires systemd-analyze')
+    def test_boot_hook_has_no_systemd_ordering_cycle_with_stock_autostart(self):
+        from rocknix.image import BASE_BOOT_HOOK
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            units = root/'run/systemd/system'
+            units.mkdir(parents=True)
+            (root/'model').write_bytes(b'Anbernic RG353V\0')
+            for name in ('usb-diagnostics', 'wifi-recovery'):
+                destination = root/f'flash/cubby-{name}'
+                destination.mkdir(parents=True)
+                shutil.copyfile(ROOT/f'rocknix/device/cubby-{name}.service', destination/'service')
+            # Execute the image's real registration, with every device path
+            # confined to the fixture. No system manager or device is changed.
+            hook = BASE_BOOT_HOOK.replace('/proc/device-tree/model', str(root/'model'))
+            for original in ('/run', '/flash'):
+                hook = hook.replace(original, str(root)+original)
+            subprocess.run(['/bin/sh', '-c', hook], check=True)
+
+            # Pinned ROCKNIX 20261101 system.d units, including the stock
+            # oneshot's After=graphical.target (not just a generic USB fixture).
+            # Sources: projects/ROCKNIX/packages/{rocknix,sysutils/autostart}/system.d
+            fixtures = {
+                'rocknix.target': '''[Unit]
+Description=rocknix
+Requires=multi-user.target graphical.target
+After=graphical.target
+Conflicts=rescue.target
+AllowIsolate=yes
+[Install]
+Alias=default.target
+''',
+                'rocknix-autostart.service': '''[Unit]
+Description=ROCKNIX user autostart script
+Before=emustation.service weston.service
+After=network.target graphical.target userconfig.service
+[Service]
+Type=oneshot
+Environment=HOME=/storage
+ExecStart=/bin/bash -a -c 'source /etc/profile && exec /usr/bin/autostart'
+RemainAfterExit=yes
+[Install]
+WantedBy=rocknix.target
+''',
+                # Standard target ordering; leave default dependencies enabled
+                # so a wanted service orders before its target, as at boot.
+                'multi-user.target': '[Unit]\nRequires=basic.target\nAfter=basic.target\n',
+                'graphical.target': '[Unit]\nRequires=multi-user.target\nAfter=multi-user.target\n',
+                'basic.target': '[Unit]\n',
+                'sysinit.target': '[Unit]\n',
+                'local-fs.target': '[Unit]\n',
+                'shutdown.target': '[Unit]\n',
+                'rescue.target': '[Unit]\n',
+            }
+            for name, content in fixtures.items():
+                (units/name).write_text(content)
+            wanted = units/'rocknix.target.wants'
+            wanted.mkdir(exist_ok=True)
+            (wanted/'rocknix-autostart.service').symlink_to('../rocknix-autostart.service')
+            # Verification only checks executables exist; it never runs them.
+            for executable in ('bin/bash', 'bin/sh', 'usr/bin/python3'):
+                path = root/executable
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('#!/bin/sh\nexit 0\n')
+                path.chmod(0o755)
+            result = subprocess.run(['systemd-analyze', 'verify', '--man=no',
+                                     '--root', str(root), 'rocknix.target'],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            # systemd may break a cycle by deleting a job rather than fail:
+            # either result would silently skip the native USB initialization.
+            self.assertNotIn('ordering cycle', result.stderr.lower(), result.stderr)
+            self.assertNotIn('deleted', result.stderr.lower(), result.stderr)
+            self.assertTrue((units/'multi-user.target.wants/cubby-wifi-recovery.service').is_file())
+
+    def test_startup_cooperates_with_native_boot_and_repeated_listener_starts(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for path in ('run', 'storage/.cache', 'flash', 'etc'):
                 (root/path).mkdir(parents=True, exist_ok=True)
             (root/'etc/machine-id').write_text('0123456789abcdef0123456789abcdef')
             gadget = root/'usbgadget'
-            gadget.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> ' + str(root/'calls') + '\n')
+            # Model the pinned ROCKNIX 20261101 lifecycle: --start first
+            # unbinds, prepares CDC, then unconditionally creates MTP. A second
+            # --start therefore fails before rebinding; `network` only selects
+            # the already prepared CDC gadget and is safe to repeat.
+            gadget.write_text('''#!/bin/sh
+set -e
+cd "''' + str(root) + '''"
+printf '%s\\n' "$*" >> calls
+case "$1" in
+  --start)
+    printf '' > UDC
+    mkdir -p cdc
+    mkdir mtp
+    USB_MODE=disabled
+    [ ! -f storage/.cache/usbgadget/usbgadget.conf ] || . ./storage/.cache/usbgadget/usbgadget.conf
+    [ "$USB_MODE" != cdc ] || printf controller > UDC
+    ;;
+  network)
+    [ -d cdc ]
+    printf controller > UDC
+    ;;
+  *) exit 2 ;;
+esac
+''')
             gadget.chmod(0o755)
             script = (ROOT/'rocknix/device/usb-diagnostics-start.sh').read_text()
             for original in ('/storage', '/run', '/flash', '/etc'):
                 script = script.replace(original, str(root)+original)
             script = script.replace('/usr/bin/usbgadget', str(gadget))
+            unit = (ROOT/'rocknix/device/cubby-usb-diagnostics.service').read_text()
+            if 'Before=rocknix-autostart.service' in unit:
+                subprocess.run(['/bin/sh', '-c', script], check=True)
+            native = subprocess.run([str(gadget), '--start'], capture_output=True)
             for _ in range(2):
                 subprocess.run(['/bin/sh', '-c', script], check=True)
-            self.assertEqual((root/'calls').read_text().splitlines(), ['--start'])
+            self.assertEqual(native.returncode, 0, native.stderr.decode())
+            self.assertEqual((root/'UDC').read_text(), 'controller')
+            self.assertEqual((root/'calls').read_text().splitlines(), ['--start', 'network', 'network'])
             self.assertEqual((root/'storage/.cache/usbgadget/usbgadget.conf').read_text(), 'USB_MODE=cdc\n')
-            (root/'run/cubby-usb-initialized').unlink()
-            (root/'flash/CUBBY-USB-DISABLED').touch()
-            subprocess.run(['/bin/sh', '-c', script], check=True)
             self.assertFalse((root/'run/cubby-usb-initialized').exists())
-            self.assertEqual((root/'calls').read_text().splitlines(), ['--start'])
+            # A stale old marker must not suppress restoring an unbound gadget.
+            (root/'run/cubby-usb-initialized').touch()
+            (root/'UDC').write_text('')
+            subprocess.run(['/bin/sh', '-c', script], check=True)
+            self.assertEqual((root/'UDC').read_text(), 'controller')
+            (root/'flash/CUBBY-USB-DISABLED').touch()
+            before = (root/'calls').read_text()
+            (root/'storage/.cache/usbgadget/usbgadget.conf').write_text('USB_MODE=disabled\n')
+            subprocess.run(['/bin/sh', '-c', script], check=True)
+            self.assertEqual((root/'calls').read_text(), before)
+            self.assertEqual((root/'storage/.cache/usbgadget/usbgadget.conf').read_text(), 'USB_MODE=disabled\n')
+
+    def test_optout_does_not_create_runtime_config_or_invoke_native_tools(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'flash').mkdir()
+            (root/'flash/CUBBY-USB-DISABLED').touch()
+            script = (ROOT/'rocknix/device/usb-diagnostics-start.sh').read_text()
+            for original in ('/storage', '/run', '/flash', '/etc'):
+                script = script.replace(original, str(root)+original)
+            script = script.replace('/usr/bin/usbgadget', '/does-not-exist')
+            subprocess.run(['/bin/sh', '-c', script], check=True)
+            self.assertEqual(sorted(path.name for path in root.iterdir()), ['flash'])
 
     def test_command_capture_timeout_and_limit(self):
         module = self.module()

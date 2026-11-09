@@ -1,7 +1,6 @@
 [Unit]
 Description=Cubby read-only USB boot diagnostics
-After=local-fs.target
-Before=rocknix-autostart.service
+After=local-fs.target rocknix-autostart.service
 ConditionPathExists=!/flash/CUBBY-USB-DISABLED
 StartLimitIntervalSec=0
 
@@ -14,4 +13,4 @@ RestartSec=3
 UMask=0077
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=rocknix.target
