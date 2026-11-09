@@ -13,10 +13,13 @@ def unescape(value):
 
 def collect():
     if os.geteuid()!=0: raise ValueError('root_required')
-    mounts=[]
-    for line in Path('/proc/self/mountinfo').read_text().splitlines():
-        left,right=line.split(' - ',1); fields=left.split(); detail=right.split()
-        mounts.append(dict(dev=fields[2],path=unescape(fields[4]),source=unescape(detail[1])))
+    def mount_table(path):
+        result=[]
+        for line in path.read_text().splitlines():
+            left,right=line.split(' - ',1); fields=left.split(); detail=right.split()
+            result.append(dict(dev=fields[2],path=unescape(fields[4]),source=unescape(detail[1])))
+        return result
+    mounts=mount_table(Path('/proc/self/mountinfo'))
     def owner(path):
         path=os.path.realpath(path)
         candidates=[m for m in mounts if path==m['path'] or path.startswith(m['path'].rstrip('/')+'/')]
@@ -52,17 +55,38 @@ def collect():
         if not m['dev'].startswith('0:'): active |= disks(m['dev'])
     for line in Path('/proc/swaps').read_text().splitlines()[1:]:
         active |= disks(dev_of(unescape(line.split()[0])))
-    # Open raw block FDs are active consumers even when not mounted/swapped.
+    def reference(info):
+        # st_dev retains the backing filesystem even after lazy unmount; using
+        # path ownership here would miss deleted/detached mounts.
+        dev=info.st_rdev if stat.S_ISBLK(info.st_mode) else info.st_dev
+        if os.major(dev):
+            return disks(f'{os.major(dev)}:{os.minor(dev)}')
+        return set() # tmpfs, procfs and other anonymous pseudo-filesystems
+    # Mounts can be hidden in private namespaces. Open files, cwd/root/exe and
+    # mappings can retain a detached filesystem after its last mount disappears.
+    # Permission errors and unresolved block dependencies deliberately propagate.
     for process in Path('/proc').iterdir():
         if not process.name.isdigit(): continue
         try:
+            for m in mount_table(process/'mountinfo'):
+                if not m['dev'].startswith('0:'): active |= disks(m['dev'])
             for fd in (process/'fd').iterdir():
                 try:
                     info=fd.stat()
-                    if stat.S_ISBLK(info.st_mode):
-                        active |= disks(f'{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}')
                 except FileNotFoundError: pass # process/FD exited during read
-        except FileNotFoundError: pass
+                else: active |= reference(info)
+            for name in ('cwd','root','exe'):
+                try: info=(process/name).stat()
+                except FileNotFoundError: pass # kernel thread, zombie or exited process
+                else: active |= reference(info)
+            for line in (process/'maps').read_text().splitlines():
+                fields=line.split(None,5)
+                major,minor=(int(part,16) for part in fields[3].split(':'))
+                if major: active |= disks(f'{major}:{minor}')
+        except FileNotFoundError:
+            # Only a vanished process is safe to omit. A live process with an
+            # incomplete namespace/maps/fd view cannot establish exclusivity.
+            if process.exists(): raise ValueError('process_dependencies_unresolved')
     holders=[]
     for node in Path('/sys/class/block').iterdir():
         if node.name=='mmcblk0' or re.fullmatch(r'mmcblk0p[0-9]+',node.name):

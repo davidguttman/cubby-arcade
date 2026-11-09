@@ -102,6 +102,40 @@ class Collector(unittest.TestCase):
             with patch.object(probe,'Path',side_effect=mapped),patch.object(probe.os,'geteuid',return_value=0),patch.object(probe.subprocess,'run',return_value=result):
                 data=probe.collect()
                 self.assertEqual(data['root_disks'],['mmcblk1']);rescue.validate_rescue(data,512)
+                # A target mount private to another process is still active.
+                write('/proc/123/mountinfo',mount+'4 1 179:0 / /private rw - ext4 /dev/mmcblk0 rw\n')
+                write('/proc/123/maps','')
+                (root/'proc/123/fd').mkdir()
+                with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
+                # Lazy unmount removes the mount record, not open file users.
+                write('/proc/123/mountinfo',mount)
+                write('/proc/123/fd/7','open target file')
+                original_stat=original.stat
+                target_reference=root/'proc/123/fd/7'
+                def target_file(path,*args,**kwargs):
+                    if path==target_reference:
+                        return SimpleNamespace(st_mode=0o100600,st_dev=__import__('os').makedev(179,0))
+                    return original_stat(path,*args,**kwargs)
+                for name in ('fd/7','cwd','root','exe'):
+                    target_reference=root/'proc/123'/name
+                    with self.subTest(reference=name),patch.object(original,'stat',target_file):
+                        with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
+                (root/'proc/123/fd/7').unlink()
+                # File mappings survive both descriptor closure and unmount.
+                write('/proc/123/maps','1000-2000 r--p 00000000 b3:00 12 /gone (deleted)\n')
+                with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
+                write('/proc/123/maps','')
+                (root/'proc/123/maps').unlink()
+                with self.assertRaisesRegex(ValueError,'process_dependencies_unresolved'):probe.collect()
+                write('/proc/123/maps','')
+                original_read=original.read_text
+                def unreadable_namespace(path,*args,**kwargs):
+                    if path==root/'proc/123/mountinfo':raise PermissionError('fixture')
+                    return original_read(path,*args,**kwargs)
+                with patch.object(original,'read_text',unreadable_namespace):
+                    with self.assertRaises(PermissionError):probe.collect()
+                (root/'proc/123/fd').rmdir()
+                (root/'proc/123/maps').unlink();(root/'proc/123/mountinfo').unlink();(root/'proc/123').rmdir()
                 # Loopback root depending on mounted eMMC is detected transitively.
                 write('/proc/self/mountinfo',mount+'4 1 179:0 / /internal rw - ext4 /dev/mmcblk0 rw\n')
                 (loop/'loop/backing_file').write_text('/internal/SYSTEM')

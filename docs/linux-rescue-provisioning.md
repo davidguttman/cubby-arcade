@@ -18,7 +18,11 @@ remains pending. A passing simulation does not certify a customer device.
 - The characterized non-removable BJTD4R eMMC, 61,071,360 sectors, CID
   `150100424a5444345200ec55ccb75600`, battery at least 30%. This narrow route
   does not claim support for arbitrary stock devices.
-- No eMMC-backed mount, swap, block holder or open raw block descriptor.
+- No eMMC-backed mount (including other live process mount namespaces), swap,
+  block holder, open raw block descriptor, file/directory descriptor, cwd/root/
+  executable reference, or file mapping. Detached/lazily unmounted filesystems
+  still count as active. Unreadable or unresolved process dependencies block
+  installation rather than being treated as unused storage.
   Checks repeat before writing, readback, enrollment and shutdown.
 - Strictly trusted SSH known-hosts for the recovery SD, and the private client
   key matching the public key in the new image. Do not use `accept-new`, disable
