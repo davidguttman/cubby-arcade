@@ -104,6 +104,29 @@ def escape_keyfile(value):
     return value.replace('\\', '\\\\').replace(' ', '\\s')
 
 
+def persist_wifi_enabled(os_release=Path('/etc/os-release')):
+    """Match stock late autostart's radio flag after an adult connects.
+
+    The native pinned image identifies itself with OS_NAME, not freedesktop ID.
+    Desktop fixtures must never invoke ROCKNIX's settings writer. Only the
+    non-secret enabled flag belongs here; NM continues to own credentials.
+    """
+    try:
+        native = any(line in {'OS_NAME="ROCKNIX"', "OS_NAME='ROCKNIX'", 'OS_NAME=ROCKNIX'}
+                     for line in os_release.read_text().splitlines())
+        if not native:
+            return
+        result = subprocess.run(['/usr/bin/rocknix-settings', '--command', 'write',
+                                 '--key', 'wifi.enabled', '--value', '1'],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=10, check=False,
+                                env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'})
+        if result.returncode:
+            raise NetworkError('unavailable')
+    except (OSError, UnicodeError, subprocess.TimeoutExpired):
+        raise NetworkError('unavailable') from None
+
+
 class NetworkManager:
     simulation = False
 
@@ -178,6 +201,7 @@ class NetworkManager:
             self.command('connection', 'load', str(profile))
             self.command('--wait', '90', 'connection', 'up', 'uuid', identity, timeout=95)
             self.command('connection', 'modify', 'uuid', identity, 'connection.autoconnect', 'yes')
+            persist_wifi_enabled()
         except (OSError, NetworkError):
             if created:
                 try:

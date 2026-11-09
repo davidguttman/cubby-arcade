@@ -15,6 +15,72 @@ class NetworkTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
 
+    def test_successful_connect_survives_stock_radio_boot_setting(self):
+        import subprocess
+        os_release = self.root / 'os-release'
+        os_release.write_text('OS_NAME="ROCKNIX"\nOS_VERSION="20261101"\n')
+        settings = {'wifi.enabled': '0'}
+        calls = []
+        def write_setting(argv, **kwargs):
+            calls.append((argv, kwargs))
+            settings['wifi.enabled'] = argv[-1]
+            return subprocess.CompletedProcess(argv, 0)
+        adapter = network.NetworkManager(profiles=self.root / 'profiles')
+        adapter.command = lambda *args, **kwargs: ''
+        adapter.scan = lambda: [{'ssid': 'Private home', 'bssid': 'AA:BB:CC:DD:EE:FF',
+                                'security': 'WPA2', 'supported': True}]
+        persist = network.persist_wifi_enabled
+        with patch.object(network, 'persist_wifi_enabled', side_effect=lambda: persist(os_release)), \
+             patch.object(network.subprocess, 'run', side_effect=write_setting), \
+             patch.object(network, 'internet_available', return_value=True):
+            self.assertTrue(adapter.connect('AA:BB:CC:DD:EE:FF', 'secret pass')['internet'])
+        # Stock 080-network disables the radio at boot if this flag is zero.
+        self.assertEqual(settings['wifi.enabled'], '1')
+        self.assertEqual(calls[0][0], ['/usr/bin/rocknix-settings', '--command', 'write',
+                                     '--key', 'wifi.enabled', '--value', '1'])
+        self.assertNotIn('secret pass', repr(calls))
+        self.assertNotIn('Private home', repr(calls))
+
+    def test_native_setting_failure_does_not_report_persistent_connection(self):
+        adapter = network.NetworkManager(profiles=self.root)
+        calls = []
+        adapter.command = lambda *args, **kwargs: calls.append(args) or ''
+        adapter.scan = lambda: [{'ssid': 'Cafe', 'bssid': 'AA:BB:CC:DD:EE:FF',
+                                'security': 'WPA2', 'supported': True}]
+        with patch.object(network, 'persist_wifi_enabled', side_effect=network.NetworkError('unavailable')):
+            with self.assertRaisesRegex(network.NetworkError, '^connection_failed$'):
+                adapter.connect('AA:BB:CC:DD:EE:FF', 'secret pass')
+        self.assertFalse(list(self.root.glob('*.nmconnection')))
+        self.assertIn('delete', repr(calls))
+
+    def test_native_setting_is_never_written_for_failed_connection(self):
+        adapter = network.NetworkManager(profiles=self.root)
+        adapter.scan = lambda: [{'ssid': 'Cafe', 'bssid': 'AA:BB:CC:DD:EE:FF',
+                                'security': 'WPA2', 'supported': True}]
+        adapter.command = lambda *args, **kwargs: (_ for _ in ()).throw(network.NetworkError('connection_failed'))
+        with patch.object(network, 'persist_wifi_enabled') as persist:
+            with self.assertRaises(network.NetworkError):
+                adapter.connect('AA:BB:CC:DD:EE:FF', 'secret pass')
+        persist.assert_not_called()
+
+    def test_native_setting_skips_other_hosts_and_bounds_private_command_failure(self):
+        import subprocess
+        os_release = self.root / 'os-release'
+        os_release.write_text('NAME="Other Linux"\n')
+        with patch.object(network.subprocess, 'run') as run:
+            network.persist_wifi_enabled(os_release)
+        run.assert_not_called()
+        os_release.write_text('OS_NAME="ROCKNIX"\n')
+        for failure in [subprocess.CompletedProcess([], 1), OSError('private'),
+                        subprocess.TimeoutExpired('private', 10)]:
+            kwargs = {'side_effect': failure} if isinstance(failure, Exception) else {'return_value': failure}
+            with patch.object(network.subprocess, 'run', **kwargs) as run:
+                with self.assertRaisesRegex(network.NetworkError, '^unavailable$'):
+                    network.persist_wifi_enabled(os_release)
+                self.assertEqual(run.call_args.kwargs['stdout'], subprocess.DEVNULL)
+                self.assertEqual(run.call_args.kwargs['stderr'], subprocess.DEVNULL)
+                self.assertEqual(run.call_args.kwargs['timeout'], 10)
+
     def test_nmcli_escaped_fields_and_enterprise_rejection(self):
         rows = network.parse_scan('*:Cafe\\:One:AA\\:BB\\:CC\\:DD\\:EE\\:FF:82:WPA2\n'
                                   ':Enterprise:11\\:22\\:33\\:44\\:55\\:66:50:WPA2 802.1X\n')
