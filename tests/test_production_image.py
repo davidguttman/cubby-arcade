@@ -10,6 +10,11 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
+try:
+    from pyfatfs.PyFatFS import PyFatFS
+except ImportError:
+    PyFatFS = None
+
 class ProductionImageTests(unittest.TestCase):
     def module(self):
         from rocknix import production_image
@@ -88,9 +93,9 @@ class ProductionImageTests(unittest.TestCase):
             finally:
                 worker.close()
 
-    @unittest.skipUnless(shutil.which('mkfs.vfat') and shutil.which('mkfs.ext4'),'requires filesystem tools')
+    @unittest.skipUnless(PyFatFS and all(shutil.which(tool) for tool in ('mkfs.vfat', 'mkfs.ext4', 'debugfs')),
+                         'requires pyfatfs, dosfstools and e2fsprogs')
     def test_filesystem_audit_detects_actual_packaged_corruption(self):
-        from pyfatfs.PyFatFS import PyFatFS
         module=self.module()
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); fat=root/'flash.fat'; storage=root/'storage.ext4'

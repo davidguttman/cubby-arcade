@@ -71,14 +71,21 @@ it does not prepopulate `.config`/`.cache`, which would prevent stock first-boot
 resize. Upstream's RK3566 resize expands the existing filesystem without
 formatting it, preserving the preinstalled runtime and game.
 
-On the Linux build host, after building the [GTK4 kiosk runtime](../rocknix/ROOTFS.md):
+On the Linux build host, after building the [GTK4 kiosk runtime](../rocknix/ROOTFS.md),
+select the intended release's clean committed checkout and explicit version:
 
 ```sh
-unshare --map-auto --map-root-user uv run rocknix/image.py \
+unshare --map-auto --map-root-user uv run rocknix/production_image.py \
   --rocknix .cache/rg353v-image-input/ROCKNIX-RK3566.aarch64-20261101-Generic.img.gz \
   --rootfs .cache/rg353v-kiosk-runtime/rootfs.tar.xz \
-  --output .cache/Cubby-Arcade-RG353V-20261101.img.gz
+  --expect-version 0.34.0 \
+  --output-directory .cache/production-images
 ```
+
+Use the version of the selected release, not an archived image's date. See
+[production provisioning](#production-provisioning-maintainers) for the build
+receipt, artifact verification and hardware acceptance gate. `rocknix/image.py`
+is a low-level development compositor, not the customer provisioning entry point.
 
 The namespace preserves numeric ownership without sudo. Build tools are `uv`,
 `unshare`, `tar`, `fatlabel`, `dumpe2fs`, `debugfs`, `mkfs.ext4`, and `e2fsck`; Python build
