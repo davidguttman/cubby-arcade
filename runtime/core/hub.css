@@ -213,7 +213,7 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .kid-name{box-sizing:border-box;width:min(600px,94vw);padding:18px;border-radius:26px;background:#291e40;box-shadow:0 24px 60px #0008}
 @media (max-height:540px){.kid-name{padding:14px}}
 /* Game feeds: the Players screens' look. Cards of name, covers and picture buttons; no words but names. */
-.feed-management{width:min(600px,94vw)}
+.feed-management{width:min(600px,94vw);overflow-x:hidden}
 .feed-top{display:flex;align-items:center;gap:14px;margin:0 0 4px}
 .hub .feed-top .dialog-back{margin:0}
 .feed-heading{display:grid;place-items:center;color:#ffd770}
@@ -229,7 +229,7 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .feed-card.is-off :is(.feed-title,.feed-covers){opacity:.4}
 .feed-covers{grid-area:covers;display:flex;align-items:center;gap:6px;min-width:0;min-height:44px;overflow:hidden}
 .feed-covers img{flex:none;height:44px;aspect-ratio:3/2;border-radius:8px;object-fit:cover;image-rendering:pixelated;background:#2c2244;box-shadow:0 2px 0 rgba(10,4,20,.35)}
-.feed-none{display:grid;place-items:center;opacity:.45}.hub .feed-none svg{width:30px;height:30px}
+.feed-covers:empty{display:none}.feed-none{display:grid;place-items:center;opacity:.45}.hub .feed-none svg{width:30px;height:30px}
 .feed-tools{grid-area:tools;display:flex;align-items:center;gap:8px}
 .hub .feed-management .feed-tools .icon-button{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:14px;background:rgba(255,255,255,.08)}
 .hub .feed-management .feed-tools .icon-button svg{width:22px;height:22px}
@@ -249,11 +249,11 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .hub .feed-management .is-busy:disabled{opacity:1;animation:feed-busy 1s ease-in-out infinite}
 @keyframes feed-busy{50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.hub .feed-management .is-busy:disabled{animation:none;opacity:.7}}
-.feed-fields{display:grid;gap:12px;margin:6px 0 14px}
-.feed-field{display:flex;align-items:center;gap:12px}
+.feed-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin:6px 0 14px}
+.feed-field{display:flex;align-items:center;gap:12px;min-width:0}
 .feed-field-icon{display:grid;place-items:center;flex:none;width:36px;color:#ffd770}
 .hub .feed-field-icon svg{width:30px;height:30px;stroke-width:2}
-.hub .feed-field input{box-sizing:border-box;flex:1;min-width:0;height:52px;padding:0 14px;border:0;border-radius:14px;background:rgba(16,9,28,.65);box-shadow:inset 0 2px 6px rgba(0,0,0,.4);color:#ffd770;font:800 20px system-ui,sans-serif}
+.hub .feed-field input{box-sizing:border-box;flex:1;width:0;min-width:0;height:52px;padding:0 14px;border:0;border-radius:14px;background:rgba(16,9,28,.65);box-shadow:inset 0 2px 6px rgba(0,0,0,.4);color:#ffd770;font:800 20px system-ui,sans-serif}
 .hub .feed-field .feed-url-input{font-size:17px;font-weight:700}
 .hub .feed-field input:focus,.hub .feed-field.is-typing input{outline:3px solid #ffc94d;outline-offset:2px}
 .hub .feed-field input.invalid,.hub .feed-field input.invalid:focus{outline:3px solid #ff8f7f;outline-offset:2px}
