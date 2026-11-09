@@ -13,4 +13,4 @@ RestartSec=3
 UMask=0077
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=rocknix.target

@@ -38,9 +38,10 @@ BASE_BOOT_HOOK = '''#!/bin/sh
 # Do not populate /storage/.config: stock first-boot resize must run first.
 if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ]; then
   # Diagnostics do not depend on Cubby, Sway, or writable /storage setup.
-  mkdir -p /run/systemd/system/multi-user.target.wants
+  # Native autostart runs after graphical.target; do not hold up multi-user.
+  mkdir -p /run/systemd/system/rocknix.target.wants /run/systemd/system/multi-user.target.wants
   cp /flash/cubby-usb-diagnostics/service /run/systemd/system/cubby-usb-diagnostics.service
-  ln -sf ../cubby-usb-diagnostics.service /run/systemd/system/multi-user.target.wants/cubby-usb-diagnostics.service
+  ln -sf ../cubby-usb-diagnostics.service /run/systemd/system/rocknix.target.wants/cubby-usb-diagnostics.service
   cp /flash/cubby-wifi-recovery/service /run/systemd/system/cubby-wifi-recovery.service
   ln -sf ../cubby-wifi-recovery.service /run/systemd/system/multi-user.target.wants/cubby-wifi-recovery.service
   mkdir -p /run/systemd/system/essway.service.d
