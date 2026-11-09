@@ -52,11 +52,11 @@ class Device:
             raise ValueError('commissioning_wrong_target')
         return actual
 
-    def rpc(self, kind, request):
+    def rpc(self, kind, request, *, timeout=180):
         paths = glob.glob('/run/cubby-network.*/socket') if kind == 'network' else ['/run/cubby-updater/socket']
         if len(paths) != 1: raise ValueError('ambiguous_service_socket')
         with socket.socket(socket.AF_UNIX) as client:
-            client.settimeout(180); client.connect(paths[0])
+            client.settimeout(timeout); client.connect(paths[0])
             client.sendall(json.dumps(request).encode()+b'\n')
             result = json.loads(client.makefile('r').readline(1024*1024))
         if not isinstance(result, dict) or result.get('error'):
@@ -80,14 +80,16 @@ class Device:
         return sorted(result)
 
     def snapshot(self):
+        # Target identity/binding and persistent state validation are terminal.
+        # Only the subsequent read-only service/presence probes can be not-ready.
         identity = self.validate()
-        update = self.rpc('updater', {'action': 'status'})
-        splash = self.path('/run/cubby-splash.status').read_text()
+        update = readiness_value(lambda: self.rpc('updater', {'action': 'status'}, timeout=2), {})
+        splash = readiness_value(lambda: self.path('/run/cubby-splash.status').read_text(), '')
         with socket.socket() as client:
             client.settimeout(2)
             management = client.connect_ex(('169.254.170.2', 2222)) == 0
-        failed = self.command('systemctl', '--failed', '--no-legend', '--plain')
-        progress = self.command('systemctl', 'show', 'cubby-boot-screen.service', '-p', 'Result', '--value')
+        failed = readiness_value(lambda: self.command('systemctl', '--failed', '--no-legend', '--plain'), 'unavailable')
+        progress = readiness_value(lambda: self.command('systemctl', 'show', 'cubby-boot-screen.service', '-p', 'Result', '--value'), '')
         checks = dict(no_failed_units=not failed, artwork=splash.startswith('rendered 640x480 '),
                       boot_progress=progress == 'success', management=management,
                       updater=(update.get('installed') == self.expected['version']
@@ -95,7 +97,7 @@ class Device:
                                and update.get('phase') == 'idle'
                                and not self.path('/storage/cubby/updates/pending.json').exists()),
                       controller_presence=any(
-                          any(word in name.read_text().lower() for word in ('joypad','gamepad','controller'))
+                          any(word in readiness_value(name.read_text, '').lower() for word in ('joypad','gamepad','controller'))
                           for name in self.path('/sys/class/input').glob('event*/device/name')),
                       audio_presence=bool(list(self.path('/dev/snd').glob('pcm*'))),
                       power_presence=self.path('/sys/class/power_supply/battery').exists())
@@ -157,6 +159,18 @@ class Device:
         os.sync()
         self.start()
         return dict(clean=True, launcher_restarted=True, removed_profile_ids=owned)
+
+
+def readiness_value(probe, unavailable):
+    """Expected startup absence is false readiness, not a native identity error.
+
+    Permission, invalid data and service error replies are deliberately not
+    swallowed. Call only for read-only probes, after target validation.
+    """
+    try: return probe()
+    except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError,
+            TimeoutError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
+        return unavailable
 
 
 def regular(path): return stat.S_ISREG(path.lstat().st_mode)

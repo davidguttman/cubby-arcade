@@ -202,6 +202,13 @@ new boot reports `commissioning_reboot_not_observed`. SSH authentication and
 native target-validation failures stop immediately. Connect, reboot and handoff
 mutations are never repeated by the readiness loop.
 
+After validating the target, the native snapshot reports missing/refused/timed-out
+updater sockets, missing boot markers, unavailable systemd queries and not-yet
+enumerated hardware as false readiness checks. These responses use the same
+bounded wait; missing or malformed target identity, permission failures and
+invalid service responses remain terminal rather than being disguised as boot
+timing.
+
 A `check` after interruption resumes a recorded reboot-pending phase. An
 interruption during connection before the created profile can be recorded is
 **blocked for diagnosis**, not silently adopted or wiped. A changed profile

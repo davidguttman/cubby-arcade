@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -137,6 +138,107 @@ class CommissionTests(unittest.TestCase):
         with patch('time.sleep'):
             result=commission.wait_ready(remote,{},timeout=1)
         self.assertTrue(result['checks']['updater'])
+
+    def native_readiness_fixture(self, root):
+        target=native.Device(root,fixture=True)
+        target.expected=dict(version='0.35.0',commit='a'*40,cid='c'*32)
+        files={'storage/cubby/current/image.json':json.dumps(dict(version='0.35.0',source_commit='a'*40)),
+               'storage/cubby/image-provenance/device.json':json.dumps(dict(device_cid='c'*32)),
+               'sys/block/mmcblk0/device/cid':'c'*32,
+               'proc/mounts':'/dev/mmcblk0p1 /flash vfat rw 0 0\n/dev/mmcblk0p2 /storage ext4 rw 0 0\n',
+               'proc/sys/kernel/random/boot_id':'new',
+               'run/cubby-splash.status':'rendered 640x480 success',
+               'sys/class/input/event0/device/name':'gamepad', 'dev/snd/pcm0':'',
+               'sys/class/power_supply/battery/type':'Battery'}
+        for name,text in files.items():
+            path=root/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(text)
+        return target
+
+    def test_native_missing_service_and_marker_wait_then_ready(self):
+        """Exercise native main -> SSH response parser -> host readiness loop."""
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        for missing in ('updater','updater_refused','updater_timeout','splash','progress','systemctl','controller'):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                target=self.native_readiness_fixture(Path(directory))
+                splash=target.path('/run/cubby-splash.status')
+                controller=target.path('/sys/class/input/event0/device/name')
+                if missing=='splash': splash.unlink()
+                if missing=='controller': controller.unlink()
+                client=Mock(); client.__enter__=Mock(return_value=client); client.__exit__=Mock(return_value=False)
+                client.connect_ex.return_value=0
+                client.makefile.return_value=io.StringIO(json.dumps(dict(installed='0.35.0',configured=True,phase='idle'))+'\n')
+                attempts=[]
+                def execute(command, **kwargs):
+                    attempts.append(1)
+                    if len(attempts)>1:
+                        splash.write_text('rendered 640x480 success'); controller.write_text('gamepad')
+                        client.makefile.return_value=io.StringIO(json.dumps(dict(installed='0.35.0',configured=True,phase='idle'))+'\n')
+                    unavailable={'updater':FileNotFoundError(), 'updater_refused':ConnectionRefusedError(),
+                                 'updater_timeout':TimeoutError()}
+                    client.connect.side_effect=unavailable.get(missing) if len(attempts)==1 else None
+                    def systemctl(*args):
+                        if missing=='systemctl' and len(attempts)==1: raise FileNotFoundError()
+                        if args[1]=='show':
+                            if missing=='progress' and len(attempts)==1:
+                                raise subprocess.CalledProcessError(1,args)
+                            return 'success'
+                        return ''
+                    output=io.StringIO(); code=0
+                    with patch.object(native,'Device',return_value=target), patch.object(target,'command',side_effect=systemctl), \
+                         patch.object(native.socket,'socket',return_value=client), patch('sys.stdin',io.StringIO(kwargs['input'].decode())), \
+                         contextlib.redirect_stdout(output):
+                        try: native.main()
+                        except SystemExit as error: code=error.code
+                    return SimpleNamespace(returncode=code,stdout=output.getvalue().encode(),stderr=b'')
+                args=SimpleNamespace(identity=Path('/key'),job=Path('/job'),host='169.254.170.2')
+                with patch('subprocess.run',side_effect=execute), patch('time.sleep'):
+                    result=commission.wait_ready(commission.Remote(args),target.expected,timeout=1)
+                self.assertTrue(all(result['checks'].values()))
+                self.assertEqual(len(attempts),2)
+
+    def test_native_snapshot_probe_validation_errors_still_terminal(self):
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        for error in (PermissionError(),ValueError('malformed_service_status')):
+            with self.subTest(error=type(error)), tempfile.TemporaryDirectory() as directory:
+                target=self.native_readiness_fixture(Path(directory))
+                def execute(command, **kwargs):
+                    output=io.StringIO(); code=0
+                    with patch.object(native,'Device',return_value=target), patch.object(target,'rpc',side_effect=error), \
+                         patch('sys.stdin',io.StringIO(kwargs['input'].decode())), contextlib.redirect_stdout(output):
+                        try: native.main()
+                        except SystemExit as failure: code=failure.code
+                    return SimpleNamespace(returncode=code,stdout=output.getvalue().encode(),stderr=b'')
+                args=SimpleNamespace(identity=Path('/key'),job=Path('/job'),host='169.254.170.2')
+                with patch('subprocess.run',side_effect=execute) as run:
+                    with self.assertRaisesRegex(commission.Blocked,'^commissioning_native_failed$'):
+                        commission.wait_ready(commission.Remote(args),target.expected,timeout=1)
+                    self.assertEqual(run.call_count,1)
+
+    def test_native_invalid_identity_remains_terminal_before_service_probe(self):
+        import contextlib
+        import io
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            target=self.native_readiness_fixture(Path(directory))
+            target.path('/storage/cubby/current/image.json').write_text('{malformed')
+            def execute(command, **kwargs):
+                output=io.StringIO(); code=0
+                with patch.object(native,'Device',return_value=target), patch.object(target,'rpc') as rpc, \
+                     patch('sys.stdin',io.StringIO(kwargs['input'].decode())), contextlib.redirect_stdout(output):
+                    try: native.main()
+                    except SystemExit as error: code=error.code
+                    rpc.assert_not_called()
+                return SimpleNamespace(returncode=code,stdout=output.getvalue().encode(),stderr=b'')
+            args=SimpleNamespace(identity=Path('/key'),job=Path('/job'),host='169.254.170.2')
+            with patch('subprocess.run',side_effect=execute) as run:
+                with self.assertRaisesRegex(commission.Blocked,'^commissioning_native_failed$'):
+                    commission.wait_ready(commission.Remote(args),target.expected,timeout=1)
+                self.assertEqual(run.call_count,1)
 
     def test_new_boot_permanent_failed_check_has_bounded_readiness_error(self):
         from unittest.mock import Mock
