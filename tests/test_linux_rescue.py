@@ -41,6 +41,36 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from rocknix.device import linux_rescue_probe as probe
 
+class LoopIdentity(unittest.TestCase):
+    def test_kernel_device_identity_and_checked_read_only_node(self):
+        import os
+        import struct
+        status=bytearray(232)
+        struct.pack_into('=Q',status,0,os.makedev(179,9))
+        struct.pack_into('=I',status,40,3)
+        info=SimpleNamespace(st_mode=0o60600,st_rdev=os.makedev(7,3))
+        with patch.object(probe.os,'open',return_value=42) as opened,patch.object(probe.os,'close') as closed,patch.object(probe.os,'fstat',return_value=info),patch.object(probe.fcntl,'ioctl',return_value=bytes(status)) as ioctl:
+            self.assertEqual(probe.loop_backing_device('loop3'),'179:9')
+            flags=opened.call_args.args[1]
+            self.assertEqual(flags & os.O_ACCMODE,os.O_RDONLY)
+            self.assertTrue(flags & os.O_NOFOLLOW)
+            ioctl.assert_called_once_with(42,0x4C05,bytes(232))
+            closed.assert_called_once_with(42)
+            # Unknown, short, or inconsistent kernel identity never falls back
+            # to a possibly resolvable backing_file pathname.
+            for reply in (b'',bytes(232),bytes(status[:40])):
+                ioctl.return_value=reply
+                with self.assertRaises(ValueError):probe.loop_backing_device('loop3')
+            ioctl.side_effect=OSError('loop status unavailable')
+            with self.assertRaises(OSError):probe.loop_backing_device('loop3')
+            ioctl.side_effect=None;ioctl.return_value=bytes(status)
+            info.st_rdev=os.makedev(7,2)
+            with self.assertRaisesRegex(ValueError,'loop_device_mismatch'):probe.loop_backing_device('loop3')
+            info.st_rdev=os.makedev(7,3)
+            struct.pack_into('=I',status,40,4);ioctl.return_value=bytes(status)
+            with self.assertRaisesRegex(ValueError,'loop_backing_device_unknown'):probe.loop_backing_device('loop3')
+        with self.assertRaises(ValueError):probe.loop_backing_device('../loop3')
+
 class RealTransport(unittest.TestCase):
     def test_pinned_args_and_real_binary_stream(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -99,13 +129,24 @@ class Collector(unittest.TestCase):
             original=Path
             def mapped(path):return original(root/str(path).lstrip('/'))
             result=SimpleNamespace(stdout='UUID=SDUUID\nPARTUUID=SDPART\nLABEL=SDLABEL\n')
-            with patch.object(probe,'Path',side_effect=mapped),patch.object(probe.os,'geteuid',return_value=0),patch.object(probe.subprocess,'run',return_value=result):
+            backing={'loop0':'179:9'}
+            with patch.object(probe,'Path',side_effect=mapped),patch.object(probe.os,'geteuid',return_value=0),patch.object(probe.subprocess,'run',return_value=result),patch.object(probe,'loop_backing_device',side_effect=lambda name:backing[name],create=True):
                 data=probe.collect()
                 self.assertEqual(data['root_disks'],['mmcblk1']);rescue.validate_rescue(data,512)
+                # A backing filename from a foreign namespace is not a path in
+                # our namespace. Only the kernel's backing-device identity counts.
+                foreign=node('loop1','7:1');(foreign/'loop').mkdir()
+                (foreign/'loop/backing_file').write_text('/detached/SYSTEM')
+                backing['loop1']='179:0'
+                write('/proc/123/mountinfo',mount+'4 1 7:1 / /foreign ro - squashfs /dev/loop1 ro\n')
+                write('/proc/123/maps','');(root/'proc/123/fd').mkdir()
+                with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
+                # Unavailable backing identity must not fall back to a filename.
+                del backing['loop1']
+                with self.assertRaises((ValueError,KeyError)):probe.collect()
                 # A target mount private to another process is still active.
                 write('/proc/123/mountinfo',mount+'4 1 179:0 / /private rw - ext4 /dev/mmcblk0 rw\n')
                 write('/proc/123/maps','')
-                (root/'proc/123/fd').mkdir()
                 with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
                 # Lazy unmount removes the mount record, not open file users.
                 write('/proc/123/mountinfo',mount)
@@ -139,11 +180,13 @@ class Collector(unittest.TestCase):
                 # Loopback root depending on mounted eMMC is detected transitively.
                 write('/proc/self/mountinfo',mount+'4 1 179:0 / /internal rw - ext4 /dev/mmcblk0 rw\n')
                 (loop/'loop/backing_file').write_text('/internal/SYSTEM')
+                backing['loop0']='179:0'
                 data=probe.collect()
                 with self.assertRaises(Blocked):rescue.validate_rescue(data,512)
                 # Swap and holders also block even without an eMMC mount.
                 write('/proc/self/mountinfo',mount)
                 (loop/'loop/backing_file').write_text('/flash/SYSTEM')
+                backing['loop0']='179:9'
                 write('/proc/swaps','Filename Type Size Used Priority\n/internal/swap file 12 0 -2\n')
                 with self.assertRaises((ValueError,FileNotFoundError)):probe.collect()
                 write('/proc/swaps','Filename Type Size Used Priority\n')
@@ -151,7 +194,8 @@ class Collector(unittest.TestCase):
                 with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
                 (internal/'holders/dm-0').rmdir()
                 (loop/'loop/backing_file').write_text('/unknown/SYSTEM')
-                with self.assertRaises(ValueError):probe.collect()
+                del backing['loop0']
+                with self.assertRaises((ValueError,KeyError)):probe.collect()
 
 class Orchestration(unittest.TestCase):
     def test_install_then_pinned_verify_and_no_second_write(self):

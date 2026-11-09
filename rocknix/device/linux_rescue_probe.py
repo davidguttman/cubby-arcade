@@ -1,14 +1,42 @@
 """Read-only, fail-closed block dependency collector for SD recovery."""
 import json
+import fcntl
 import os
 from pathlib import Path
 import re
 import stat
+import struct
 import subprocess
 
 
 def unescape(value):
     return re.sub(r'\\([0-7]{3})',lambda m:chr(int(m[1],8)),value)
+
+
+def loop_backing_device(name):
+    """Get backing filesystem dev_t from the loop driver, never its filename.
+
+    sysfs backing_file can name a detached/foreign-namespace filesystem.
+    LOOP_GET_STATUS64's lo_device remains authoritative in those cases.
+    """
+    if not re.fullmatch(r'loop[0-9]+',name):
+        raise ValueError('loop_device_unknown')
+    fd=os.open('/dev/'+name,os.O_RDONLY|os.O_CLOEXEC|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:
+        info=os.fstat(fd)
+        if (not stat.S_ISBLK(info.st_mode) or os.major(info.st_rdev)!=7
+                or os.minor(info.st_rdev)!=int(name[4:])):
+            raise ValueError('loop_device_mismatch')
+        # Linux UAPI loop_info64: native byte order, fixed-width fields.
+        status=fcntl.ioctl(fd,0x4C05,bytes(232)) # LOOP_GET_STATUS64
+        if len(status)!=232: raise ValueError('loop_status_incomplete')
+        device=struct.unpack_from('=Q',status)[0]
+        number=struct.unpack_from('=I',status,40)[0]
+        if number!=int(name[4:]) or not os.major(device):
+            raise ValueError('loop_backing_device_unknown')
+        return f'{os.major(device)}:{os.minor(device)}'
+    finally:
+        os.close(fd)
 
 
 def collect():
@@ -36,10 +64,8 @@ def collect():
         node=node.resolve(); name=node.name
         if (node/'partition').exists():
             return disks((node.parent/'dev').read_text().strip(),seen+(dev,))
-        if (node/'loop/backing_file').exists():
-            backing=(node/'loop/backing_file').read_text().strip()
-            if not backing or backing.endswith(' (deleted)'): raise ValueError('loop_backing_unknown')
-            return disks(owner('/'+backing.lstrip('/'))['dev'],seen+(dev,))
+        if re.fullmatch(r'loop[0-9]+',name):
+            return disks(loop_backing_device(name),seen+(dev,))
         slaves=list((node/'slaves').iterdir())
         if slaves:
             result=set()
