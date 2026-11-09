@@ -20,8 +20,9 @@ The supported fingerprint is not a claim that every factory shipment exposes
 ADB/root without interaction. A stock unit with locked/disabled ADB is a real
 entry blocker, not an invitation to bypass or hide an authorization dialog.
 
-The current connected Cubby unit is **not stock Android** and must not be
-reflashed to claim a test of this path. No real stock device was written while
+The current connected Cubby unit is **not stock Android**. David has authorized
+reflashing that exact unit for clean internal-install acceptance, but doing so
+cannot establish acceptance of the factory Android entry path. No real stock device was written while
 implementing the tool. Root-mode properties, recovery mount utilities, USB
 re-enumeration, DHCP/link configuration, and complete unattended installation
 still require acceptance on a genuinely stock unit. The host must already be
@@ -67,19 +68,30 @@ select an existing platform-tools executable; it does not download one.
    hash, version/commit, selected public key, and the actual eMMC CID.
 3. Enter root Android recovery; re-probe identity, mounts (including by-name
    aliases), battery, capacity, absence of an SD card, and required tools.
+   Require `blockdev --rereadpt /dev/block/mmcblk0` to succeed on the unmounted
+   stock disk **before** writing, proving that this recovery/kernel supports
+   the actual partition-table reread operation, not merely a help option.
+   Unsupported recovery primitives block installation; they are not assumed
+   to be available on every stock unit.
 4. Stream gzip through recovery's pipefail-protected `gzip | dd`, fsync, check
    exit status, then read back **every image sector**. The SHA-256 covers the
    non-MiB-aligned final backup GPT sectors as well as the main range.
-5. Generate a unique SSH server key **on the host**, transfer it only through
+5. Reread the partition table again with checked `blockdev --rereadpt` after
+   complete raw readback. Compare the kernel sysfs start/size for **both**
+   partitions to the image's validated primary/backup GPT, rejecting missing,
+   mismatched, duplicate, or extra partitions. Raw `dd` alone does not refresh
+   Android's partition mapping; no mount or key enrollment occurs until this
+   check succeeds.
+6. Generate a unique SSH server key **on the host**, transfer it only through
    serial-bound root ADB to the written internal ext4 filesystem at
    `/storage/cubby/recovery/private/ssh_host_ed25519_key`, fsync/unmount, then
    remount read-only to verify the persisted private-key digest. This is an
    explicit per-device personalization **after** raw-image verification; the
    final personalized disk is not claimed to have the original raw-image hash.
-6. Recheck eMMC identity and unmounted state, reboot, and reconnect to independent
+7. Recheck eMMC identity and unmounted state, reboot, and reconnect to independent
    recovery SSH port 2223. Strict host-key checking pins the generated public
    host key, without TOFU, a password, or `StrictHostKeyChecking=no`.
-7. Verify the expected image version/commit, same eMMC CID, and internal—not
+8. Verify the expected image version/commit, same eMMC CID, and internal—not
    SD—boot/storage mounts. Report `commissioning_pending`, never customer-ready.
 
 A USB disconnect, bad hash, tool failure, wrong storage identity or wrong live

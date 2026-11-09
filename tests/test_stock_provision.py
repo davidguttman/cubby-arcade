@@ -2,6 +2,7 @@
 import gzip
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,6 +13,8 @@ from rocknix import provision as p
 
 FACTS = dict(cid='a'*32, name='BJTD4R', sectors=61071360, removable=0,
              battery=80, charging=True, mounted=False, sd=False)
+GEOMETRY = {'mmcblk0p1': (32768, 4194304), 'mmcblk0p2': (4227072, 12582912)}
+PARTITIONS = b'mmcblk0p1=32768:4194304\nmmcblk0p2=4227072:12582912\n'
 
 class StockProvisionTests(unittest.TestCase):
     def test_discovery_refuses_ambiguity_and_unauthorized(self):
@@ -146,6 +149,7 @@ class OrchestrationTests(unittest.TestCase):
         stack.enter_context(patch('rocknix.production_image.verify',return_value=self.plan))
         stack.enter_context(patch('rocknix.production_image.public_keys',return_value=self.key))
         stack.enter_context(patch.object(p,'checked_run',return_value=self.key.strip()))
+        stack.enter_context(patch.object(p,'image_geometry',return_value=GEOMETRY))
         return stack
 
     def test_resume_after_linux_has_no_adb_uses_only_pinned_reconnect(self):
@@ -193,6 +197,35 @@ class OrchestrationTests(unittest.TestCase):
                 p.write_verified(transport,self.image,512,'a'*64,FACTS,journal,'f'*64)
             self.assertNotIn('write',transport.events)
 
+    def test_unsupported_recovery_reread_blocks_before_any_write(self):
+        self.patches()
+        stock=dict(FACTS,android='11',product='RG353P',platform='rk3566')
+        with patch.object(p,'discover',return_value='test123'), patch.object(p,'Adb') as adb, \
+             patch.object(p,'probe_recovery_tools',side_effect=p.Blocked('ioctl_unsupported')), \
+             patch.object(p,'write_verified') as write, patch.object(p,'enroll_host_identity') as enroll:
+            adb.return_value.facts.return_value=stock
+            adb.return_value.command.return_value=b'recovery'
+            with self.assertRaisesRegex(p.Blocked,'ioctl_unsupported'): p.run(self.args)
+            write.assert_not_called(); enroll.assert_not_called()
+
+    def test_readback_precedes_partition_enrollment_and_reboot(self):
+        self.patches(); events=[]
+        stock=dict(FACTS,android='11',product='RG353P',platform='rk3566')
+        with patch.object(p,'discover',return_value='test123'), patch.object(p,'Adb') as adb, \
+             patch.object(p,'probe_recovery_tools',side_effect=lambda *a: events.append('probe')), \
+             patch.object(p,'prepare_host_identity',return_value=(self.root/'host','digest')), \
+             patch.object(p,'write_verified',side_effect=lambda *a: events.append('readback')), \
+             patch.object(p,'enroll_host_identity',side_effect=lambda *a: events.append('enroll')) as enroll, \
+             patch.object(p,'reconnect',return_value={'stage':'commissioning_pending'}):
+            adb.return_value.facts.return_value=stock
+            def command(*args, **kwargs):
+                if args == ('reboot',): events.append('reboot')
+                return b'recovery'
+            adb.return_value.command.side_effect=command
+            p.run(self.args)
+            self.assertEqual(events,['probe','readback','enroll','reboot'])
+            self.assertEqual(enroll.call_args.args[-1],GEOMETRY)
+
 
 class ExecutableTransportTests(unittest.TestCase):
     def test_fake_adb_executable_readback_includes_tail_and_pins_serial(self):
@@ -223,6 +256,61 @@ class ExecutableTransportTests(unittest.TestCase):
 
 
 class EnrollmentTests(unittest.TestCase):
+    def test_real_sysfs_probe_script_reads_both_extents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for name, (start,size) in GEOMETRY.items():
+                partition=root/name; partition.mkdir()
+                (partition/'start').write_text(str(start)+'\n')
+                (partition/'size').write_text(str(size)+'\n')
+            script=p.PARTITION_PROBE.replace('/sys/block/mmcblk0',str(root))
+            result=subprocess.run(['sh','-c',script],capture_output=True,check=True)
+            self.assertEqual(result.stdout,PARTITIONS)
+
+    def test_geometry_is_derived_through_validated_gpt_parser_not_receipt(self):
+        from rocknix import image
+        with tempfile.TemporaryDirectory() as directory:
+            artifact=Path(directory)/'image.gz'
+            with gzip.open(artifact,'wb') as stream: stream.write(b'not a GPT')
+            with self.assertRaises(ValueError): p.image_geometry(artifact)
+            with patch.object(image,'generated_gpt_layout',return_value=(None,None,None,list(GEOMETRY.values()))) as parser:
+                self.assertEqual(p.image_geometry(artifact),GEOMETRY)
+                self.assertEqual(parser.call_count,1)
+
+    def test_stale_android_mapping_or_extra_partition_never_mounts(self):
+        from unittest.mock import Mock
+        for response in (b'mmcblk0p1=16384:8192\nmmcblk0p2=24576:4096\n',
+                         PARTITIONS + b'mmcblk0p3=99:100\n',
+                         b'mmcblk0p1=32768:4194304\n',
+                         b'mmcblk0p1=32768:4194304\nmmcblk0p2=4227072:1\n'):
+            with self.subTest(response=response), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory); key=root/'key'; key.write_bytes(b'key')
+                with p.Journal(root/'job',{'serial':'a'}) as journal:
+                    adb=Mock(); adb.facts.return_value=FACTS
+                    adb.command.side_effect=[b'',response]
+                    with self.assertRaisesRegex(p.Blocked,'partition_geometry'):
+                        p.enroll_host_identity(adb,key,FACTS,512,journal,GEOMETRY)
+                    adb.stream.assert_not_called()
+
+    def test_reread_failure_never_mounts_or_enrolls(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); key=root/'key'; key.write_bytes(b'key')
+            with p.Journal(root/'job',{'serial':'a'}) as journal:
+                adb=Mock(); adb.facts.return_value=FACTS
+                adb.command.side_effect=p.Blocked('adb_command_failed')
+                with self.assertRaises(p.Blocked):
+                    p.enroll_host_identity(adb,key,FACTS,512,journal,GEOMETRY)
+                adb.stream.assert_not_called()
+                self.assertNotEqual(journal.state['stage'],'enrolled')
+
+    def test_prewrite_probe_executes_actual_reread_not_only_help(self):
+        from unittest.mock import Mock
+        adb=Mock()
+        p.probe_recovery_tools(adb)
+        script=adb.command.call_args.args[-1]
+        self.assertIn('blockdev --rereadpt /dev/block/mmcblk0',script)
+
     def test_enrollment_persists_exact_key_without_placing_private_bytes_in_argv(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);key=root/'host';key.write_bytes(b'PRIVATE TEST KEY')
@@ -230,8 +318,9 @@ class EnrollmentTests(unittest.TestCase):
             with p.Journal(root/'job',{'serial':'a'}) as journal:
                 from unittest.mock import Mock
                 adb=Mock();adb.facts.return_value=FACTS
-                adb.command.return_value=(expected+'  fixed-path\n').encode()
-                p.enroll_host_identity(adb,key,FACTS,512,journal)
+                adb.command.side_effect=[b'',PARTITIONS,(expected+'  fixed-path\n').encode()]
+                p.enroll_host_identity(adb,key,FACTS,512,journal,GEOMETRY)
+                self.assertIn('blockdev --rereadpt',adb.command.call_args_list[0].args[-1])
                 script=adb.stream.call_args.args[0]
                 self.assertNotIn('PRIVATE TEST KEY',script)
                 self.assertIn('/cubby/recovery/private',script)
@@ -243,9 +332,10 @@ class EnrollmentTests(unittest.TestCase):
             root=Path(directory);key=root/'host';key.write_bytes(b'PRIVATE TEST KEY')
             with p.Journal(root/'job',{'serial':'a'}) as journal:
                 from unittest.mock import Mock
-                adb=Mock();adb.facts.return_value=FACTS;adb.command.return_value=b'bad  fixed-path'
+                adb=Mock();adb.facts.return_value=FACTS
+                adb.command.side_effect=[b'',PARTITIONS,b'bad  fixed-path']
                 with self.assertRaisesRegex(p.Blocked,'enrollment_mismatch'):
-                    p.enroll_host_identity(adb,key,FACTS,512,journal)
+                    p.enroll_host_identity(adb,key,FACTS,512,journal,GEOMETRY)
                 self.assertNotEqual(journal.state['stage'],'enrolled')
 
     def test_concurrent_job_cannot_acquire_checkpoint_lock(self):

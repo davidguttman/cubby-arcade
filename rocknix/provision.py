@@ -92,6 +92,55 @@ def raw_digest(path):
     return total, digest.hexdigest()
 
 
+def image_geometry(path):
+    """Read offsets from validated primary AND backup GPT, never a receipt field."""
+    from rocknix.image import generated_gpt_layout
+    with gzip.open(path, 'rb') as stream:
+        parts = generated_gpt_layout(stream)[3]
+    return {f'mmcblk0p{index}': tuple(part) for index, part in enumerate(parts, 1)}
+
+
+def probe_recovery_tools(adb):
+    # Execute the actual ioctl on the unmounted stock table before destructive
+    # writing. A listed binary/help option alone does not prove kernel support.
+    adb.command('exec-out','sh','-c',quote(
+        'set -o pipefail; set -eu; test -b /dev/block/mmcblk0; '
+        'for t in gzip dd sync mount umount sha256sum readlink blockdev; '
+        'do command -v "$t" >/dev/null; done; '
+        'blockdev --rereadpt /dev/block/mmcblk0'))
+
+
+PARTITION_PROBE = '''set -eu
+for p in /sys/block/mmcblk0/mmcblk0p*; do
+ test -d "$p" || continue
+ printf '%s=' "${p##*/}"
+ start=$(cat "$p/start"); size=$(cat "$p/size")
+ printf '%s:%s\\n' "$start" "$size"
+done
+'''
+
+
+def refresh_partitions(adb, geometry):
+    """Raw writes don't update kernel partition devices; never mount stale p2."""
+    adb.command('exec-out','sh','-c',quote(
+        'set -eu; blockdev --rereadpt /dev/block/mmcblk0'))
+    output = adb.command('exec-out','sh','-c',quote(PARTITION_PROBE))
+    try:
+        actual = {}
+        for line in output.decode('ascii').splitlines():
+            name, extent = line.split('=')
+            if name in actual or not re.fullmatch(r'mmcblk0p[0-9]+', name):
+                raise ValueError()
+            values = extent.split(':')
+            if len(values) != 2 or not all(re.fullmatch(r'[0-9]+', value) for value in values):
+                raise ValueError()
+            actual[name] = tuple(map(int, values))
+        if actual != geometry:
+            raise ValueError()
+    except (UnicodeError, ValueError) as error:
+        raise Blocked('kernel_partition_geometry_mismatch') from error
+
+
 class Journal:
     """Exclusive, private, atomic checkpoints. Checkpoints never authorize a skip."""
     def __init__(self, directory, binding):
@@ -281,8 +330,10 @@ def prepare_host_identity(journal, host):
     return path, hashlib.sha256(public.encode()).hexdigest()
 
 
-def enroll_host_identity(adb, host_key, original, size, journal):
+def enroll_host_identity(adb, host_key, original, size, journal, geometry):
     fresh = adb.facts(); validate_storage(fresh, size); same_storage(original, fresh)
+    refresh_partitions(adb, geometry)
+    journal.save('partitions_ready', partition_geometry=geometry)
     # Explicit per-device personalization AFTER raw verification. The receipt
     # never claims that the final personalized disk still equals the raw image.
     target = MOUNT + '/cubby/recovery/private'
@@ -379,6 +430,7 @@ def run(args):
     if private_public[:2] not in [line.split()[:2] for line in key.splitlines() if line.strip()]:
         raise Blocked('management_identity_does_not_match_image')
     size, digest = raw_digest(args.image)
+    geometry = image_geometry(args.image)
     serial = args.serial
     # Linux no longer exposes ADB. An explicitly selected serial + matching
     # locked receipt permits only pinned SSH verification, never another write.
@@ -419,10 +471,10 @@ def run(args):
         adb.command('root'); adb.command('wait-for-device',timeout=120)
         facts = adb.facts(); validate_storage(facts,size); same_storage(original,facts)
         # Probe required recovery primitives before the first write.
-        adb.command('exec-out','sh','-c',quote('set -o pipefail; set -eu; test -b /dev/block/mmcblk0; for t in gzip dd sync mount umount sha256sum readlink; do command -v "$t" >/dev/null; done'))
+        probe_recovery_tools(adb)
         host_key, host_public_digest = prepare_host_identity(journal,args.host)
         write_verified(adb,args.image,size,digest,original,journal,plan['image']['sha256'])
-        enroll_host_identity(adb,host_key,original,size,journal)
+        enroll_host_identity(adb,host_key,original,size,journal,geometry)
         fresh = adb.facts(); validate_storage(fresh,size); same_storage(original,fresh)
         journal.save('rebooting',host_public_sha256=host_public_digest)
         adb.command('reboot')
