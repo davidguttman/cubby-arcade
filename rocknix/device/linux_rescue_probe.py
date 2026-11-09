@@ -48,15 +48,6 @@ def collect():
             result.append(dict(dev=fields[2],path=unescape(fields[4]),source=unescape(detail[1])))
         return result
     mounts=mount_table(Path('/proc/self/mountinfo'))
-    def owner(path):
-        path=os.path.realpath(path)
-        candidates=[m for m in mounts if path==m['path'] or path.startswith(m['path'].rstrip('/')+'/')]
-        if not candidates: raise ValueError('backing_mount_unknown')
-        # mount overmounts are deliberately not guessed.
-        longest=max(len(m['path']) for m in candidates)
-        candidates=[m for m in candidates if len(m['path'])==longest]
-        if len(candidates)!=1: raise ValueError('ambiguous_backing_mount')
-        return candidates[0]
     def disks(dev,seen=()):
         if dev in seen: raise ValueError('block_dependency_cycle')
         node=Path('/sys/dev/block')/dev
@@ -72,15 +63,21 @@ def collect():
             for slave in slaves: result |= disks((slave/'dev').read_text().strip(),seen+(dev,))
             return result
         return {name}
-    def dev_of(path):
-        info=os.stat(path)
-        if stat.S_ISBLK(info.st_mode): return f'{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}'
-        return owner(path)['dev']
     active=set()
     for m in mounts:
         if not m['dev'].startswith('0:'): active |= disks(m['dev'])
     for line in Path('/proc/swaps').read_text().splitlines()[1:]:
-        active |= disks(dev_of(unescape(line.split()[0])))
+        fields=line.split()
+        # /proc/swaps exposes a filename, not an open handle to its active
+        # inode. After detach/overmount/namespace changes, even stat of that
+        # name may describe a different file. Recovery does not support active
+        # file-backed swap: refuse it rather than guessing its backing disk.
+        if len(fields)!=5: raise ValueError('swap_record_unknown')
+        if fields[1]=='file': raise ValueError('file_backed_swap_unsupported')
+        if fields[1]!='partition': raise ValueError('swap_type_unknown')
+        info=os.stat(unescape(fields[0]))
+        if not stat.S_ISBLK(info.st_mode): raise ValueError('swap_block_device_unknown')
+        active |= disks(f'{os.major(info.st_rdev)}:{os.minor(info.st_rdev)}')
     def reference(info):
         # st_dev retains the backing filesystem even after lazy unmount; using
         # path ownership here would miss deleted/detached mounts.

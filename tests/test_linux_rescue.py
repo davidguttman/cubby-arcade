@@ -187,6 +187,34 @@ class Collector(unittest.TestCase):
                 write('/proc/self/mountinfo',mount)
                 (loop/'loop/backing_file').write_text('/flash/SYSTEM')
                 backing['loop0']='179:9'
+                # A swap's old pathname can resolve to SD after namespace
+                # changes even while the active inode still resides on eMMC.
+                write('/proc/swaps','Filename Type Size Used Priority\n/flash/swap file 12 0 -2\n')
+                original_os_stat=probe.os.stat
+                def target_swap(path,*args,**kwargs):
+                    if str(path)=='/flash/swap':
+                        return SimpleNamespace(st_mode=0o100600,st_dev=__import__('os').makedev(179,0))
+                    return original_os_stat(path,*args,**kwargs)
+                with patch.object(probe.os,'stat',target_swap):
+                    with self.assertRaisesRegex(ValueError,'file_backed_swap_unsupported'):probe.collect()
+                # Even stat of a replacement inode at that pathname cannot
+                # establish the active swap inode's identity. Refuse all files.
+                def replaced_swap(path,*args,**kwargs):
+                    if str(path)=='/flash/swap':
+                        return SimpleNamespace(st_mode=0o100600,st_dev=__import__('os').makedev(179,9))
+                    return original_os_stat(path,*args,**kwargs)
+                with patch.object(probe.os,'stat',replaced_swap):
+                    with self.assertRaisesRegex(ValueError,'file_backed_swap_unsupported'):probe.collect()
+                # Partition-backed swap still uses checked block identity.
+                write('/proc/swaps','Filename Type Size Used Priority\n/dev/mmcblk0 partition 12 0 -2\n')
+                def block_swap(path,*args,**kwargs):
+                    if str(path)=='/dev/mmcblk0':
+                        return SimpleNamespace(st_mode=0o60600,st_rdev=__import__('os').makedev(179,0))
+                    return original_os_stat(path,*args,**kwargs)
+                with patch.object(probe.os,'stat',block_swap):
+                    with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
+                write('/proc/swaps','Filename Type Size Used Priority\n/flash/swap unexpected 12 0 -2\n')
+                with self.assertRaisesRegex(ValueError,'swap_type_unknown'):probe.collect()
                 write('/proc/swaps','Filename Type Size Used Priority\n/internal/swap file 12 0 -2\n')
                 with self.assertRaises((ValueError,FileNotFoundError)):probe.collect()
                 write('/proc/swaps','Filename Type Size Used Priority\n')

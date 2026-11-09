@@ -24,6 +24,10 @@ remains pending. A passing simulation does not certify a customer device.
   still count as active. Unreadable or unresolved process dependencies block
   installation rather than being treated as unused storage.
   Checks repeat before writing, readback, enrollment and shutdown.
+- No active file-backed swap, even if its pathname appears to be on the SD.
+  `/proc/swaps` names cannot prove the active inode's backing device after
+  namespace changes or detach/overmount. The collector conservatively refuses
+  file-backed swaps instead of guessing from the pathname or a replacement file.
 - Strictly trusted SSH known-hosts for the recovery SD, and the private client
   key matching the public key in the new image. Do not use `accept-new`, disable
   checking, or overwrite a mismatching known-host record to get past a failure.
