@@ -42,6 +42,9 @@ class ProductionImageTests(unittest.TestCase):
         self.assertIn('rocknix/updates.py', plan['app_files'])
         self.assertIn('runtime/native/rg353v/boot-screen/boot-screen.py', plan['app_files'])
         self.assertIn(plan['version'], module.image_name(plan))
+        release_id = 'image-' + plan['version'] + '-' + plan['source_commit'][:12]
+        self.assertIn('cubby/updates/record.json', plan['storage_files'])
+        self.assertIn('cubby/releases/' + release_id + '/image.json', plan['storage_files'])
 
     def test_recovery_works_without_current_release_and_does_not_initialize_usb(self):
         spec = importlib.util.spec_from_file_location('image_management', ROOT/'rocknix/device/management.py')
@@ -123,3 +126,34 @@ class ProductionImageTests(unittest.TestCase):
             plan['app_files']['runtime/version.json']=module.digest(b'wrong')
             with self.assertRaisesRegex(ValueError,'runtime/version.json'):
                 module.audit_partitions(fat,storage,'image-test',plan)
+
+    @unittest.skipUnless(PyFatFS and all(shutil.which(tool) for tool in ('mkfs.vfat', 'mkfs.ext4', 'debugfs')),
+                         'requires pyfatfs, dosfstools and e2fsprogs')
+    def test_actual_filesystem_audit_rejects_missing_or_stale_update_floor(self):
+        module = self.module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); fat = root/'flash.fat'; storage = root/'storage.ext4'
+            with fat.open('wb') as stream: stream.truncate(16*1024**2)
+            subprocess.run(['mkfs.vfat', str(fat)], check=True, capture_output=True)
+            seed = root/'seed'; cubby = seed/'cubby'; release = cubby/'releases/image-test'
+            release.mkdir(parents=True)
+            module.image.provision_image_identity(cubby, release,
+                                                 {'version':'0.35.0', 'source_commit':'a'*40})
+            names = ('cubby/updates/record.json', 'cubby/releases/image-test/image.json')
+            expected = {name: module.digest((seed/name).read_bytes()) for name in names}
+            plan = {'flash_files':{}, 'app_files':{}, 'storage_files':expected}
+            def pack():
+                with storage.open('wb') as stream: stream.truncate(16*1024**2)
+                subprocess.run(['mkfs.ext4','-q','-F','-d',str(seed),str(storage)],
+                               check=True, capture_output=True)
+            pack(); module.audit_partitions(fat, storage, 'image-test', plan)
+            for name in names:
+                original = (seed/name).read_bytes()
+                (seed/name).write_text('{"version":"0.34.0","sequence":0}')
+                pack()
+                with self.assertRaisesRegex(ValueError, name):
+                    module.audit_partitions(fat, storage, 'image-test', plan)
+                (seed/name).unlink(); pack()
+                with self.assertRaisesRegex(ValueError, name):
+                    module.audit_partitions(fat, storage, 'image-test', plan)
+                (seed/name).write_bytes(original)

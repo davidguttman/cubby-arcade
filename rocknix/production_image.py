@@ -109,12 +109,18 @@ def source_plan(root, expected_version=None):
                            ('wifi-recovery.py','cubby-wifi-recovery/recover.py'),
                            ('cubby-wifi-recovery.service','cubby-wifi-recovery/service')]:
         flash[target] = digest((root/'rocknix/device'/source).read_bytes())
+    identity = image.image_update_identity({'version': version, **info})
+    release_id = 'image-' + version + '-' + info['source_commit'][:12]
+    identity_files = {'cubby/releases/' + release_id + '/image.json': identity,
+                      'cubby/updates/record.json': {key: identity[key] for key in ('version', 'sequence')}}
     return {'schema':1, 'product':'cubby-arcade', 'model':'RG353V', 'version':version,
             **info, 'rocknix_sha256':image.ROCKNIX_SHA256,
             'runtime_sha256':image.ROOTFS_SHA256, 'hardware_validated':False,
             'flash_files':flash, 'app_files':app,
             'storage_files':{'cubby/updater/coordinator.py':digest((root/'rocknix/updates.py').read_bytes()),
-                             'cubby/updater/release-key.pem':digest((root/'rocknix/device/release-key.pem').read_bytes())}}
+                             'cubby/updater/release-key.pem':digest((root/'rocknix/device/release-key.pem').read_bytes()),
+                             **{name: digest(json.dumps(value, sort_keys=True).encode())
+                                for name, value in identity_files.items()}}}
 
 
 def image_name(plan):

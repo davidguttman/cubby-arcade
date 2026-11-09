@@ -133,7 +133,14 @@ the exact updater's healthy status response and app-path compatibility before
 building. It stamps `runtime/version.json`, uses version+commit in the image's
 release directory and filename, and audits actual FAT/ext4 file contents against
 source hashes before publishing the image and its checksum. The JSON receipt
-records exact source commit/version, pinned firmware/runtime hashes, required
+also covers the initial updater record and the release's separate `image.json`
+composition identity. Fresh installs report the bundled version and start with
+that version's anti-replay floor, not sequence zero. `image.json` is not an
+invented signed manifest: every downloaded update still requires the release
+signature, while checking the same signed version reports up to date. Older
+signed versions cannot replace the installed image.
+
+The JSON receipt records exact source commit/version, pinned firmware/runtime hashes, required
 boot files and all packaged app files, image digest/size, and
 `hardware_validated: false`. Read-only independent USB diagnostics and the boot
 progress service are registered on the **first** boot, without precreating

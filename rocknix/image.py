@@ -327,6 +327,29 @@ def source_provenance(source_root: Path, supplied: dict | None = None) -> dict:
 DEFAULT_UPDATE_FEED = 'https://github.com/davidguttman/cubby-arcade/releases/download/cubby-device-stable/manifest.json'
 
 
+def image_update_identity(plan):
+    """Local composition identity, deliberately NOT a signed release manifest."""
+    if plan is None:
+        return None
+    from release_automation import sequence
+    commit = plan['source_commit']
+    if not isinstance(commit, str) or not re.fullmatch(r'(?:[a-f0-9]{40}|[a-f0-9]{64})', commit):
+        raise ValueError('Production image requires exact source identity')
+    return {'schema': 1, 'kind': 'image', 'product': 'cubby-rg353v',
+            'version': plan['version'], 'sequence': sequence(plan['version']),
+            'source_commit': commit, 'runtime_sha256': ROOTFS_SHA256}
+
+
+def provision_image_identity(cubby, release, plan):
+    identity = image_update_identity(plan)
+    if identity is None:
+        return
+    from rocknix.updates import atomic
+    atomic(Path(release) / 'image.json', identity)
+    atomic(Path(cubby) / 'updates/record.json',
+           {key: identity[key] for key in ('version', 'sequence')})
+
+
 def provision_updater(cubby, source_root, feed=None, key=None, disabled=False):
     """Baseline trust provisioning, not an app-delivered key rotation."""
     if disabled:
@@ -461,6 +484,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         (cubby / 'updater').mkdir()
         shutil.copy2(source_root / 'rocknix/updates.py', cubby / 'updater/coordinator.py')
         provision_updater(cubby, source_root, update_feed, update_key, disable_updates)
+        provision_image_identity(cubby, release, production_plan)
         (cubby / 'state').mkdir()
         provenance = cubby / 'image-provenance'
         provenance.mkdir()
