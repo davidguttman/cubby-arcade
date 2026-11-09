@@ -44,6 +44,10 @@ if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ]; then
   ln -sf ../cubby-usb-diagnostics.service /run/systemd/system/rocknix.target.wants/cubby-usb-diagnostics.service
   cp /flash/cubby-wifi-recovery/service /run/systemd/system/cubby-wifi-recovery.service
   ln -sf ../cubby-wifi-recovery.service /run/systemd/system/multi-user.target.wants/cubby-wifi-recovery.service
+  if [ -f /flash/cubby-setup/authorized_keys ] && [ -f /flash/cubby-recovery-management/service ]; then
+    cp /flash/cubby-recovery-management/service /run/systemd/system/cubby-recovery-management.service
+    ln -sf ../cubby-recovery-management.service /run/systemd/system/rocknix.target.wants/cubby-recovery-management.service
+  fi
   mkdir -p /run/systemd/system/essway.service.d
   cat > /run/systemd/system/essway.service.d/10-cubby-wifi.conf <<'UNIT'
 [Unit]
@@ -53,6 +57,11 @@ UNIT
 fi
 if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ] &&
    [ ! -e /flash/CUBBY-DISABLED ]; then
+  if [ -f /flash/cubby-boot-screen/service ]; then
+    mkdir -p /run/systemd/system/sysinit.target.wants
+    cp /flash/cubby-boot-screen/service /run/systemd/system/cubby-boot-screen.service
+    ln -sf ../cubby-boot-screen.service /run/systemd/system/sysinit.target.wants/cubby-boot-screen.service
+  fi
   mkdir -p /run/systemd/system/essway.service.d
   cat > /run/systemd/system/essway.service.d/90-cubby.conf <<'UNIT'
 # Managed by Cubby Arcade RG353V image builder
@@ -304,7 +313,8 @@ def provision_updater(cubby, source_root, feed=None, key=None, disabled=False):
 def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
           *, source_root: Path | None = None, source_info: dict | None = None,
           progress=None, update_feed: str | None = None, update_key: Path | None = None,
-          wifi_profile: str = WIFI_PROFILE, disable_updates: bool = False) -> Path:
+          wifi_profile: str = WIFI_PROFILE, disable_updates: bool = False,
+          production_plan: dict | None = None, management_keys: bytes | None = None) -> Path:
     if bool(update_feed) != bool(update_key):
         raise ValueError('Update feed and public key must be provided together')
     if wifi_profile not in (WIFI_PROFILE, 'stock'):
@@ -364,6 +374,9 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             flash.makedir('/cubby-splash')
             for name, data in splash_files(BASE_BOOT_HOOK.encode(), BOOT_HOOK.encode(), source_root).items():
                 flash.writebytes('/cubby-splash/' + name, data)
+            flash.makedir('/cubby-boot-screen')
+            flash.writebytes('/cubby-boot-screen/service',
+                             (source_root / 'runtime/native/rg353v/boot-screen/cubby-boot-screen.service').read_bytes())
             flash.makedir('/cubby-usb-diagnostics')
             for source, destination in (
                 ('usb-diagnostics-start.sh', 'start.sh'),
@@ -379,11 +392,20 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             ):
                 flash.writebytes('/cubby-wifi-recovery/' + destination,
                                  (source_root / 'rocknix/device' / source).read_bytes())
+            if management_keys:
+                flash.makedir('/cubby-setup')
+                flash.writebytes('/cubby-setup/authorized_keys', management_keys)
+                flash.makedir('/cubby-recovery-management')
+                for source, target in [('management.py', 'management.py'),
+                                       ('cubby-recovery-management.service', 'service')]:
+                    flash.writebytes('/cubby-recovery-management/' + target,
+                                     (source_root / 'rocknix/device' / source).read_bytes())
             flash.writetext('/CUBBY-RECOVERY.txt', 'Create an empty file named CUBBY-DISABLED (no extension) beside this file to boot stock ROCKNIX. Power off before editing the card.\n')
         run('fatlabel', str(fat), identities['boot_label'])
         run('fatlabel', '--volume-id', str(fat), identities['fat_serial'])
         finalize_fat(fat)
-        release_id = 'image-' + ROOTFS_SHA256[:12]
+        release_id = ('image-' + production_plan['version'] + '-' + production_plan['source_commit'][:12]
+                      if production_plan else 'image-' + ROOTFS_SHA256[:12])
         cubby = storage / 'cubby'
         release = cubby / 'releases' / release_id
         release.mkdir(parents=True)
@@ -395,6 +417,8 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         for name in ('runtime', 'rocknix'):
             shutil.copytree(source_root / name, release / 'app' / name,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        if production_plan:
+            (release / 'app/runtime/version.json').write_text(json.dumps({'version': production_plan['version']}))
         (release / 'app/hosting').mkdir()
         shutil.copy2(source_root / 'hosting/catalog.yaml', release / 'app/hosting/catalog.yaml')
         shutil.copytree(source_root / 'rocknix/device', release / 'device')
@@ -407,6 +431,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         provenance.mkdir()
         seed_game(cubby / 'state', provenance)
         (provenance / 'build.json').write_text(json.dumps({
+            **({'product_version': production_plan['version']} if production_plan else {}),
             'rocknix_release': '20261101', 'rocknix_sha256': ROCKNIX_SHA256,
             'wpe_rootfs_sha256': ROOTFS_SHA256,
             **source_provenance(source_root, source_info),
@@ -420,6 +445,9 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             destination.truncate(size)
         run('mkfs.ext4', '-q', '-F', '-m', '0', '-L', identities['storage_label'], '-U', identities['storage_uuid'], '-d', str(storage), str(storage_image))
         run('e2fsck', '-f', '-n', str(storage_image))
+        if production_plan:
+            from rocknix.production_image import audit_partitions
+            audit_partitions(fat, storage_image, release_id, production_plan)
         # Preserve prefix including stock bootloader and FAT partition start.
         final_raw = temporary / 'cubby.img'
         copy_range(raw, final_raw, 0, second[0] * 512)

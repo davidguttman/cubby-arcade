@@ -49,6 +49,7 @@ def quoted(path):
 
 class Management:
     def __init__(self, app, flash=Path('/flash'), gadgets=Path('/sys/kernel/config/usb_gadget')):
+        self.port = 2222
         self.app = Path(app).resolve()
         self.release = self.app.parent
         self.base = self.release.parent.parent
@@ -96,7 +97,7 @@ class Management:
         self.keys.write_text(keys)
         self.keys.chmod(0o600)
         self.config.write_text('\n'.join([
-            'Port 2222', 'AddressFamily any',
+            'Port ' + str(self.port), 'AddressFamily any',
             'HostKey ' + quoted(self.host_key), 'PidFile ' + quoted(self.private/'sshd.pid'),
             'AuthorizedKeysFile ' + quoted(self.keys),
             'AllowUsers root', 'PermitRootLogin prohibit-password', 'PubkeyAuthentication yes',
@@ -197,3 +198,37 @@ def start(app):
     worker.thread = threading.Thread(target=worker.run, daemon=True)
     worker.thread.start()
     return worker
+
+
+class RecoveryManagement(Management):
+    """FAT-backed maintenance listener independent of any app or trial lifecycle.
+
+    This is a second port, identity, and owner lock. USB diagnostics owns gadget
+    recovery, so this listener must never race it or stock USB initialization.
+    """
+    def __init__(self, base=Path('/storage/cubby'), flash=Path('/flash')):
+        super().__init__(Path(base)/'releases/recovery/app', flash=flash)
+        self.base = Path(base)
+        self.port = 2223
+        self.private = self.base/'recovery/private'
+        self.host_key = self.private/'ssh_host_ed25519_key'
+        self.keys, self.config = self.private/'authorized_keys', self.private/'sshd_config'
+
+    def confirmed(self):
+        return True  # Recovery must work when Cubby cannot start or confirm.
+
+    def restore_usb(self):
+        return True  # The independent USB diagnostics unit owns this.
+
+
+if __name__ == '__main__':
+    import argparse
+    import signal
+    parser = argparse.ArgumentParser(description='Provisioned key-only recovery access')
+    parser.add_argument('--recovery', action='store_true', required=True)
+    parser.add_argument('--base', type=Path, default=Path('/storage/cubby'))
+    args = parser.parse_args()
+    worker = RecoveryManagement(args.base)
+    signal.signal(signal.SIGTERM, lambda *_: worker.stop.set())
+    signal.signal(signal.SIGINT, lambda *_: worker.stop.set())
+    worker.run()

@@ -12,7 +12,7 @@ required to finish setup and get new content. Installed games work offline after
 You need an **Anbernic RG353V** (not RG353VS), a charged battery, a reliable
 microSD card (**16 GB minimum; 32 GB recommended**), and a computer/card reader.
 
-1. **Download `Cubby-Arcade-RG353V-20261101.img.gz`.** This is the complete image,
+1. **Download the versioned `Cubby-Arcade-RG353V-v<VERSION>-<COMMIT>.img.gz` and its `.json` build receipt.** This is the complete image,
    not the source ZIP, advanced maintenance kit, or development VM disk.
 2. **Flash it with [balenaEtcher](https://etcher.balena.io/).** Select the `.img.gz`,
    select the intended microSD card, and Flash. This erases that card; back up
@@ -99,3 +99,73 @@ Cubby's browser and display startup. See [USB diagnostics](rg353v-usb-diagnostic
 for the Linux host command, logs available, opt-out, and early-boot limitations.
 Images flashed before this addition need updating; rebuilding does not update
 the connected handheld automatically.
+
+
+## Production provisioning (maintainers)
+
+Do not use an archived `ready.img.gz` and expect an app update to finish the
+installation. Boot artwork and independent recovery live on FAT and are not
+installed by normal app updates. Select the intended product version and commit
+first; a date-only filename or a working upgraded unit is not acceptance evidence.
+
+Build from a **clean committed checkout**, using the pinned kiosk rootfs (not
+the development VM or baseline pre-kiosk rootfs):
+
+```sh
+unshare --map-auto --map-root-user uv run rocknix/production_image.py \
+  --rocknix /path/to/ROCKNIX-RK3566.aarch64-20261101-Generic.img.gz \
+  --rootfs /path/to/rootfs-gtk4-kiosk.tar.xz \
+  --expect-version 0.34.0 \
+  --output-directory .cache/production-images
+```
+
+`--expect-version` must equal the selected release's package and lockfile
+versions. This is an explicit freshness check: the builder never guesses that
+an arbitrary archive is latest. It rejects dirty/uncommitted sources and probes
+the exact updater's healthy status response and app-path compatibility before
+building. It stamps `runtime/version.json`, uses version+commit in the image's
+release directory and filename, and audits actual FAT/ext4 file contents against
+source hashes before publishing the image and its checksum. The JSON receipt
+records exact source commit/version, pinned firmware/runtime hashes, required
+boot files and all packaged app files, image digest/size, and
+`hardware_validated: false`. Read-only independent USB diagnostics and the boot
+progress service are registered on the **first** boot, without precreating
+`/storage/.config` and breaking stock resize.
+
+For a supported customer device, optionally add
+`--management-public-key /path/to/customer-support-key.pub`. Only valid **public**
+keys are accepted. Never supply a private key or clone a provisioned customer's
+image for another customer. No management listener is enabled without explicit
+public-key provisioning. Provisioning enables normal management on port 2222 and
+an independent recovery listener on 2223; both require that key. Recovery's
+Python implementation is on FAT, not in a Cubby release, so a missing/broken app
+or failed boot trial does not remove access. It generates its own persistent
+private host key on the device outside browser-bound state; none is shipped.
+Stock USB setup and Cubby's diagnostics unit own USB configuration; the recovery
+listener never initializes or reconfigures the gadget. Put
+`CUBBY-MANAGEMENT-DISABLED` on FAT to disable both management listeners.
+
+Recheck downloaded/copied artifacts before selecting a disk to flash:
+
+```sh
+uv run rocknix/production_image.py verify \
+  --image /path/to/Cubby-Arcade-RG353V-v0.34.0-<COMMIT>.img.gz \
+  --manifest /path/to/Cubby-Arcade-RG353V-v0.34.0-<COMMIT>.img.gz.json \
+  --expect-version 0.34.0 --expect-commit <FULL_COMMIT>
+```
+
+This checks the compressed image digest and reads its actual FAT/ext4 files,
+including the boot artwork, current updater, and packaged app version. The JSON
+is a build receipt, **not a signature**: obtain image and receipt from the trusted
+release channel and independently select the expected commit. Do not trust an
+unknown sender who supplies both bytes and an altered receipt. Neither command
+writes physical disks, enables a management key by default, publishes a release,
+or marks hardware certified.
+
+Before calling an image customer-ready, flash that exact artifact on a clean
+supported unit/card and record: first boot/resize and cold boot artwork, Wi-Fi
+setup and reboot reconnect, USB and provisioned recovery access with Cubby
+stopped, accelerated UI, physical controls, sound, offline game launch/saves,
+signed update and trial rollback, sleep/wake, and reboot persistence. Preserve
+checksums, commit, device model and the observed results with the artifact.
+Software tests or repair of an already-upgraded device do not satisfy this gate.

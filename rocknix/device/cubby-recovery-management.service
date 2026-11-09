@@ -1,0 +1,16 @@
+[Unit]
+Description=Cubby provisioned independent recovery access
+After=local-fs.target rocknix-autostart.service
+ConditionPathExists=/flash/cubby-setup/authorized_keys
+ConditionPathExists=!/flash/CUBBY-MANAGEMENT-DISABLED
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I /flash/cubby-recovery-management/management.py --recovery
+Restart=on-failure
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=rocknix.target
