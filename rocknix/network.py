@@ -2,7 +2,8 @@
 
 Only this stdlib helper runs outside the WPE chroot. No shell, arbitrary paths,
 URLs or NM properties may be supplied by its client. Its UNIX socket directory
-is root-only and is bind-mounted into the chroot; no TCP listener is opened.
+is root-only and is bind-mounted into the chroot. Explicitly provisioned devices
+may separately start key-only native management; consumer images do not.
 """
 from __future__ import annotations
 import argparse
@@ -11,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import socketserver
 import struct
@@ -423,6 +425,24 @@ def start_power(server, state_dir):
     threading.Thread(target=run, daemon=True).start()
 
 
+def start_management():
+    """Legacy signed apps can opt provisioned units into native repair access."""
+    here = Path(__file__).resolve()
+    candidates = [here.parents[1] / 'runtime/native/rg353v/device/management.py',
+                  here.with_name('device') / 'management.py']
+    path = next((p for p in candidates if p.is_file()), None)
+    if not path:
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location('cubby_management', path)
+        management = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(management)
+        return management.start(here.parents[1])
+    except Exception as error:
+        print('Cubby optional management did not start:', error, file=sys.stderr)
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--socket', default=SOCKET)
@@ -442,7 +462,17 @@ def main():
         threading.Thread(target=bridge_to_guarded_updates, daemon=True).start()
         threading.Thread(target=install_boot_screen_once_confirmed, daemon=True).start()
         start_power(server, args.state)
-        server.serve_forever()
+        # chroot-run terminates this helper when its browser exits. Reap the
+        # optional listener too, rather than leaving an orphan on each restart.
+        previous = signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+        management = None
+        try:
+            management = start_management()
+            server.serve_forever()
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+            if management:
+                management.close()
 
 
 if __name__ == '__main__':

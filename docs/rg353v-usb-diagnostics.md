@@ -1,5 +1,9 @@
 # RG353V USB boot diagnostics (adult/developer flow)
 
+Explicitly provisioned units can additionally use [key-only native management](rg353v-management.md)
+over Wi-Fi/USB. That optional root shell is separate from the default read-only
+USB diagnostics described here.
+
 The Cubby image enables ROCKNIX's native **USB NCM networking** automatically.
 The host can retrieve status without Wi-Fi, Android ADB, browser startup, or a
 person reading the screen. This is read-only diagnostics, not a remote root
