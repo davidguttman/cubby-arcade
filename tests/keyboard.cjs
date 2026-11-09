@@ -28,6 +28,13 @@ test('the name layout has letters and name marks, starts each name with a capita
  assert.throws(()=>create({container:dom().container,field,layout:'nope'}));
  assert.ok(LAYOUTS.password&&LAYOUTS.name);
 });
+test('the web layout has every password key, with pictures for shift and space',()=>{
+ const d=dom(),field={value:'',maxLength:2048};create({container:d.container,field,layout:'web'});
+ assert.equal(d.container.dataset.layout,'web');
+ assert.deepEqual(d.labels(d.container),[...'1234567890','Backspace',...'qwertyuiop','-',...'asdfghjkl',';',"'",...'zxcvbnm',',','.','/','?','_','=','+','[',']','{','}',':','"','\\','|','Shift','Space','`','~','<','>']);
+ assert.equal(d.container.children.filter(b=>b.textContent.length>1).length,0,'No words on any key');
+ for(const c of 'https://a.test/feed')d.press(d.container,c);assert.equal(field.value,'https://a.test/feed');
+});
 test('the Wi-Fi page types with the shared keyboard and has none of its own',()=>{
  const html=fs.readFileSync('rocknix/adult/network.html','utf8'),js=fs.readFileSync('rocknix/adult/network.js','utf8');
  assert.ok(html.indexOf('/runtime/core/keyboard.js')>=0&&html.indexOf('/runtime/core/keyboard.js')<html.indexOf('/adult/network.js'));

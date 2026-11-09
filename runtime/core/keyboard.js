@@ -21,6 +21,16 @@
       [['', ''], '_', '=', '+', '[', ']', '{', '}', ':', '"', '\\', '|'],
       [['', ''], 'case', 'space', '`', '~', '<', '>']
     ],
+    // The password keys with pictures for shift and space, for pages with no words:
+    // a game feed's name and its web address.
+    web: [
+      [['1234567890', '!@#$%^&*()'], 'backspace'],
+      [['qwertyuiop', 'QWERTYUIOP'], '-'],
+      [['asdfghjkl', 'ASDFGHJKL'], ';', "'"],
+      [['zxcvbnm', 'ZXCVBNM'], ',', '.', '/', '?'],
+      [['', ''], '_', '=', '+', '[', ']', '{', '}', ':', '"', '\\', '|'],
+      [['', ''], 'shift', 'spacebar', '`', '~', '<', '>']
+    ],
     // Names, ten columns: letters, the few marks names use, no symbols to wade through.
     name: [
       [['qwertyuiop', 'QWERTYUIOP']],
