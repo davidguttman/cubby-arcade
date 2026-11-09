@@ -11,6 +11,12 @@ from rocknix.device import commissioning as native
 
 
 class CommissionTests(unittest.TestCase):
+    expected = dict(version='0.35.0', commit='a'*40, cid='c'*32)
+
+    def identity(self):
+        return dict(self.expected, bound_cid=self.expected['cid'],
+                    flash='/dev/mmcblk0p1', storage='/dev/mmcblk0p2')
+
     def test_pending_gates_never_certify_ready(self):
         report = commission.receipt({'binding': {'version': '0.35.0', 'commit': 'a'*40,
             'image_sha256': 'b'*64}, 'storage': {'cid': 'c'*32}},
@@ -114,20 +120,20 @@ class CommissionTests(unittest.TestCase):
         from unittest.mock import Mock
         remote.call=Mock(side_effect=[commission.Blocked('commissioning_transport_failed'),self.healthy_snapshot()])
         with patch('time.sleep'):
-            self.assertEqual(commission.wait_reboot(remote,{},'old',timeout=1)['boot_id'],'new')
+            self.assertEqual(commission.wait_reboot(remote,self.expected,'old',timeout=1)['boot_id'],'new')
 
     def healthy_snapshot(self, boot='new', **changes):
         checks={key:True for key in ['no_failed_units','artwork','boot_progress','management','updater',
                                     'controller_presence','audio_presence','power_presence']}
         checks.update(changes)
-        return dict(boot_id=boot, checks=checks)
+        return dict(identity=self.identity(), boot_id=boot, checks=checks, profile_ids=[])
 
     def test_new_boot_waits_for_managed_services_without_repeating_reboot(self):
         from unittest.mock import Mock
         remote=Mock()
         remote.call.side_effect=[self.healthy_snapshot(management=False),self.healthy_snapshot()]
         with patch('time.sleep'):
-            result=commission.wait_reboot(remote,{},'old',timeout=1)
+            result=commission.wait_reboot(remote,self.expected,'old',timeout=1)
         self.assertTrue(result['checks']['management'])
         self.assertEqual([call.args[0] for call in remote.call.call_args_list],['snapshot','snapshot'])
 
@@ -136,7 +142,7 @@ class CommissionTests(unittest.TestCase):
         remote=Mock()
         remote.call.side_effect=[self.healthy_snapshot(updater=False),self.healthy_snapshot()]
         with patch('time.sleep'):
-            result=commission.wait_ready(remote,{},timeout=1)
+            result=commission.wait_ready(remote,self.expected,timeout=1)
         self.assertTrue(result['checks']['updater'])
 
     def native_readiness_fixture(self, root):
@@ -245,7 +251,7 @@ class CommissionTests(unittest.TestCase):
         remote=Mock(); remote.call.return_value=self.healthy_snapshot(management=False)
         with patch('time.monotonic',side_effect=[0,0,0,1,1,2]), patch('time.sleep'):
             with self.assertRaisesRegex(commission.Blocked,'^commissioning_readiness_timeout$'):
-                commission.wait_reboot(remote,{},'old',timeout=1)
+                commission.wait_reboot(remote,self.expected,'old',timeout=1)
         self.assertEqual(remote.call.call_count,1)
 
     def test_readiness_does_not_retry_native_or_authentication_failure(self):
@@ -253,7 +259,7 @@ class CommissionTests(unittest.TestCase):
         for reason in ['commissioning_native_failed','commissioning_authentication_failed']:
             remote=Mock(); remote.call.side_effect=commission.Blocked(reason)
             with self.subTest(reason=reason), self.assertRaisesRegex(commission.Blocked,'^'+reason+'$'):
-                commission.wait_reboot(remote,{},'old',timeout=1)
+                commission.wait_reboot(remote,self.expected,'old',timeout=1)
             self.assertEqual(remote.call.call_count,1)
 
     def test_ssh_authentication_failure_is_terminal_and_sanitized(self):
@@ -272,14 +278,14 @@ class CommissionTests(unittest.TestCase):
             run.return_value.stdout=b'{"error":"native_commissioning_failed"}'
             run.return_value.stderr=b''
             with self.assertRaisesRegex(commission.Blocked,'^commissioning_native_failed$'):
-                commission.wait_ready(commission.Remote(args),{},timeout=1)
+                commission.wait_ready(commission.Remote(args),self.expected,timeout=1)
             self.assertEqual(run.call_count,1)
 
     def test_malformed_checks_are_terminal_not_readiness(self):
         from unittest.mock import Mock
-        remote=Mock(); remote.call.return_value={'boot_id':'new','checks':{}}
+        remote=Mock(); remote.call.return_value=dict(self.healthy_snapshot(), checks={})
         with self.assertRaisesRegex(commission.Blocked,'^commissioning_automated_gate_failed$'):
-            commission.wait_ready(remote,{},timeout=1)
+            commission.wait_ready(remote,self.expected,timeout=1)
         self.assertEqual(remote.call.call_count,1)
 
     def test_successful_ssh_malformed_json_is_terminal_without_retry(self):
@@ -289,8 +295,47 @@ class CommissionTests(unittest.TestCase):
                 run.side_effect=[subprocess.CompletedProcess([],0,payload,b''),
                                  subprocess.CompletedProcess([],0,json.dumps(self.healthy_snapshot()).encode(),b'')]
                 with self.assertRaisesRegex(commission.Blocked,'^commissioning_native_failed$'):
-                    commission.wait_ready(commission.Remote(args),{},timeout=1)
+                    commission.wait_ready(commission.Remote(args),self.expected,timeout=1)
                 self.assertEqual(run.call_count,1)
+
+    def test_successful_snapshot_shape_is_terminal_before_readiness_branching(self):
+        import copy
+        from types import SimpleNamespace
+        args=SimpleNamespace(identity=Path('/key'),job=Path('/job'),host='169.254.170.2')
+        good=self.healthy_snapshot()
+        malformed=[{}, None, [], {'boot_id':'old'}, dict(good,identity=None),
+                   dict(good,boot_id='old',checks={}), dict(good,boot_id='old',identity={}),
+                   dict(good,boot_id='old',profile_ids=None)]
+        for key in good:
+            row=copy.deepcopy(good); del row[key]; malformed.append(row)
+        for boot in ('', ' ', 'new\n', None, 3, [], {}):
+            malformed.append(dict(good,boot_id=boot))
+        for key in good['identity']:
+            identity=dict(good['identity']); del identity[key]
+            malformed.append(dict(good,identity=identity))
+            malformed.append(dict(good,identity=dict(good['identity'],**{key:'wrong'})))
+        for checks in (None, [], {}, dict(good['checks'],updater=1), dict(good['checks'],unknown=True)):
+            malformed.append(dict(good,checks=checks))
+        for profiles in (None, {}, 'uuid', ['not-a-uuid'], [1],
+                         ['12345678-1234-1234-1234-123456789abc']*2):
+            malformed.append(dict(good,profile_ids=profiles))
+        for row in malformed:
+            for old_boot in (None,'old'):
+                with self.subTest(row=row,old_boot=old_boot), patch('subprocess.run') as run, patch('time.sleep'):
+                    run.side_effect=[subprocess.CompletedProcess([],0,json.dumps(row).encode(),b''),
+                                     subprocess.CompletedProcess([],0,json.dumps(good).encode(),b'')]
+                    with self.assertRaises(commission.Blocked):
+                        commission.wait_ready(commission.Remote(args),self.expected,old_boot=old_boot,timeout=.01)
+                    self.assertEqual(run.call_count,1)
+
+    def test_valid_same_boot_then_new_boot_uses_actual_remote_parser(self):
+        from types import SimpleNamespace
+        args=SimpleNamespace(identity=Path('/key'),job=Path('/job'),host='169.254.170.2')
+        rows=[self.healthy_snapshot('old'),self.healthy_snapshot('new',updater=False),self.healthy_snapshot('new')]
+        with patch('subprocess.run') as run, patch('time.sleep'):
+            run.side_effect=[subprocess.CompletedProcess([],0,json.dumps(row).encode(),b'') for row in rows]
+            result=commission.wait_reboot(commission.Remote(args),self.expected,'old',timeout=1)
+        self.assertEqual(result,rows[-1]); self.assertEqual(run.call_count,3)
 
     def test_required_checks_fail_closed(self):
         with self.assertRaises(commission.Blocked): commission.checked_snapshot({'checks':{}})
@@ -333,7 +378,7 @@ class CommissionTests(unittest.TestCase):
                 (job/name).write_text(text); (job/name).chmod(0o600)
             checks={key:True for key in ['no_failed_units','artwork','boot_progress','management','updater',
                                         'controller_presence','audio_presence','power_presence']}
-            snapshot=dict(boot_id='new',checks=checks,profile_ids=[uid])
+            snapshot=dict(identity=self.identity(),boot_id='new',checks=checks,profile_ids=[uid])
             remote=Mock(); remote.call.side_effect=[snapshot,snapshot,dict(internet=True,wifi_enabled=True,profile_ids=[uid])]
             args=SimpleNamespace(job=job,identity=job/'identity',host='169.254.170.2',action='check')
             with patch.object(commission,'Remote',return_value=remote): report=commission.run(args)

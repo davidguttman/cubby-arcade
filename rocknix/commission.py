@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rocknix.provision import Blocked, Journal
@@ -74,13 +75,10 @@ def wait_ready(remote, expected, *, old_boot=None, timeout=240):
         try:
             snapshot=remote.call('snapshot',{},expected,
                                  timeout=max(.01,deadline-time.monotonic()))
-            if snapshot.get('boot_id') and (old_boot is None or snapshot['boot_id'] != old_boot):
+            validate_snapshot(snapshot, expected)
+            if old_boot is None or snapshot['boot_id'] != old_boot:
                 observed_boot=True
-                checks=snapshot.get('checks',{})
-                # Only explicit boolean-not-ready results can be retried.
-                if set(checks)!=REQUIRED_CHECKS or any(type(v) is not bool for v in checks.values()):
-                    raise Blocked('commissioning_automated_gate_failed')
-                if all(checks.values()): return snapshot
+                if all(snapshot['checks'].values()): return snapshot
         except Blocked as error:
             if str(error)!='commissioning_transport_failed': raise
         time.sleep(min(3,max(0,deadline-time.monotonic())))
@@ -95,6 +93,38 @@ def wait_reboot(remote, expected, old_boot, timeout=240):
 
 REQUIRED_CHECKS={'no_failed_units','artwork','boot_progress','management','updater',
                  'controller_presence','audio_presence','power_presence'}
+
+
+def validate_snapshot(snapshot, expected):
+    """A successful response must be a complete native snapshot, even on the old boot.
+
+    Only well-formed boolean false checks mean services are still starting.
+    Missing identity, boot or profile fields are never readiness signals.
+    """
+    if not isinstance(snapshot, dict): raise Blocked('commissioning_native_failed')
+    identity=snapshot.get('identity')
+    if (not isinstance(identity,dict)
+            or any(not isinstance(expected.get(key),str) or not expected[key]
+                   or identity.get(key)!=expected[key] for key in ('version','commit','cid'))
+            or identity.get('bound_cid')!=expected['cid']
+            or identity.get('flash')!='/dev/mmcblk0p1'
+            or identity.get('storage')!='/dev/mmcblk0p2'):
+        raise Blocked('commissioning_native_failed')
+    boot=snapshot.get('boot_id')
+    if not isinstance(boot,str) or not re.fullmatch(r'[A-Za-z0-9-]{1,128}',boot):
+        raise Blocked('commissioning_native_failed')
+    checks=snapshot.get('checks')
+    if (not isinstance(checks,dict) or set(checks)!=REQUIRED_CHECKS
+            or any(type(value) is not bool for value in checks.values())):
+        raise Blocked('commissioning_automated_gate_failed')
+    profiles=snapshot.get('profile_ids')
+    if not isinstance(profiles,list): raise Blocked('commissioning_native_failed')
+    try:
+        if (any(not isinstance(uid,str) or str(uuid.UUID(uid))!=uid for uid in profiles)
+                or len(set(profiles))!=len(profiles)):
+            raise ValueError('invalid_profile_ids')
+    except (ValueError,TypeError,AttributeError):
+        raise Blocked('commissioning_native_failed') from None
 
 
 def checked_snapshot(snapshot):

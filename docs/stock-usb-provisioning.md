@@ -201,6 +201,10 @@ that never clear report `commissioning_readiness_timeout`; failure to observe a
 new boot reports `commissioning_reboot_not_observed`. SSH authentication and
 native target-validation failures stop immediately. Connect, reboot and handoff
 mutations are never repeated by the readiness loop.
+Every successful snapshot is validated before comparing boot IDs: the expected
+internal-device identity, nonempty boot identifier, complete boolean checks and
+canonical profile UUID list must be present. Empty or malformed snapshots fail
+terminally even when the device still reports its pre-reboot boot ID.
 
 After validating the target, the native snapshot reports missing/refused/timed-out
 updater sockets, missing boot markers, unavailable systemd queries and not-yet
