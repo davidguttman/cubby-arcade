@@ -12,10 +12,11 @@ const {execFileSync}=require('node:child_process');
   const stage=await fs.mkdtemp(path.join(os.tmpdir(),'cubby-arcade-desktop-'));
   try{
     await fs.mkdir(path.join(stage,'desktop'));
-    for(const name of ['main.cjs','profile.cjs','preload.cjs','host.cjs','hub-smoke.cjs','cloud.cjs','installer.cjs','install-smoke.cjs','tokens.cjs','token-smoke.cjs','uninstall-smoke.cjs','players-smoke.cjs'])await fs.copyFile(path.join(__dirname,name),path.join(stage,'desktop',name));
+    for(const name of ['main.cjs','profile.cjs','preload.cjs','host.cjs','hub-smoke.cjs','cloud.cjs','feeds.cjs','installer.cjs','install-smoke.cjs','tokens.cjs','token-smoke.cjs','uninstall-smoke.cjs','players-smoke.cjs'])await fs.copyFile(path.join(__dirname,name),path.join(stage,'desktop',name));
     // The host maps players to save directories with the hub's own player rules.
     await fs.mkdir(path.join(stage,'runtime','core'),{recursive:true});
     await fs.copyFile(path.join(root,'runtime','core','profiles.js'),path.join(stage,'runtime','core','profiles.js'));
+    await fs.copyFile(path.join(root,'runtime','core','game-feeds.js'),path.join(stage,'runtime','core','game-feeds.js'));
     // Copy the exact production dependency closure, not dev tools or arbitrary repo files.
     const copied=new Set();
     async function dependency(name,from=root){

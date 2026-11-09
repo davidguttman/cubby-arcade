@@ -35,7 +35,9 @@ app.whenReady().then(async()=>{
   const installer=new GameInstaller(library,{canActivate:()=>hubActive&&!launcher?.pending,onChange:states=>{
     if(win&&!win.isDestroyed()&&hubActive)win.webContents.send('hub:install-state',states);
   }});
-  const feeds=new FeedIO(path.join(app.getPath('userData'),'game-feeds.json'));
+  // Isolate fixture smokes before the first hub navigation can start discovery.
+  // A live startup response arriving after setCatalog would erase its offers.
+  const feeds=new FeedIO(path.join(app.getPath('userData'),'game-feeds.json'),uninstallSmoke||(installSmoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke feed offline');}}:{});
   let registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
   installer.setCatalog(registry);
   protocol.handle('hub',async request=>{
