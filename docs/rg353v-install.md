@@ -214,3 +214,7 @@ no-backup behavior, exact image readback, pinned recovery enrollment and remaini
 hardware acceptance requirements, see [stock USB provisioning](stock-usb-provisioning.md).
 This is separate from the SSH bundle installer and does not yet certify an
 unattended customer-ready installation.
+
+For an already-installed unit, [Linux SD recovery reflash](linux-rescue-provisioning.md)
+is a separate guarded path; it refuses mounted internal storage and does not
+prove the factory Android entry path.
