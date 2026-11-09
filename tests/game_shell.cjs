@@ -4,7 +4,7 @@ function harness(embed=false){
  const events={},nodes={};let frame;
  const doc={readyState:'complete',hidden:false,hasFocus:()=>true,createElement(tag){return {tag,style:{},hidden:false,setAttribute(){},appendChild(n){},addEventListener(){},focus(){},remove(){}};},body:{appendChild(n){nodes.menu=n;}}};
  const pads=[{buttons:Array.from({length:16},()=>({pressed:false})),axes:[0,0]}];
- const env={document:doc,navigator:{getGamepads:()=>pads},location:{pathname:'/games/demo/main.html',href:''},addEventListener(n,f){(events[n]??=[]).push(f);},removeEventListener(){},requestAnimationFrame(f){frame=f;return 1;},cancelAnimationFrame(){},dispatchEvent(e){(events[e.type]||[]).forEach(f=>f(e));},CustomEvent:class{constructor(type,o){this.type=type;this.detail=o?.detail;}},setTimeout:f=>f()};
+ const env={document:doc,navigator:{getGamepads:()=>pads},location:{pathname:'/games/demo/main.html',href:''},addEventListener(n,f){(events[n]??=[]).push(f);},removeEventListener(n,f){events[n]=(events[n]||[]).filter(listener=>listener!==f);},requestAnimationFrame(f){frame=f;return 1;},cancelAnimationFrame(){},dispatchEvent(e){(events[e.type]||[]).forEach(f=>f(e));},CustomEvent:class{constructor(type,o){this.type=type;this.detail=o?.detail;}},setTimeout:f=>f()};
  function key(code){let stopped=false;const e={code,repeat:false,preventDefault(){},stopImmediatePropagation(){stopped=true;}};(events.keydown||[]).forEach(f=>f(e));return stopped;}
  if(embed)env.CubbyHandheldEmbed={};
  const shell=install(env);return {shell,env,pads,key,poll:(time=0)=>frame(time)};
@@ -20,6 +20,21 @@ test('browser system-menu return stays in arcade demo while native return stays 
   const h=harness();h.env.location.protocol=protocol;h.key('Escape');h.key('ArrowRight');h.key('Enter');
   assert.equal(h.env.location.href,protocol==='hub:'?'/':'/play');
  }
+});
+
+test('a game quit event returns to the library without opening the system menu',()=>{
+ for(const protocol of ['https:', 'http:', 'hub:']){
+  const h=harness();h.env.location.protocol=protocol;
+  h.env.dispatchEvent(new h.env.CustomEvent('handheld:quit'));
+  assert.equal(h.env.location.href,protocol==='hub:'?'/':'/play');
+  assert.equal(h.shell.isOpen(),false);
+ }
+});
+
+test('disposing the shell removes the game quit listener',()=>{
+ const h=harness();h.shell.dispose();
+ h.env.dispatchEvent(new h.env.CustomEvent('handheld:quit'));
+ assert.equal(h.env.location.href,'');
 });
 
 test('the press that reveals a hidden pad reaches the game; a held button right after load does not',()=>{

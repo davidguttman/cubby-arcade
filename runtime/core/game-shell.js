@@ -15,6 +15,8 @@ function install(win){
  function open(){if(opened||disposed)return;opened=true;selection=0;blocked=true;ready=false;if(menu)menu.hidden=false;signal();focus();}
  function resume(){if(!opened)return;opened=false;blocked=true;ready=false;if(menu)menu.hidden=true;signal();}
  function home(){win.location.href=/^https?:$/.test(win.location.protocol)?'/play':'/';}
+ // Games return to their title first; only Cubby turns this request into navigation.
+ listen(win,'handheld:quit',home);
  function neutral(pad){return !pad.buttons.some(b=>b.pressed)&&pad.axes.every(a=>Math.abs(a)<0.5);}
  function chord(pad){return (pad.buttons[8]?.pressed&&(win.CubbyHandheldEmbed||pad.buttons[9]?.pressed))||(pad.buttons[4]?.pressed&&pad.buttons[5]?.pressed);}
  function pads(){try{return Array.from(originalPads?.()||[]);}catch{return [];}}
