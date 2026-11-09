@@ -150,18 +150,39 @@ class Collector(unittest.TestCase):
                 with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
                 # Lazy unmount removes the mount record, not open file users.
                 write('/proc/123/mountinfo',mount)
-                write('/proc/123/fd/7','open target file')
                 original_stat=original.stat
                 target_reference=root/'proc/123/fd/7'
+                reference_device=__import__('os').makedev(179,0)
                 def target_file(path,*args,**kwargs):
                     if path==target_reference:
-                        return SimpleNamespace(st_mode=0o100600,st_dev=__import__('os').makedev(179,0))
+                        return SimpleNamespace(st_mode=0o100600,st_dev=reference_device)
+                    if path==root/'proc/123/fd/7':
+                        # Never let the runner's real filesystem leak into the
+                        # synthetic block-device graph.
+                        return SimpleNamespace(st_mode=0o100600,st_dev=__import__('os').makedev(253,77))
                     return original_stat(path,*args,**kwargs)
                 for name in ('fd/7','cwd','root','exe'):
                     target_reference=root/'proc/123'/name
-                    with self.subTest(reference=name),patch.object(original,'stat',target_file):
-                        with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
-                (root/'proc/123/fd/7').unlink()
+                    # Each case owns exactly one reference. A stale fd/7 must
+                    # not mask the cwd/root/exe reference being exercised.
+                    target_reference.write_text('open target reference')
+                    try:
+                        with self.subTest(reference=name),patch.object(original,'stat',target_file):
+                            data=probe.collect()
+                            self.assertIn('mmcblk0',data['active_disks'])
+                            with self.assertRaises(Blocked):rescue.validate_rescue(data,512)
+                    finally:
+                        target_reference.unlink()
+                # Unresolved real block devices still fail closed; do not
+                # weaken the collector to accommodate synthetic test entries.
+                target_reference=root/'proc/123/fd/7'
+                reference_device=__import__('os').makedev(253,77)
+                target_reference.write_text('unknown backing filesystem')
+                try:
+                    with patch.object(original,'stat',target_file):
+                        with self.assertRaisesRegex(ValueError,'block_dependency_unknown'):probe.collect()
+                finally:
+                    target_reference.unlink()
                 # File mappings survive both descriptor closure and unmount.
                 write('/proc/123/maps','1000-2000 r--p 00000000 b3:00 12 /gone (deleted)\n')
                 with self.assertRaises(Blocked):rescue.validate_rescue(probe.collect(),512)
