@@ -689,6 +689,12 @@ test('feed load and persistence failures stay in adult dialog as pictures and pe
  assert.equal(dialog.querySelector('.feed-name-input').value,'Draft');const save=dialog.querySelector('.save-feed');assert.ok(save.classList.contains('refused'),'A save that could not be stored shakes ✓');assert.ok(!save.disabled);assert.equal(save.classList.contains('is-busy'),false);
  dialog.querySelector('.cancel-feed').click();dialog.querySelector('.close-feeds').click();hub.dispose();
 });
+test('a change that cannot be stored shakes the control pressed and leaves the feed as it was',async()=>{
+ const {host,hub}=feedHub({setFeedConfig:async()=>{throw Error('disk');}});await settle();const dialog=await openFeedsPage(host,hub);
+ const toggle=dialog.querySelector('.feed-toggle');toggle.click();await settle();assert.equal(toggle.getAttribute('aria-checked'),'true','The switch slides back');assert.ok(toggle.classList.contains('refused'));assert.equal(host.ownerDocument.activeElement,toggle);assert.equal(toggle.disabled,false);
+ dialog.querySelector('.feed-remove').click();const confirm=dialog.querySelector('.remove-confirm');confirm.click();await settle();assert.ok(confirm.classList.contains('refused'));assert.equal(host.ownerDocument.activeElement,dialog.querySelector('.cancel-feed'));
+ dialog.querySelector('.cancel-feed').click();assert.deepEqual(feedNames(dialog),['Cubby Arcade']);hub.dispose();
+});
 test('feed editor protects native typing and its modal stays put during a pending save',async()=>{
  let release;const pending=new Promise(resolve=>release=resolve);const {host,hub,action}=feedHub({setFeedConfig:async config=>{await pending;return config;}});await settle();const dialog=await openFeedsPage(host,hub);dialog.querySelector('.add-feed').click();const name=dialog.querySelector('.feed-name-input');let stopped=false;name.dispatchEvent({type:'keydown',code:'KeyA',stopPropagation(){stopped=true;}});assert.equal(stopped,true);
  typeFeed(dialog,'Other','https://other.test/feed');action('pause','gamepad');await settle();const save=dialog.querySelector('.save-feed');assert.equal(save.disabled,true);assert.ok(save.classList.contains('is-busy'),'✓ pulses while saving');

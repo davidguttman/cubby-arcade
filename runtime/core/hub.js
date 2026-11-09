@@ -294,7 +294,7 @@ function mount(host){
   }catch(error){if(disposed)return;feedBusy=false;feedControls(false);trigger?.classList.remove('is-busy');onError?.(error);}
   finally{feedBusy=false;feedDialog.setAttribute('aria-busy','false');}
  }
- function feedChange(feeds,trigger,focus){saveFeeds({schema:1,feeds},trigger,()=>renderFeeds(focus),()=>{refuse(trigger);trigger.focus();});}
+ function feedChange(feeds,trigger,focus){saveFeeds({schema:1,feeds},trigger,()=>renderFeeds(focus),()=>{if(trigger.getAttribute('role')==='switch')trigger.setAttribute('aria-checked',String(trigger.getAttribute('aria-checked')!=='true'));refuse(trigger);trigger.focus();});}
  // A feed's covers come from the Store's own offers, which remember the feed they came from.
  function feedCovers(feed){return feed.enabled?catalog.filter(offer=>offer?._source?.feed_url===feed.url&&offer.artwork):[];}
  function feedCard(list,feed,index){
@@ -304,7 +304,8 @@ function mount(host){
   // Not loading: a broken link on a red card. Showing its last saved games: a dim clock.
   if(down||stale){const mark=element(head,'span','feed-mark');mark.innerHTML=icon(down?'unlink':'clock');mark.setAttribute('role','img');mark.setAttribute('aria-label',down?'Not loading':'Saved copy');}
   const toggle=element(head,'button','feed-toggle');toggle.type='button';toggle.setAttribute('role','switch');toggle.setAttribute('aria-checked',String(feed.enabled));toggle.setAttribute('aria-label','Use '+feed.name);element(toggle,'span','feed-knob');
-  toggle.addEventListener('click',()=>feedChange(feedConfig.feeds.map((item,i)=>i===index?{...item,enabled:!item.enabled}:item),toggle,[index,'feed-toggle']));
+  // The knob slides at once; a switch that couldn't be saved slides back and shakes.
+  toggle.addEventListener('click',()=>{if(feedBusy)return;toggle.setAttribute('aria-checked',String(!feed.enabled));feedChange(feedConfig.feeds.map((item,i)=>i===index?{...item,enabled:!item.enabled}:item),toggle,[index,'feed-toggle']);});
   const strip=element(card,'div','feed-covers'),covers=feedCovers(feed);
   for(const offer of covers.slice(0,8)){const image=element(strip,'img');image.src=offer.artwork;image.alt='';}
   if(feed.enabled&&!down&&!covers.length&&status.count===0)element(strip,'span','feed-none').innerHTML=icon('empty');
