@@ -106,7 +106,14 @@
   }
   async function scanNetworks() {
     leavePassword(); message('Finding Wi-Fi networks…');
-    const networks = await listNetworks();
+    let networks = await listNetworks();
+    // An early successful scan can still be empty. Give discovery two more
+    // chances before asking the adult to retry; keep this one operation busy.
+    for (const delay of [1000, 2000]) {
+      if (networks.length) break;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      networks = await listNetworks();
+    }
     focusList = true;
     const result = await request('status');
     showResult(result);

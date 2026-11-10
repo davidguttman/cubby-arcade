@@ -184,6 +184,8 @@ def publish_all(root, directory, source, gh=github):
     version = package_version(root / 'package.json'); tag = 'v' + version; commit(source)
     key = root / 'rocknix/device/release-key.pem'
     verify_device(directory, key, version)
+    from rocknix.production_release import release_files
+    images = release_files(root, directory, version, source)
     existing = tag_commit(update_publish.REPO, tag, gh)
     if existing is None:
         gh(['api', '--method', 'POST', f'repos/{update_publish.REPO}/git/refs'],
@@ -191,7 +193,7 @@ def publish_all(root, directory, source, gh=github):
     elif existing != source:
         raise ValueError('Release tag source differs')
     publish_release(tag, update_publish.REPO, directory, root / 'package.json', gh,
-                    extra_files=device_files(directory))
+                    extra_files=(*device_files(directory), *images))
     # The release is public only after all its assets were verified. This is last.
     return advance_feed(directory, key, source)
 

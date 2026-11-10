@@ -76,12 +76,17 @@ jobs:
         with:
           version: '0.9.7'
       - name: Install native smoke dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgtk-3-0t64 libnss3 libasound2t64 libgbm1
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgtk-3-0t64 libnss3 libasound2t64 libgbm1 dosfstools e2fsprogs
       - run: npm ci
       - name: Regression tests
         run: |
           node --test tests/*.cjs
           uv run python -m unittest discover -s tests -q
+      - name: Production image filesystem audit regressions
+        run: |
+          command -v mkfs.vfat mkfs.ext4 debugfs
+          uv run --with pyfatfs==1.1.0 --with setuptools==80.9.0 --with pyyaml==6.0.3 python -c 'from pyfatfs.PyFatFS import PyFatFS'
+          PYTHONPATH=tests uv run --with pyfatfs==1.1.0 --with setuptools==80.9.0 --with pyyaml==6.0.3 python -m unittest test_production_image test_device_binding test_fat_image_replacement -v
       - name: Build portable Linux archive
         run: npm run desktop:build
       - name: Exercise packaged Linux app
@@ -131,8 +136,43 @@ jobs:
           name: linux-smoke-evidence
           path: dist/linux-smoke
           if-no-files-found: warn
+  image:
+    needs: validate
+    if: needs.validate.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.7'
+      - name: Install image filesystem tools
+        run: sudo apt-get update && sudo apt-get install -y dosfstools e2fsprogs util-linux
+      - name: Require image workspace capacity
+        run: python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 25 * 1024**3, "Image build requires 25 GiB free"'
+      - name: Build and independently verify public full image
+        env:
+          CUBBY_VERSION: ${{ needs.validate.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Root is confined to this disposable runner's private mount/PID namespace.
+          # The generic image is deliberately built without management keys.
+          trap 'sudo chown -R "$(id -u):$(id -g)" dist/image .cache/image-inputs 2>/dev/null || true' EXIT
+          sudo unshare --mount --pid --fork --mount-proc env \
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE" \
+            "$(command -v uv)" run --with pyfatfs==1.1.0 --with setuptools==80.9.0 --with pyyaml==6.0.3 \
+            python -m rocknix.production_release --cache .cache/image-inputs --output dist/image \
+            --version "$CUBBY_VERSION" --commit "$GITHUB_SHA"
+      - name: Upload verified public image and receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: CubbyArcade-image
+          path: dist/image/*
+          compression-level: 0
+          if-no-files-found: error
   publish:
-    needs: [validate, windows, linux]
+    needs: [validate, windows, linux, image]
     if: needs.validate.outputs.release == 'true'
     runs-on: ubuntu-24.04
     permissions:
@@ -144,7 +184,12 @@ jobs:
           pattern: CubbyArcade-*
           merge-multiple: true
           path: dist/release
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.7'
+      - name: Install publication filesystem verifier
+        run: sudo apt-get update && sudo apt-get install -y dosfstools e2fsprogs
       - name: Publish all verified platforms, then advance signed handheld feed
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 release_automation.py publish
+        run: uv run --with pyfatfs==1.1.0 --with setuptools==80.9.0 --with pyyaml==6.0.3 python release_automation.py publish

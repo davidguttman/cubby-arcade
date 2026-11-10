@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import shutil
 import struct
+import stat
 import subprocess
 import sys
 import zlib
@@ -31,7 +32,6 @@ from rocknix.device_profile import (media_identities, rewrite_boot_labels,
     rg353v_wifi_profile, fdt_properties, WIFI_PROFILE)
 ROCKNIX_SHA256 = 'b573c9656d85bca5fa1aba038aac6cfabd92345d28a55cd74725cc98c618c775'
 ROOTFS_SHA256 = 'e1859403acf7593e5b2ad9b932092258302f415a093959de24fd402b7475ee92'
-TRAIL_MIX_SHA256 = '0f58736c83f3be504071425310d9a86e5425fc78b5de41ce08e6a1bf47a5da76'
 BASE_BOOT_HOOK = '''#!/bin/sh
 # Managed by Cubby Arcade RG353V image builder.
 # Sourced by ROCKNIX initramfs before /run is moved into the real root.
@@ -44,6 +44,10 @@ if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ]; then
   ln -sf ../cubby-usb-diagnostics.service /run/systemd/system/rocknix.target.wants/cubby-usb-diagnostics.service
   cp /flash/cubby-wifi-recovery/service /run/systemd/system/cubby-wifi-recovery.service
   ln -sf ../cubby-wifi-recovery.service /run/systemd/system/multi-user.target.wants/cubby-wifi-recovery.service
+  if [ -f /flash/cubby-setup/authorized_keys ] && [ -f /flash/cubby-recovery-management/service ]; then
+    cp /flash/cubby-recovery-management/service /run/systemd/system/cubby-recovery-management.service
+    ln -sf ../cubby-recovery-management.service /run/systemd/system/rocknix.target.wants/cubby-recovery-management.service
+  fi
   mkdir -p /run/systemd/system/essway.service.d
   cat > /run/systemd/system/essway.service.d/10-cubby-wifi.conf <<'UNIT'
 [Unit]
@@ -53,6 +57,11 @@ UNIT
 fi
 if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ] &&
    [ ! -e /flash/CUBBY-DISABLED ]; then
+  if [ -f /flash/cubby-boot-screen/service ]; then
+    mkdir -p /run/systemd/system/sysinit.target.wants
+    cp /flash/cubby-boot-screen/service /run/systemd/system/cubby-boot-screen.service
+    ln -sf ../cubby-boot-screen.service /run/systemd/system/sysinit.target.wants/cubby-boot-screen.service
+  fi
   mkdir -p /run/systemd/system/essway.service.d
   cat > /run/systemd/system/essway.service.d/90-cubby.conf <<'UNIT'
 # Managed by Cubby Arcade RG353V image builder
@@ -109,7 +118,7 @@ def finalize_fat(path: Path) -> None:
     run('fsck.fat', '-n', str(path))
 
 
-def gpt_layout(source):
+def _gpt_layout(source, *, generated=False):
     """Validate both primary GPT checksums before trusting image offsets."""
     source.seek(0)
     mbr = source.read(512)
@@ -140,9 +149,44 @@ def gpt_layout(source):
             continue
         start, end = struct.unpack_from('<QQ', entry, 32)
         result.append((start, end - start + 1))
-    if result[0][0] != 32768 or result[0][1] != 4194304 or result[1][0] != sum(result[0]) or result[1][1] != 65536:
+    if result[0][0] != 32768 or result[0][1] != 4194304 or result[1][0] != sum(result[0]) or (not generated and result[1][1] != 65536):
         raise ValueError('Unexpected or overlapping pinned ROCKNIX layout')
+    if generated:
+        sectors = result[1][1]
+        table_sectors = (len(entries) + 511) // 512
+        end = result[1][0] + sectors - 1
+        backup_lba = end + table_sectors + 1
+        source.seek(0, 2)
+        if (not 65536 <= sectors <= 64 * 1024**3 // 512
+                or source.tell() != (backup_lba + 1) * 512
+                or struct.unpack_from('<QQQQ', header, 24) != (1, backup_lba, 34, end)
+                or mbr[450] != 0xee
+                or struct.unpack_from('<II', mbr, 454) != (1, min(backup_lba, 0xffffffff))):
+            raise ValueError('Invalid generated GPT geometry')
+        source.seek((backup_lba - table_sectors) * 512)
+        if source.read(len(entries)) != entries:
+            raise ValueError('Generated backup GPT table differs')
+        source.seek(backup_lba * 512)
+        backup = bytearray(source.read(512))
+        wanted = bytearray(header)
+        struct.pack_into('<Q', wanted, 24, backup_lba)
+        struct.pack_into('<Q', wanted, 32, 1)
+        struct.pack_into('<Q', wanted, 72, backup_lba - table_sectors)
+        struct.pack_into('<I', wanted, 16, 0)
+        struct.pack_into('<I', wanted, 16, zlib.crc32(wanted[:header_size]))
+        if backup != wanted:
+            raise ValueError('Generated backup GPT header differs')
     return mbr, header, entries, result
+
+
+def gpt_layout(source):
+    """Only the exact pinned stock input geometry is accepted."""
+    return _gpt_layout(source)
+
+
+def generated_gpt_layout(source):
+    """Validate expanded output and its relocated backup, without weakening input."""
+    return _gpt_layout(source, generated=True)
 
 
 def grow_gpt(destination, layout, storage_sectors, *, identities=None):
@@ -242,20 +286,38 @@ def publish_image(compressed: Path, output: Path, digest: str) -> None:
         os.link(staged_checksum, sidecar)
 
 
-def seed_game(state: Path, provenance: Path) -> None:
-    from runtime import catalog
-    url = 'https://trailmix.david.app/releases/0.9.0/manifest.json'
-    manifest = provenance / 'trail-mix-release.json'
-    final = catalog.download(url, manifest, catalog.MAX_RELEASE)
-    verify(manifest, TRAIL_MIX_SHA256)
-    release = catalog.validate_release(json.loads(manifest.read_text()), 'trail-mix', manifest_url=final)
-    if release['schema_version'] != 2:
-        raise ValueError('Offline seed requires a file-inventory release')
-    catalog.install_files(release, state / 'games')
-    (provenance / 'trail-mix-provenance.json').write_text(json.dumps({
-        'manifest_url': final, 'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest(),
-        'id': release['id'], 'version': release['version'],
-    }, indent=2) + '\n')
+def validate_customer_contents(entries):
+    """Fresh images may contain system/update records, never prior user state.
+
+    The same policy is applied before packing and to actual ext4 directory
+    entries during artifact verification. No existing device data is removed.
+    """
+    root = entries('/')
+    if set(root) & {'.config', '.cache', '.ssh', '.local'}:
+        raise ValueError('Fresh image contains customer state in storage root')
+    if not stat.S_ISDIR(root.get('cubby', 0)):
+        raise ValueError('Cannot inspect fresh image customer state')
+    cubby = entries('/cubby')
+    allowed = {'releases', 'current', 'updater', 'updates', 'state', 'image-provenance'}
+    if set(cubby) - allowed:
+        raise ValueError('Fresh image contains customer state outside clean Cubby layout')
+    if 'image-provenance' in cubby:
+        if not stat.S_ISDIR(cubby['image-provenance']):
+            raise ValueError('Fresh image contains customer state in machine provenance')
+        records = entries('/cubby/image-provenance')
+        if (set(records) - {'build.json', 'device.json'}
+                or any(not stat.S_ISREG(mode) for mode in records.values())):
+            raise ValueError('Fresh image contains customer state in machine provenance')
+    if 'state' in cubby:
+        if not stat.S_ISDIR(cubby['state']) or entries('/cubby/state'):
+            raise ValueError('Fresh image contains customer state; Library and saves must be empty')
+
+
+def validate_customer_seed(storage):
+    def entries(name):
+        return {entry.name: entry.lstat().st_mode
+                for entry in (storage / name.lstrip('/')).iterdir()}
+    validate_customer_contents(entries)
 
 
 def source_provenance(source_root: Path, supplied: dict | None = None) -> dict:
@@ -283,6 +345,40 @@ def source_provenance(source_root: Path, supplied: dict | None = None) -> dict:
 DEFAULT_UPDATE_FEED = 'https://github.com/davidguttman/cubby-arcade/releases/download/cubby-device-stable/manifest.json'
 
 
+def image_update_identity(plan):
+    """Local composition identity, deliberately NOT a signed release manifest."""
+    if plan is None:
+        return None
+    from release_automation import sequence
+    commit = plan['source_commit']
+    if not isinstance(commit, str) or not re.fullmatch(r'(?:[a-f0-9]{40}|[a-f0-9]{64})', commit):
+        raise ValueError('Production image requires exact source identity')
+    return {'schema': 1, 'kind': 'image', 'product': 'cubby-rg353v',
+            'version': plan['version'], 'sequence': sequence(plan['version']),
+            'source_commit': commit, 'runtime_sha256': ROOTFS_SHA256}
+
+
+def media_identity_record(plan):
+    return {'device_cid': plan.get('device_cid'), 'media_identities': plan['media_identities']}
+
+
+def provision_media_identity(cubby, plan):
+    if not plan or 'media_identities' not in plan:
+        return
+    from rocknix.updates import atomic
+    atomic(Path(cubby) / 'image-provenance/device.json', media_identity_record(plan))
+
+
+def provision_image_identity(cubby, release, plan):
+    identity = image_update_identity(plan)
+    if identity is None:
+        return
+    from rocknix.updates import atomic
+    atomic(Path(release) / 'image.json', identity)
+    atomic(Path(cubby) / 'updates/record.json',
+           {key: identity[key] for key in ('version', 'sequence')})
+
+
 def provision_updater(cubby, source_root, feed=None, key=None, disabled=False):
     """Baseline trust provisioning, not an app-delivered key rotation."""
     if disabled:
@@ -304,7 +400,8 @@ def provision_updater(cubby, source_root, feed=None, key=None, disabled=False):
 def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
           *, source_root: Path | None = None, source_info: dict | None = None,
           progress=None, update_feed: str | None = None, update_key: Path | None = None,
-          wifi_profile: str = WIFI_PROFILE, disable_updates: bool = False) -> Path:
+          wifi_profile: str = WIFI_PROFILE, disable_updates: bool = False,
+          production_plan: dict | None = None, management_keys: bytes | None = None) -> Path:
     if bool(update_feed) != bool(update_key):
         raise ValueError('Update feed and public key must be provided together')
     if wifi_profile not in (WIFI_PROFILE, 'stock'):
@@ -341,7 +438,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         label = re.search(r'^Filesystem volume name:\s+(\S+)', stats, re.MULTILINE).group(1)
         if label != 'STORAGE':
             raise ValueError('Unexpected stock storage label')
-        identities = media_identities()
+        identities = production_plan['media_identities'] if production_plan and 'media_identities' in production_plan else media_identities()
         wifi_provenance = {'profile': wifi_profile, 'association_verified': False}
         storage = temporary / 'storage'
         storage.mkdir()
@@ -364,6 +461,9 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             flash.makedir('/cubby-splash')
             for name, data in splash_files(BASE_BOOT_HOOK.encode(), BOOT_HOOK.encode(), source_root).items():
                 flash.writebytes('/cubby-splash/' + name, data)
+            flash.makedir('/cubby-boot-screen')
+            flash.writebytes('/cubby-boot-screen/service',
+                             (source_root / 'runtime/native/rg353v/boot-screen/cubby-boot-screen.service').read_bytes())
             flash.makedir('/cubby-usb-diagnostics')
             for source, destination in (
                 ('usb-diagnostics-start.sh', 'start.sh'),
@@ -379,15 +479,24 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             ):
                 flash.writebytes('/cubby-wifi-recovery/' + destination,
                                  (source_root / 'rocknix/device' / source).read_bytes())
+            if management_keys:
+                flash.makedir('/cubby-setup')
+                flash.writebytes('/cubby-setup/authorized_keys', management_keys)
+                flash.makedir('/cubby-recovery-management')
+                for source, target in [('management.py', 'management.py'),
+                                       ('cubby-recovery-management.service', 'service')]:
+                    flash.writebytes('/cubby-recovery-management/' + target,
+                                     (source_root / 'rocknix/device' / source).read_bytes())
             flash.writetext('/CUBBY-RECOVERY.txt', 'Create an empty file named CUBBY-DISABLED (no extension) beside this file to boot stock ROCKNIX. Power off before editing the card.\n')
         run('fatlabel', str(fat), identities['boot_label'])
         run('fatlabel', '--volume-id', str(fat), identities['fat_serial'])
         finalize_fat(fat)
-        release_id = 'image-' + ROOTFS_SHA256[:12]
+        release_id = ('image-' + production_plan['version'] + '-' + production_plan['source_commit'][:12]
+                      if production_plan else 'image-' + ROOTFS_SHA256[:12])
         cubby = storage / 'cubby'
         release = cubby / 'releases' / release_id
         release.mkdir(parents=True)
-        report('Adding WPE, Cubby, and offline Trail Mix...')
+        report('Adding WPE and Cubby with an empty Library...')
         (release / 'rootfs').mkdir()
         # This archive is maintainer-built and checksum-pinned, not user input.
         # Numeric ownership and symlinks must remain intact for Bubblewrap.
@@ -395,6 +504,8 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         for name in ('runtime', 'rocknix'):
             shutil.copytree(source_root / name, release / 'app' / name,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        if production_plan:
+            (release / 'app/runtime/version.json').write_text(json.dumps({'version': production_plan['version']}))
         (release / 'app/hosting').mkdir()
         shutil.copy2(source_root / 'hosting/catalog.yaml', release / 'app/hosting/catalog.yaml')
         shutil.copytree(source_root / 'rocknix/device', release / 'device')
@@ -402,11 +513,13 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         (cubby / 'updater').mkdir()
         shutil.copy2(source_root / 'rocknix/updates.py', cubby / 'updater/coordinator.py')
         provision_updater(cubby, source_root, update_feed, update_key, disable_updates)
+        provision_image_identity(cubby, release, production_plan)
         (cubby / 'state').mkdir()
         provenance = cubby / 'image-provenance'
         provenance.mkdir()
-        seed_game(cubby / 'state', provenance)
+        provision_media_identity(cubby, production_plan)
         (provenance / 'build.json').write_text(json.dumps({
+            **({'product_version': production_plan['version']} if production_plan else {}),
             'rocknix_release': '20261101', 'rocknix_sha256': ROCKNIX_SHA256,
             'wpe_rootfs_sha256': ROOTFS_SHA256,
             **source_provenance(source_root, source_info),
@@ -414,12 +527,16 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             'media_identities': identities, 'wifi_compatibility': wifi_provenance,
         }, indent=2) + '\n')
         validate_storage_seed(storage)
+        validate_customer_seed(storage)
         storage_image = temporary / 'storage.ext4'
         size = storage_gib * 1024 ** 3
         with storage_image.open('wb') as destination:
             destination.truncate(size)
         run('mkfs.ext4', '-q', '-F', '-m', '0', '-L', identities['storage_label'], '-U', identities['storage_uuid'], '-d', str(storage), str(storage_image))
         run('e2fsck', '-f', '-n', str(storage_image))
+        if production_plan:
+            from rocknix.production_image import audit_partitions
+            audit_partitions(fat, storage_image, release_id, production_plan)
         # Preserve prefix including stock bootloader and FAT partition start.
         final_raw = temporary / 'cubby.img'
         copy_range(raw, final_raw, 0, second[0] * 512)

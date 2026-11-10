@@ -17,6 +17,18 @@ SPEC.loader.exec_module(image)
 
 
 class ImageTests(unittest.TestCase):
+    def test_customer_seed_is_empty_and_old_game_installer_is_not_available(self):
+        with tempfile.TemporaryDirectory() as directory:
+            storage = Path(directory)
+            (storage/'cubby/state').mkdir(parents=True)
+            (storage/'cubby/updates').mkdir()
+            (storage/'cubby/updates/record.json').write_text('{"version":"0.35.0"}')
+            image.validate_customer_seed(storage)
+            (storage/'cubby/state/games').mkdir()
+            with self.assertRaisesRegex(ValueError, 'customer state'):
+                image.validate_customer_seed(storage)
+        self.assertFalse(hasattr(image, 'seed_game'))
+
     def test_build_rejects_dangling_output_and_checksum_symlinks_upfront(self):
         for checksum in (False, True):
             with self.subTest(checksum=checksum), tempfile.TemporaryDirectory() as directory:
@@ -109,6 +121,15 @@ class ImageTests(unittest.TestCase):
         struct.pack_into('<I', header, 88, zlib.crc32(entries))
         struct.pack_into('<I', header, 16, zlib.crc32(header[:92]))
         return bytes(mbr + header + entries)
+
+    def test_generated_layout_accepts_expansion_but_checks_backup_and_stock_stays_strict(self):
+        original = self.gpt()
+        with tempfile.TemporaryFile() as target:
+            image.grow_gpt(target, image.gpt_layout(io.BytesIO(original)), 6 * 1024 ** 3 // 512)
+            with self.assertRaises(ValueError): image.gpt_layout(target)
+            self.assertEqual(image.generated_gpt_layout(target)[3][1][1], 6 * 1024 ** 3 // 512)
+            target.seek(-512, 2); target.write(b'BROKEN!!')
+            with self.assertRaises(ValueError): image.generated_gpt_layout(target)
 
     def test_grow_assigns_unique_ids_and_relocates_backup(self):
         original = self.gpt()

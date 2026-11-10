@@ -76,10 +76,15 @@ class DiagnosticsTests(unittest.TestCase):
             units = root/'run/systemd/system'
             units.mkdir(parents=True)
             (root/'model').write_bytes(b'Anbernic RG353V\0')
-            for name in ('usb-diagnostics', 'wifi-recovery'):
+            for name in ('usb-diagnostics', 'wifi-recovery', 'recovery-management'):
                 destination = root/f'flash/cubby-{name}'
                 destination.mkdir(parents=True)
                 shutil.copyfile(ROOT/f'rocknix/device/cubby-{name}.service', destination/'service')
+            (root/'flash/cubby-boot-screen').mkdir()
+            shutil.copyfile(ROOT/'runtime/native/rg353v/boot-screen/cubby-boot-screen.service',
+                            root/'flash/cubby-boot-screen/service')
+            (root/'flash/cubby-setup').mkdir()
+            (root/'flash/cubby-setup/authorized_keys').write_text('public key fixture')
             # Execute the image's real registration, with every device path
             # confined to the fixture. No system manager or device is changed.
             hook = BASE_BOOT_HOOK.replace('/proc/device-tree/model', str(root/'model'))
@@ -142,6 +147,8 @@ WantedBy=rocknix.target
             self.assertNotIn('ordering cycle', result.stderr.lower(), result.stderr)
             self.assertNotIn('deleted', result.stderr.lower(), result.stderr)
             self.assertTrue((units/'multi-user.target.wants/cubby-wifi-recovery.service').is_file())
+            self.assertTrue((units/'rocknix.target.wants/cubby-recovery-management.service').is_file())
+            self.assertTrue((units/'sysinit.target.wants/cubby-boot-screen.service').is_file())
 
     def test_startup_cooperates_with_native_boot_and_repeated_listener_starts(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -362,10 +362,22 @@ class Manager:
         try: m=json.loads(raw,object_pairs_hook=unique)
         except (ValueError,UnicodeError): raise ValueError('Invalid manifest') from None
         validate_manifest(m)
-        sequence=self.read_record().get('sequence',0)
+        record=self.read_record()
+        sequence=record.get('sequence',0)
         # A bridged release and the same version's platform manifest name different archives.
+        # A composed image has a separately named local identity, never an invented
+        # signed manifest (bridge() must only consume signed release.json files).
+        image=read_json(self.base/'current/image.json')
+        installed_image=(set(image)=={'schema','kind','product','version','sequence','source_commit','runtime_sha256'}
+                         and type(image['schema']) is int and image['schema']==1
+                         and image['kind']=='image' and image['product']=='cubby-rg353v'
+                         and image['runtime_sha256']==RUNTIME
+                         and isinstance(image['source_commit'],str)
+                         and re.fullmatch(r'(?:[a-f0-9]{40}|[a-f0-9]{64})',image['source_commit'])
+                         and image['version']==record.get('version')==m['version']
+                         and type(image['sequence']) is int and image['sequence']==sequence)
         installed=(allow_installed and m['sequence']==sequence and
-                   read_json(self.base/'current/release.json').get('sequence')==sequence)
+                   (read_json(self.base/'current/release.json').get('sequence')==sequence or installed_image))
         if m['sequence']<=sequence and not installed: raise ValueError('Replayed update')
         if self.release_id(m) in self.read_record().get('rejected',[]): raise ValueError('Previously rejected update')
         return m

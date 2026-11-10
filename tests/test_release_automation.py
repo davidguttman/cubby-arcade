@@ -42,6 +42,7 @@ import hashlib
 import subprocess
 from tests.test_update_publish import FakeGitHub as FeedGitHub
 from tests.test_desktop_release import FakeGitHub as ReleaseGitHub
+from rocknix import production_release
 from release_automation import prepare_device, verify_device, advance_feed, publish_all
 from rocknix import update_release, update_publish
 
@@ -58,6 +59,13 @@ class UnifiedPublicationTests(unittest.TestCase):
         subprocess.run(['openssl','genpkey','-algorithm','ED25519','-out',str(self.private)],check=True,capture_output=True)
         subprocess.run(['openssl','pkey','-in',str(self.private),'-pubout','-out',str(self.public)],check=True,capture_output=True)
         prepare_device(self.source,self.output,self.private)
+        # Expensive real filesystem verification is exercised separately; publication
+        # fixtures still carry a complete image trio and exercise upload ordering.
+        name='Cubby-Arcade-RG353V-v0.11.1-'+('a'*12)+'.img.gz'
+        self.images=(name,name+'.json',name+'.sha256')
+        for asset in self.images: (self.output/asset).write_bytes(b'image-fixture')
+        gate=mock.patch.object(production_release,'release_files',return_value=self.images)
+        gate.start();self.addCleanup(gate.stop)
         for name in ['CubbyArcade-win32-x64.zip','CubbyArcade-linux-x64.tar.gz']:
             p=self.output/name;p.write_bytes(name.encode())
             (self.output/(name+'.sha256')).write_text(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+name+'\n')
@@ -105,7 +113,7 @@ class UnifiedPublicationTests(unittest.TestCase):
             return gh(args,document)
         def feed(*args):
             self.assertFalse(gh.release['draft'])
-            self.assertEqual(len(gh.release['assets']),10)
+            self.assertEqual(len(gh.release['assets']),13)
         with mock.patch('release_automation.advance_feed',side_effect=feed) as call:
             publish_all(self.source,self.output,'a'*40,api)
             call.assert_called_once()
@@ -122,6 +130,12 @@ class UnifiedPublicationTests(unittest.TestCase):
         with mock.patch('release_automation.advance_feed') as feed:
             with self.assertRaises(ValueError):publish_all(self.source,self.output,'a'*40,api)
             self.assertEqual(gh.calls,[]);feed.assert_not_called()
+    def test_image_gate_failure_never_writes_release_or_feed(self):
+        gh=ReleaseGitHub()
+        with mock.patch.object(production_release,'release_files',side_effect=ValueError('bad image')), mock.patch('release_automation.advance_feed') as feed:
+            with self.assertRaises(ValueError):publish_all(self.source,self.output,'a'*40,gh)
+            self.assertEqual(gh.calls,[]);feed.assert_not_called()
+
     def test_tag_source_mismatch_never_publishes(self):
         def api(args,document=None):return {'object':{'type':'commit','sha':'b'*40}}
         with mock.patch('release_automation.publish_release') as publish:
@@ -136,7 +150,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('main',workflow['on']['push']['branches'])
         self.assertEqual(workflow['concurrency']['cancel-in-progress'],'false')
         jobs=workflow['jobs']
-        self.assertEqual(jobs['publish']['needs'],['validate','windows','linux'])
+        self.assertEqual(jobs['publish']['needs'],['validate','windows','linux','image'])
         self.assertEqual(jobs['publish']['permissions']['contents'],'write')
         self.assertNotIn('permissions',jobs['linux'])
         plan=next(step for step in jobs['validate']['steps'] if step.get('id')=='plan')
@@ -149,4 +163,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('trap ',signing['run'])
         subprocess.run(['bash','-n'],input=signing['run'],text=True,check=True,capture_output=True)
         publish=jobs['publish']['steps'][-1]
-        self.assertEqual(publish['run'],'python3 release_automation.py publish')
+        self.assertIn('python release_automation.py publish',publish['run'])
+        image=jobs['image']
+        self.assertEqual(image['if'], "needs.validate.outputs.release == 'true'")
+        self.assertEqual(image['timeout-minutes'], '60')
+        self.assertNotIn('secrets.',str(image))
+        self.assertNotIn('--management-public-key',str(image))
+        build=next(step for step in image['steps'] if 'Build and independently' in step.get('name',''))
+        self.assertIn('--commit "$GITHUB_SHA"',build['run'])
+        subprocess.run(['bash','-n'],input=build['run'],text=True,check=True,capture_output=True)
