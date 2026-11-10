@@ -52,6 +52,7 @@ async def exercise(cdp, origin, manager, screenshots):
             await screenshot('wifi-scan')
             await button(0)  # Selected first network using controller A.
             await page.locator('#keyboard').wait_for(state='visible')
+            assert await page.locator('#password').get_attribute('type') == 'text'
             await screenshot('wifi-password')
             assert await page.evaluate('document.documentElement.scrollHeight') <= 480
             await button(15)  # D-pad right moves focus on keyboard.
@@ -61,6 +62,7 @@ async def exercise(cdp, origin, manager, screenshots):
             await button(5)  # Shoulder toggles case.
             assert await page.locator('#keyboard').get_by_role('button', name='Q', exact=True).is_visible()
             await page.locator('#password').fill('wrong-pass')
+            await screenshot('wifi-password-visible')
             await button(9)  # Start attempts connection.
             await page.get_by_text('Could not connect.', exact=False).wait_for()
             assert not manager.complete
