@@ -35,6 +35,12 @@
 
 ## Adult settings and notices
 
+- Always order settings by importance and frequency: everyday settings first,
+  one-time setup and advanced features (especially game feeds) later, and
+  exit/restart/power actions last. Device pages start with Wi-Fi, updates, Players,
+  then game saves; other hosts start with Players (when supported), then saves.
+  Keep visual, DOM, and default-focus order aligned. New settings must be placed
+  intentionally in this hierarchy, never prepended simply because they are new.
 - The hub's gear tab is the only settings screen, on every host, and it shows the math question until answered. Leaving the tab locks it again; returning from a worded page does not. On the device, add a page by listing it in `settings` in `rocknix/bridge.js`. Never add a second entry point or skip the question.
 - To flag something an adult should act on, use the shimmer: the `has-notice` class on a button (`runtime/core/hub.css`). Things look normal and a glint of light sweeps across them. No dots, badges, or color changes: David rejected those.
 - The update notice is wired through `updateAttention` in `rocknix/bridge.js` and `update_attention()` in `rocknix/server.py`; `notice: true` on a `settings` entry marks its tile. `check_for_update()` runs in the background, and only from idle or a past failure.
