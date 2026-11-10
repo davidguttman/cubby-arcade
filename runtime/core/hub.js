@@ -652,18 +652,21 @@ function mount(host){
  function renderOptions(){options.replaceChildren();gateSubmit=null;
  if(!settingsUnlocked){renderGate();return;}
  // Every tile shares one wrapping grid, so a handheld's short screen fits them in two rows.
- // Most used first: the host's pages in its order, then one-time controller setup, then power last.
+ // Everyday management first; setup and advanced feeds follow, exit/power last.
+ // DOM order is also the initial focus and keyboard/controller traversal order.
  const tiles=element(options,'div','settings-tiles'),controller=()=>{if(calibration)button(tiles,'controller','Adult controller setup',openController,'controller-settings settings-tile');};
- if(platform.feedConfig&&platform.setFeedConfig)button(tiles,'store','Game feeds',openFeeds,'manage-feeds settings-tile');
+ const feeds=()=>{if(platform.feedConfig&&platform.setFeedConfig)button(tiles,'store','Game feeds',openFeeds,'manage-feeds settings-tile');};
+ const quit=()=>{if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');};
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
- if(platform.settings?.length){for(const entry of platform.settings){if(entry.href==='#adult-players'&&!profiles)continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}
+ if(platform.settings?.length){for(const entry of platform.settings){if(entry.href==='#adult-players'&&!profiles)continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();feeds();if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}quit();
   // Past six tiles, a short screen takes four smaller ones a row to stay in two rows.
   tiles.classList.toggle('many',tiles.children.length>6);showNotice();showVersion();return;}
- controller();if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');
- if(profiles)button(options,'players','Players',()=>openSetting('#adult-players'),'manage-players settings-tile');
- button(options,'trash','Manage game saves',()=>openSetting('#adult-saves'),'manage-saves settings-tile');
- const setup=element(options,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
+ if(profiles)button(tiles,'players','Players',()=>openSetting('#adult-players'),'manage-players settings-tile');
+ button(tiles,'trash','Manage game saves',()=>openSetting('#adult-saves'),'manage-saves settings-tile');controller();
+ const setup=element(tiles,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
+ feeds();quit();
+ tiles.classList.toggle('many',tiles.children.length>6);
  }
  // A quiet badge for adults: gear tab, then the tile that needs attention.
  let notice=false,noticeTimer=null;

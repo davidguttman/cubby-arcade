@@ -477,6 +477,34 @@ function playersHub({list,pin,overrides={},capabilities={},windowOverrides={},en
  return {...mounted,localStorage,sessionStorage,calls};
 }
 const three=[{id:Profiles.FIRST,avatar:'bear'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog'}];
+function deviceSettings(){
+ const window={addEventListener(){}};
+ require('node:vm').runInNewContext(require('node:fs').readFileSync(require.resolve('../rocknix/bridge.js'),'utf8'),{window});
+ return window.HandheldPlatformOptions.settings;
+}
+const settingsLabels=host=>host.querySelector('.options-panel').querySelectorAll('button').map(button=>button.getAttribute('aria-label'));
+for(const device of [false,true])test('everyday settings precede setup and feeds, with safe default focus; device='+device,async()=>{
+ const calibration=require('../runtime/core/host-osd.js').createCalibration(()=>[],memory());
+ const {host,hub}=playersHub({pin:Profiles.FIRST,capabilities:{quit:true,power:device},overrides:{
+  settings:device?deviceSettings():[],feedConfig:async()=>({feeds:[]}),setFeedConfig:async value=>value,
+  updateAttention:async()=>({attention:true})
+ },windowOverrides:{HandheldOSD:{calibration,reset(){}},setInterval:()=>0,clearInterval(){}}});
+ await settle();hub.show('options');assert.equal(host.querySelector('.manage-feeds'),null);passGate(host);
+ const expected=device?['Wi-Fi settings','Cubby updates','Players','Game saves','Adult controller setup','Game feeds','Restart','Power off','Quit application']:['Players','Manage game saves','Adult controller setup','Adult keyboard setup','Game feeds','Quit application'];
+ assert.deepEqual(settingsLabels(host),expected);
+ assert.equal(host.ownerDocument.activeElement.getAttribute('aria-label'),expected[0]);
+ if(device){const update=host.querySelectorAll('.settings-tile').find(tile=>tile.getAttribute('aria-label')==='Cubby updates');assert.ok(Object.hasOwn(update.dataset,'notice'),'Update tile retains its attention marker');assert.ok(host.querySelectorAll('.view-tab')[2].classList.contains('has-notice'),'Gear retains update attention');}
+ hub.show('library');hub.show('options');assert.ok(host.querySelector('.settings-gate'));assert.equal(host.querySelector('.manage-feeds'),null);
+ hub.dispose();
+});
+test('settings omit unsupported advanced actions without displacing everyday defaults',async()=>{
+ const {host,hub}=mountedHub(games);await settle();hub.show('options');passGate(host);
+ assert.deepEqual(settingsLabels(host),['Manage game saves','Adult keyboard setup']);
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('.manage-saves'));hub.dispose();
+ const device=mountedHub(games,[],{},{settings:deviceSettings()});await settle();device.hub.show('options');passGate(device.host);
+ assert.deepEqual(settingsLabels(device.host),['Wi-Fi settings','Cubby updates','Game saves']);
+ assert.equal(device.host.ownerDocument.activeElement.getAttribute('aria-label'),'Wi-Fi settings');device.hub.dispose();
+});
 const picker=host=>host.querySelector('.player-picker');
 test('with players, Cubby asks who is playing on start; the first pick has no way around it',async()=>{
  const {host,action,calls,sessionStorage}=playersHub({list:three});await settle();
