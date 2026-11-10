@@ -1,4 +1,4 @@
-# Jump owns lifecycle and host routing. Export packages on the host before start.
+# Static preview of the web export. Run `uv run python web.py build` on the host before start.
 services:
   web:
     image: python:3.13-slim

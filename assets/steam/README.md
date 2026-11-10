@@ -1,7 +1,6 @@
 # Cubby Steam artwork
 
-Original Cubby artwork copied byte-for-byte from
-`/home/dguttman/clawd/output/cubby-steam` at David's request.
+Original Cubby artwork for Steam library entries.
 
 - `portrait.png`: 600×900 library capsule.
 - `landscape.png`: 920×430 landscape capsule.
@@ -9,7 +8,6 @@ Original Cubby artwork copied byte-for-byte from
 - `logo.png`: 1280×427 transparent Cubby wordmark.
 - `icon.png`: 512×512 transparent handheld icon.
 - `cubby-steam-artwork.zip`: original distributable artwork bundle.
-- `generation.txt`: original generation notes.
 - `sha256.json`: original inventory, retaining its Steam grid filenames.
 
 The inventory's original Steam grid names map to these descriptive filenames:

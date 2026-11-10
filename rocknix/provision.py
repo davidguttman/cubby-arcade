@@ -73,7 +73,7 @@ def validate_storage(facts, raw_size):
 
 def validate_stock(facts, profile):
     # RG353P is a shared stock firmware identifier, NOT a physical-model proof.
-    # The operator/supervisor must select the already-characterized physical model.
+    # The operator must select the already-characterized physical model.
     if profile != PROFILE:
         raise Blocked('explicit_supported_physical_profile_required')
     if (facts.get('android') != '11' or facts.get('product') != 'RG353P'

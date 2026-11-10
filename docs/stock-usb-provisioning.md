@@ -7,7 +7,7 @@ Cubby/SD installation proves this stock-device path works end to end.
 
 ## Supported entry profile and limitations
 
-The explicit `rg353v-android11` profile means the supervisor has independently
+The explicit `rg353v-android11` profile means the operator has independently
 identified the physical handheld as the characterized RG353V. Its shared stock
 Android firmware reports model `RG353P`, Android 11, and platform `rk3566`.
 **Those Android strings alone do not distinguish the physical RG353V/RG353P.**
@@ -20,13 +20,11 @@ The supported fingerprint is not a claim that every factory shipment exposes
 ADB/root without interaction. A stock unit with locked/disabled ADB is a real
 entry blocker, not an invitation to bypass or hide an authorization dialog.
 
-The current connected Cubby unit is **not stock Android**. David has authorized
-reflashing that exact unit for clean internal-install acceptance, but doing so
-cannot establish acceptance of the factory Android entry path. No real stock device was written while
-implementing the tool. Root-mode properties, recovery mount utilities, USB
+Reflashing a unit that already runs Cubby does not exercise the factory
+Android entry path. Root-mode properties, recovery mount utilities, USB
 re-enumeration, DHCP/link configuration, and complete unattended installation
-still require acceptance on a genuinely stock unit. The host must already be
-able to route the USB management address `169.254.170.2`.
+need to be checked on a genuinely stock unit. The host must already be able to
+route the USB management address `169.254.170.2`.
 
 ## Inputs and read-only plan
 
@@ -36,7 +34,7 @@ receipt must come from a trusted build/release channel: the receipt is a build
 record, not a signature authenticating an arbitrary supplier's bytes. Select
 the exact version and full source commit; do not select a date-only archive.
 
-The supervisor performs these steps without handing setup work back to the customer:
+The operator performs these steps without handing setup work back to the customer:
 
 1. Identify one authorized ADB serial and read its eMMC CID using checked
    shell-v2 (`adb -s SERIAL shell -T su 0 cat /sys/block/mmcblk0/device/cid`).
@@ -77,8 +75,8 @@ storage, or create a job checkpoint. The parent job directory must be private
 to the host user (0700); private client keys must be usable without prompts.
 
 Use the explicit `install` action with the **same arguments** after setup is
-authorized. The supervisor can do this without a separate human confirmation
-when the task already authorizes replacement of Android. Installation erases
+authorized. No separate confirmation prompt is shown; authorization to replace Android
+must already be in place. Installation erases
 internal Android; this procedure intentionally makes no backups. `--adb` can
 select an existing platform-tools executable; it does not download one.
 
@@ -95,8 +93,8 @@ nonzero-exit probe. Missing support or mismatched framing blocks before image or
 key transmission. The probe is repeated after root/reboot/wait transitions, so
 stock Android support is not assumed to persist into recovery. Image/key stdin,
 readback stdout, and remote diagnostics remain separate; failed remote commands
-never authorize another stage. These semantics are host-regression-tested but
-still need acceptance with the supported stock/recovery daemon versions.
+never authorize another stage. These semantics are covered by host regression
+tests; confirm them with the stock/recovery daemon versions on the device.
 
 ## State and verification
 
@@ -142,7 +140,7 @@ On resume in Android recovery, the tool re-probes the device and repeats the
 entire raw write/readback and host-key enrollment; a stale `written` checkpoint
 never skips verification. If reboot was already requested, resume only attempts
 pinned SSH validation—it does not silently reflash a running Linux device.
-Interrupted or failed transitions may require supervisor diagnosis; timeout is
+Interrupted or failed transitions may require operator diagnosis; timeout is
 never presented as a successful installation.
 
 ## Remaining commissioning gates
@@ -178,8 +176,8 @@ and controller/audio/power device presence. These presence checks **do not**
 certify working buttons, audible sound, game saves or sleep/wake.
 
 The optional `bench` action accepts one JSON object containing `ssid` and
-`password` on **stdin only**. The supervisor obtains these from its existing
-secret mechanism and pipes them directly; do not type them into shell command
+`password` on **stdin only**. Pipe them directly from a credential
+store; do not type them into shell command
 arguments or save them as a job artifact. Do not use an example containing real
 credentials. The action scans and connects through Cubby's native network
 socket, checks the persisted native Wi-Fi flag, records only newly created
@@ -188,7 +186,7 @@ internet connectivity afterward. No raw `nmcli` join substitutes for Cubby's
 setup code. Recovery remains on USB throughout.
 
 ```sh
-# stdin is supplied directly by the supervisor's credential source:
+# stdin is supplied directly from a credential store:
 uv run python -m rocknix.commission bench \
   --job /private/jobs/device-task --identity /private/operator
 ```
@@ -246,6 +244,6 @@ result. `customer_ready` deliberately remains false, with physical controls,
 audible speaker, sleep/wake, game-save persistence and signed update/rollback
 listed as pending. This bounded tool does not execute a test-game harness or
 signed trial/rollback and cannot certify those gates from source tests. The
-supervisor must retain separate actual-device evidence and finish those gates
+operator must retain separate actual-device evidence and finish those gates
 before customer handoff. It does not accept arbitrary operator flags to turn
 pending tests into passes.

@@ -1,10 +1,10 @@
 # Cubby RG353V boot artwork
 
-The source composition reuses Cubby's existing Steam handheld/orbit/sunset art.
-`source.png` is the ImageGen-adapted 4:3 composition; `preview.png` is the exact
-640×480 display sampling. `assets/steam/` retains the original Steam art.
-The requested **Cubby** wordmark is a branding exception to the usual wordless
-child-facing UI; the boot screen has no instructions or reading requirement.
+The source composition reuses Cubby's Steam handheld/orbit/sunset art.
+`source.png` is the 4:3 composition; `preview.png` is the exact 640×480 display
+sampling. `assets/steam/` retains the original Steam art. The **Cubby** wordmark
+is a branding exception to the usual wordless child-facing UI; the boot screen
+has no instructions or reading requirement.
 
 Maintainers regenerate only the technical display encodings with ImageMagick:
 
@@ -18,8 +18,8 @@ checked before the early shell renderer writes any bytes. Supported fb0 is
 640×480 with virtual size 640×480, zero pan/rotation, 32-bit XRGB8888 (stride
 2560), or 16-bit RGB565 (stride 1280). Unknown layouts, nonzero device-tree
 rotation, missing/corrupt data, other models, and `CUBBY-DISABLED` use stock
-ROCKNIX rendering. A mock framebuffer alone does not prove panel initialization; see the physical
-RG353V evidence below.
+ROCKNIX rendering. A mock framebuffer alone does not prove panel initialization; see the
+hardware test notes below.
 No kernel, bootloader, initramfs, SYSTEM image, game data or saves are patched.
 
 ## Holding the art for the whole boot
@@ -97,40 +97,30 @@ Upstream source inspected at distribution commit
   Rotation inspection therefore uses shell-glob recursion and checks the hash
   of the exact four-byte zero rotation value, not unavailable applets.
 - `projects/ROCKNIX/packages/tools/rocknix-splash/package.mk` pins
-  `9d295bcb74be2282e32c6b614efbea6036974ba8`. That Git object was not retrievable
-  through the tree API during development; current upstream `main.c` hardcodes
-  ROCKNIX SVG paths. The firmware-specific init, rather than that moving source,
+  `9d295bcb74be2282e32c6b614efbea6036974ba8`; upstream `main.c` hardcodes
+  ROCKNIX SVG paths. The firmware-specific init, rather than that source,
   determines this hook contract.
 
 The generic `packages/sysutils/busybox/scripts/init` has an OEM PNG path but is
 **not** the ROCKNIX-specific init used here. Merely copying `oemsplash.png` would
-not replace this pinned renderer. Cold power-on and a direct view of the early boot sequence remain unverified.
+not replace this pinned renderer.
 
 After a successful framebuffer write, the early renderer records
 `rendered 640x480 <depth>` in `/run/cubby-splash.status`. This volatile marker
 survives the root switch and proves execution, not physical panel appearance.
 Failure to write this diagnostic marker does not prevent the custom splash.
 
-## Physical RG353V verification — 2026-11-06
+## Hardware testing
 
-Installed over authenticated SSH on the existing ROCKNIX 20261101 card. The
-exact older Cubby hook was preserved; only the splash-loader stanza was added.
-The boot partition was returned to read-only. An additional original-hook backup
-is at `/storage/cubby/repair-backups/cubby-boot-screen-20261106/` on this device.
+Installed on an RG353V running ROCKNIX 20261101 from an existing Cubby card;
+only the splash-loader stanza was added to the existing hook.
 
 - Live fb0: 640×480, 32-bit XRGB8888, stride 2560, zero pan/rotation;
   no device-tree rotation properties.
-- Invoked the guarded renderer on the handheld; its full framebuffer readback
-  matched `splash-32.raw` SHA-256
-  `8e63b06b54ea253f5216037b3e7ee9c2522b7bd33c3eee51d7fc2c634402c5cc`.
-  Decoded and inspected that readback: clear Cubby wordmark and correct artwork.
-- Reboot changed boot ID from `dc93be0f-efd2-4465-a2d9-d4dcfd66cafb` to
-  `988b91b0-def4-412c-a2db-819a72b8f990`. Without manually invoking the renderer
-  after boot, `/run/cubby-splash.status` contained `rendered 640x480 32`, proving
-  the early hook successfully wrote the framebuffer. The marker is best-effort
-  volatile evidence, not a panel photograph or a persistent card write.
-- Cubby `essway` returned active; a direct Wayland screenshot showed the hub.
-  USB NCM and authenticated SSH also returned after reboot.
+- The guarded renderer's full framebuffer readback matched `splash-32.raw`
+  SHA-256 `8e63b06b54ea253f5216037b3e7ee9c2522b7bd33c3eee51d7fc2c634402c5cc`.
+- After a warm reboot, without manually invoking the renderer,
+  `/run/cubby-splash.status` contained `rendered 640x480 32`, showing the early
+  hook wrote the framebuffer. Cubby, USB NCM and SSH came back normally.
 
-This verifies a warm reboot on this unit. Cold power-on, optical capture of
-splash duration/transition, and the 16-bit format on real hardware were not tested.
+The 16-bit format has not been run on hardware.

@@ -46,9 +46,9 @@ still require the hardware acceptance checks in the installation guide.
 ## RG353V production GTK4 kiosk runtime
 
 The original `build-rootfs.sh` output remains the pinned **baseline**, not the
-RG353V production runtime. This unit's kernel uses Mali kbase, and its EGL
+RG353V production runtime. The RG353V kernel uses Mali kbase, and its EGL
 implementation lacks the Wayland extension required by Cog's stock `wl` plugin.
-The hardware-proven integration uses WPE 2.48.3 and Cog 0.18.4's upstream GTK4
+The integration used on hardware is WPE 2.48.3 and Cog 0.18.4's upstream GTK4
 backend with the small opt-in patch in `patches/cog-0.18.4-gtk4-kiosk.patch`.
 `COG_PLATFORM_GTK4_KIOSK=1` hides browser chrome and requests fullscreen; it does
 not replace rendering/input code. `GSK_RENDERER=opengl` is a supported GTK4
@@ -98,7 +98,7 @@ cleaning partial files, and never publishes a timed-out attempt. This does not
 replace caller signal handlers and works from worker threads too. Installation
 is bounded to ten minutes per phase.
 
-The reviewed live-tested archive currently has SHA256
+The pinned, hardware-tested archive has SHA256
 `e1859403acf7593e5b2ad9b932092258302f415a093959de24fd402b7475ee92`.
 Image composition requires that exact runtime, and it stays on every device. A
 newer one ships through `rocknix/runtime.json`; see `docs/rg353v-updates.md`. The Linux
@@ -112,4 +112,3 @@ are tied to the pinned ROCKNIX release. A Bubblewrap wrapper preserves every
 argument and adds only `/dev/dma_heap/system`; WebKit's sandbox stays enabled.
 Actual device screenshots, Mali-G52 EGL/GLES identity, WebProcess seccomp,
 NoNewPrivs and PID namespace were verified in the isolated kiosk probe.
-Physical controller operation and audible audio remain separate acceptance gates.

@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["playwright", "pyyaml==6.0.3"]
 # ///
-"""Adult Wi-Fi UI with explicit simulation; connect to OpenClaw CDP only.
+"""Adult Wi-Fi UI with explicit simulation, driven through an existing Chromium CDP endpoint.
 
   uv run tests/browser_device_network.py --cdp http://127.0.0.1:18800
 

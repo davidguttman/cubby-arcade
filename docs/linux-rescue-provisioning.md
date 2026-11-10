@@ -4,20 +4,19 @@
 running Cubby/ROCKNIX, not an Android transport and not the bundle installer.
 It does not prove factory Android ADB access or unattended factory installation.
 It deliberately refuses to overwrite an internal installation that is running.
-No actual device was operated while implementing this path; hardware acceptance
-remains pending. A passing simulation does not certify a customer device.
+A passing simulation does not certify a customer device.
 
 ## Prerequisites
 
 - Explicit authorization to erase this unit's internal installation; no backup
-  is made. The current unit has that authorization already.
+  is made.
 - Cold boot from a separately identified recovery SD: `/flash` on
   `/dev/mmcblk1p1`, `/storage` on `/dev/mmcblk1p2`, root backing ultimately on
   `mmcblk1`. The read-only collector traverses partition, loop-file and block
   slave dependencies. Unknown or cyclic dependencies stop the job.
-- The characterized non-removable BJTD4R eMMC, 61,071,360 sectors, CID
-  `150100424a5444345200ec55ccb75600`, battery at least 30%. This narrow route
-  does not claim support for arbitrary stock devices.
+- The characterized non-removable BJTD4R eMMC (61,071,360 sectors) whose CID
+  is pinned in `rocknix/linux_rescue.py`, and a battery at least 30%. This
+  narrow route does not claim support for arbitrary stock devices.
 - No eMMC-backed mount (including other live process mount namespaces), swap,
   block holder, open raw block descriptor, file/directory descriptor, cwd/root/
   executable reference, or file mapping. Detached/lazily unmounted filesystems

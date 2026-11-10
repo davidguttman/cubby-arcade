@@ -77,7 +77,7 @@ def find_stars(raster: bytes) -> list[tuple[int, int, int, int]]:
 
 
 def prepare(source: Path) -> None:
-    # ImageGen supplies the reviewed 4:3 composition. Only exact display-size
+    # source.png is the finished 4:3 composition. Only exact display-size
     # sampling and pixel-format conversion happen here, with no crop/redesign.
     dimensions = subprocess.check_output(['magick', 'identify', '-format', '%w %h', str(source)], text=True)
     width, height = map(int, dimensions.split())

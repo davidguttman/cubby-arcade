@@ -4,10 +4,9 @@ The intended result is **power on → ROCKNIX → fullscreen WPE → Cubby**.
 Games install locally from Cubby's Store and saves remain on the card. No
 Electron, Chromium, desktop navigation, or game rewrite is involved.
 
-**Status:** installation tools are implemented for ROCKNIX **20261101** on the
-**RG353V**, not RG353VS. A successful build or VM test is not hardware validation.
-Screen/GPU acceleration, physical controls, sound, suspend/resume and cold boot
-must pass on a real RG353V before this kit is described as a certified install.
+**Supported:** ROCKNIX **20261101** on the **RG353V**, not RG353VS. A successful
+build or VM test is not hardware validation; check the items in step 4 on the
+handheld itself.
 
 ## What you need
 
@@ -18,7 +17,7 @@ must pass on a real RG353V before this kit is described as a certified install.
 - The **complete prebuilt Cubby RG353V kit**, including `install.py`, `device/`,
   `cubby-rg353v.tar.gz`, its `.sha256` file, and this guide. End users do not build
   WPE or install developer tools. Keep the kit together in one extracted folder.
-  Until an actual kit is published, the source checkout alone is not that kit.
+  The source checkout alone is not that kit (see Maintainer packaging below).
 
 ## 1. Put ROCKNIX on the card
 
@@ -149,5 +148,4 @@ Existing compatible Cubby cards can install it without rewriting firmware or
 saves using the [offline boot-artwork installer and exact restore procedure](../rocknix/splash/README.md).
 App updates carry the service that holds it on screen until the hub paints; the
 early loader stays a boot-partition file. Framebuffer layouts
-outside the documented guard retain the stock screen. The linked guide records
-physical RG353V framebuffer and warm-reboot evidence, plus untested cold-boot limits.
+outside the documented guard retain the stock screen.

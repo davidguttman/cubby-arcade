@@ -36,8 +36,8 @@
   // leave the handheld. Do not let a game's SDK latch that incidental blur as
   // a permanent pause; logical deactivation below still delivers its blur.
   win.addEventListener('blur',event=>{if(event.target===win&&active&&!nativeHidden())event.stopImmediatePropagation();},true);
-  // Freeze requestAnimationFrame work, including raw game loops, while the room
-  // is away. Removing elapsed sleep from timestamps prevents a catch-up jump.
+  // Freeze requestAnimationFrame work, including raw game loops, while the embedding
+  // page is away. Removing elapsed sleep from timestamps prevents a catch-up jump.
   function schedule(){if(active&&scheduled===null&&callbacks.size)scheduled=request(t=>{scheduled=null;const pending=[...callbacks];callbacks.clear();for(const [id,fn] of pending){if(!active){callbacks.set(id,fn);continue;}try{fn(t-offset);}catch(error){win.setTimeout(()=>{throw error;},0);}}schedule();});}
   win.requestAnimationFrame=fn=>{const id=++sequence;callbacks.set(id,fn);schedule();return id;};
   win.cancelAnimationFrame=id=>callbacks.delete(id);

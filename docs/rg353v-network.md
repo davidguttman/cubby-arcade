@@ -112,10 +112,9 @@ Its latest result is journaled and saved best-effort in
 **Hardware limitation:** the observed late reload created an interface and scan
 results only with the tested 25 MHz/non-UHS device-tree candidate. The original
 DTB failed before SDIO enumeration; this helper alone cannot fix that condition.
-This change does not modify device trees. Cold boot, authentication, HTTPS,
-reconnection and sleep/wake still need hardware acceptance.
+This helper does not modify device trees.
 
-Session startup now waits up to 30 seconds for a real Wayland socket, respecting
+Session startup waits up to 30 seconds for a real Wayland socket, respecting
 an explicit display instead of silently choosing another. Small rotated event
 logs live at `state/session.log` and `state/session.previous.log`; writing them is
 best-effort. The update trial budget includes these readiness phases, and USB
@@ -127,8 +126,8 @@ node --test tests/network_onboarding.cjs
 uv run tests/browser_device_network.py --cdp http://127.0.0.1:18800 --screenshots .cache/wifi-ui-evidence
 ```
 
-The browser check connects to the existing **OpenClaw** browser profile's CDP
-endpoint, opens/closes only its own page and starts a disposable loopback Python
+The browser check connects to an existing Chromium instance's DevTools (CDP)
+endpoint given by `--cdp`, opens/closes only its own page and starts a disposable loopback Python
 fixture. The page explicitly says **SIMULATION** and accepts `cubby-test`; it
 never invokes nmcli or changes host Wi-Fi. Tests cover controller movement,
 entry/case/Start, wrong-password retry, required completion, offline reload and
@@ -142,9 +141,5 @@ For manual desktop-only preview use an isolated state directory:
 CUBBY_NETWORK_SIMULATION=1 CUBBY_STATE=/tmp/cubby-network-preview uv run python -m rocknix.server
 ```
 
-This is not physical-device certification. Real RG353V radio enumeration,
-WPA2/WPA3 authentication, DNS/time/TLS, reboot autoconnect and sleep/wake require
-hardware verification. The installed eMMC is not changed by building these files.
-An existing installation needs the new Cubby payload before it has onboarding.
-Cubby binary updates and post-onboarding game-download behavior are separate
-features; this Wi-Fi flow does not claim to implement their release machinery.
+Simulation does not exercise the real radio, WPA2/WPA3 authentication,
+DNS/time/TLS, reboot autoconnect or sleep/wake; check those on the handheld.

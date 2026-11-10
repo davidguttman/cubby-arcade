@@ -26,7 +26,7 @@ pinned WPE runtime, and ROCKNIX retain their own independent versions.
    A version that changes `rocknix/runtime.json` publishes only the platform trio
    for handheld updates; desktop and full-image assets are still required.
    See [device updates](rg353v-updates.md).
-5. Independently of those release gates, Render's Static Site in **Superstruct**
+5. Independently of those release gates, Render's Static Site
    tracks `main` with auto-deploy **On Commit**, managed in the dashboard/API.
    It builds with `python3 -m pip install -r requirements.txt && python3 hosting/build.py`
    and publishes `.cache/web`, with no runtime start command. Each main commit

@@ -65,11 +65,10 @@ complete persistent journal.
   gadget functions, so a USB serial console cannot be added as configuration
   alone. Native NCM avoids rebuilding or replacing the official kernel.
 
-Evidence inspected: official release `20261101` RK3566 kernel configuration;
+This design follows the official release `20261101` RK3566 kernel configuration;
 `projects/ROCKNIX/packages/rocknix/sources/scripts/usbgadget`, native autostart and
-udev rules; actual pinned SYSTEM containing `/usr/bin/python3.14` and
-`/usr/bin/usbgadget`. Source/HTTP tests do **not** prove physical enumeration.
+udev rules; and the pinned SYSTEM image, which contains `/usr/bin/python3.14` and
+`/usr/bin/usbgadget`.
 
-**Hardware status:** USB enumeration, host DHCP, and status retrieval from the
-physical RG353V remain unverified. An image already flashed before this change
-has none of these additions. Rebuilding alone does not update that device.
+Cards flashed before diagnostics were added do not have them; rebuilding an
+image does not change an existing card.

@@ -161,7 +161,7 @@ Downloads and updates are free. The desktop test account starts with 10 local
 tokens; one token is charged per successful launch, not per game purchase or
 minute played. There is no timer. Do not implement charging inside the game.
 The browser demo is free and does not simulate native wallet enforcement.
-There are no real-money payments, creator payouts or cloud accounts yet.
+There are no real-money payments, creator payouts or cloud accounts.
 
 Cubby verifies every file, stages a complete release and activates updates only
 outside gameplay. Existing ZIP schema 1 releases remain supported. New schema 2

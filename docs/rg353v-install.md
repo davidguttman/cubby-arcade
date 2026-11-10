@@ -22,10 +22,9 @@ microSD card (**16 GB minimum; 32 GB recommended**), and a computer/card reader.
    Cubby opens fullscreen into adult Wi-Fi setup, then an empty Library.
    Install games through Cubby after setup. No test saves or prior setup data are included.
 
-**Availability/status:** the image builder produces a local artifact; a public
-image download has not yet been published. Physical RG353V cold boot, GPU,
-buttons, sound, and sleep/wake are not yet certified. A built image or VM test
-is not hardware acceptance.
+Each versioned [GitHub release](releases.md) carries the image with its
+`.json` receipt and `.sha256` checksum. A built image or VM test is not
+hardware acceptance.
 
 ### If this RG353V cannot boot ROCKNIX
 
@@ -107,8 +106,8 @@ normal consumer setup. Neither tool wipes internal Android.
 Newly built images enable a read-only diagnostic link over USB, independent of
 Cubby's browser and display startup. See [USB diagnostics](rg353v-usb-diagnostics.md)
 for the Linux host command, logs available, opt-out, and early-boot limitations.
-Images flashed before this addition need updating; rebuilding does not update
-the connected handheld automatically.
+Cards flashed before diagnostics were added do not have them; rebuilding an
+image does not change an existing card.
 
 
 ## Production provisioning (maintainers)
@@ -198,7 +197,7 @@ Software tests or repair of an already-upgraded device do not satisfy this gate.
 Use the full `Cubby-Arcade-RG353V-vX.Y.Z-<commit>.img.gz` image from the intended
 versioned GitHub release, with its matching `.json` receipt and `.sha256` file.
 Do not use a date-only archived image and assume app updates will repair it.
-Each new release now builds and publishes this image as a mandatory gate before
+Each release builds and publishes this image as a mandatory gate before
 advancing app updates. The receipt ties the boot partition, updater and app
 inventory to the exact release source. Hardware acceptance remains a separate
 record; a receipt with `hardware_validated: false` is not a certification.
@@ -212,7 +211,7 @@ separate from public downloads, and verify recovery access on the target unit.
 For the resumable host-side stock Android transport, profile boundaries,
 no-backup behavior, exact image readback, pinned recovery enrollment and remaining
 hardware acceptance requirements, see [stock USB provisioning](stock-usb-provisioning.md).
-This is separate from the SSH bundle installer and does not yet certify an
+This is separate from the SSH bundle installer and does not certify an
 unattended customer-ready installation.
 
 For an already-installed unit, [Linux SD recovery reflash](linux-rescue-provisioning.md)

@@ -1,10 +1,8 @@
 # Cubby Arcade name and deployment migration
 
 The product is **Cubby Arcade**, repository `davidguttman/cubby-arcade`.
-Canonical development checkout: `/mnt/data/play/native/cubby-arcade`.
-Canonical VM state: `/mnt/data/vms/cubby-arcade`.
-Local Jump preview: https://cubby-arcade.davidguttman.jump.sh .
-Public web/catalog origin: https://cubby-arcade.onrender.com .
+Public web/catalog origin: https://cubby.david.app .
+Development VM state lives outside the checkout (`CUBBY_ARCADE_VM_DIR`).
 The desktop build is `dist/CubbyArcade-linux-x64/CubbyArcade`.
 
 ## Compatibility, not old branding
@@ -37,13 +35,12 @@ The desktop build is `dist/CubbyArcade-linux-x64/CubbyArcade`.
 
 `render-site` is the **historical generated deployment-only branch**, not
 application source and not a branch to merge into `main`. Preserve it unchanged.
-Production uses a dashboard/API-managed Render **Static Site** in **Superstruct**,
+Production uses a dashboard/API-managed Render **Static Site**,
 tracking `main` with auto-deploy **On Commit**. There is no repository Blueprint.
 Build with `python3 -m pip install -r requirements.txt && python3 hosting/build.py`
 and publish `.cache/web`; there is no runtime start command. A Python Web Service
-running `hosting/serve.py` is not the production deployment type. The release
-supervisor verifies/integrates source and configures the Static Site separately;
-see the [hosting settings](README.md#source-hosted-cloud-deployment-and-independent-game-updates).
+running `hosting/serve.py` is not the production deployment type. The Static
+Site's routes and headers are configured outside the repository; see the [hosting settings](README.md#source-hosted-cloud-deployment-and-independent-game-updates).
 This does not replace native executables or change their release gates.
 
 The CDN serves the generated browser preview, registry, stable manifests and
@@ -55,7 +52,7 @@ and old catalog previews usable. The token implementation was released separatel
 in desktop 0.2.0; this migration changes no budget/session behavior.
 
 Line Cutter source now belongs to `davidguttman/line-cutter`; its published complete
-0.3.0 historical bootstrap package replaces the old portfolio asset dependency.
+0.3.0 historical bootstrap package replaces the old individual-asset dependency.
 New releases follow the schema-2 file manifest and single GitHub-release contract
 introduced in Cubby 0.3.0, without requiring ZIP publication.
 The historical bootstrap lock is not an updater version pin: future releases

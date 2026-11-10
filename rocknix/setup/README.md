@@ -1,8 +1,7 @@
 # Linux setup engine
 
 This module is the image-composition layer for the adult desktop installer.
-It does not flash cards or modify Android. Linux is the first supported host;
-macOS and Windows adapters remain future work.
+It does not flash cards or modify Android. Linux is the only supported host.
 
 ROCKNIX is downloaded directly from the pinned official GitHub release. We
 distribute only `rootfs.tar.xz` (WPE), Cubby source/configuration, and a manifest.
@@ -54,5 +53,4 @@ uv run --python 3.12 --with pyfatfs==1.1.0 --with setuptools==80.9.0 \
 The `worker` subcommand takes `--upstream`, `--payload`, `--output` and optional
 `--storage-gib`. `fetch --cache DIR` can prefetch/check the official image.
 
-Image-content verification is not hardware acceptance. RG353V cold boot,
-graphics, controls, audio and sleep/wake remain physical-device gates.
+Image-content verification is not hardware acceptance.

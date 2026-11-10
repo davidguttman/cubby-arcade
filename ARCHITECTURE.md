@@ -22,8 +22,8 @@ bytes. Layout changes require a Cubby update, never a game release.
 The host's canvas-space reservation supports documented `.screen`/`#screen`
 conventions; Shadow DOM does not create a separate browser viewport.
 Game packages, title screens, trailers and game code are shared across hosts.
-Web is the everyday UX testing path; VM validates ARM/WPE integration, not device
-performance. Real RG353V hardware testing remains necessary.
+Web is the everyday UX testing path; the VM validates ARM/WPE integration, not
+device performance, which needs a real RG353V.
 
 ## Boundaries
 
@@ -43,24 +43,10 @@ performance. Real RG353V hardware testing remains necessary.
 6. **Host shells:** Linux boot/WPE/hardware/VM and desktop fullscreen packaging.
    A desktop build is not evidence of Steam publishing or Steam Deck validation.
 
-## Implementation order and acceptance
+## Not implemented
 
-1. Shared input/platform/SDK extraction, preserving existing installed games,
-   legacy saves, held-button navigation protection and offline trailer playback.
-2. Browser build/preview using the same runtime and package bytes, responsive
-   presentation, pointer/touch/controller navigation and direct browser inspection.
-3. Desktop fullscreen host/build and adult catalog/install foundations. No
-   credentials or Steam App ID required for a local non-Steam smoke test.
-4. Independently verify focused tests, browser navigation/media/saves, VM parity,
-   desktop launch/build, and document commands plus remaining hardware/Steam gates.
-
-Use bounded implementation slices with independent spec then code-quality review.
-Preserve the existing VM disk/profile. No Node servers or manual Docker operations.
-
-## Deferred decisions, not blockers
-
-Final name/art direction, paid content, accounts, cloud sync policy, Steam App ID,
-store submission and production catalog hosting. Do not pretend these are shipped.
+Paid content, accounts, cloud save sync, a Steam App ID and Steam store
+submission. Do not describe them as shipped.
 
 Publisher authentication and game isolation are separate concerns from archive
 hash checks. Current trusted developer packages share an origin/profile; do not

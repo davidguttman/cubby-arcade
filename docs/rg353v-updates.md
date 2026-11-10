@@ -91,7 +91,7 @@ whose `-p2` trial failed needs a later release published on the baseline runtime
 
 After required Wi-Fi setup, open the updates tile on the hub's gear tab and answer its math question. Cubby
 checks the feed about a minute after starting and every 15 minutes while online,
-and marks the gear tab and updates tile with a badge when an update is ready. Check, download, and verify an update; install outside
+and marks the gear tab and updates tile with a shimmer when an update is ready. Check, download, and verify an update; install outside
 active gameplay. Download failure leaves the running app unchanged. An offline
 installed app keeps working. Failed staging can be retried by checking again;
 partial downloads are discarded rather than activated.
@@ -139,7 +139,7 @@ release's trial passes, and rollback restores the old one.
 
 ## Maintainer release
 
-**Normal releases are now automated by GitHub Actions.** Use the shared Cubby
+**Normal releases are automated by GitHub Actions.** Use the shared Cubby
 version in `package.json`; see [release workflow](releases.md). New desktop and
 handheld artifacts share `vX.Y.Z`. The existing stable feed URL and trust key do
 not change. Handheld 0.2.0 upgrades normally to the shared version.
@@ -152,16 +152,12 @@ device version counter. New immutable handheld assets are on `vX.Y.Z`, not
 
 Historically, device app versions used a separate `cubby-device-vX.Y.Z` namespace.
 That namespace is retained only for historical releases.
-Version 0.1.1 / sequence 3 is the first accepted production device release.
-The initial 0.1.0 candidate exposed a missing controller asset during acceptance;
-UI health rejected it and restored the previous working installation. Its
-immutable release is marked superseded. The stable feed has since advanced.
-Sequences strictly increase; gaps are permitted. Never publish a deliberately
+Version 0.1.1 / sequence 3 was the first production device release; the 0.1.0
+candidate is marked superseded. Sequences strictly increase; gaps are permitted. Never publish a deliberately
 broken rollback probe.
 
 Build from a clean, verified source checkout. Protect the private key with mode
-0600 and keep its protected backup separate from this checkout. The default
-local key directory is `/home/dguttman/.local/share/cubby-release/`; only
+0600 and keep it and its backup outside this checkout. Only
 `release-key.pem` is public. Do not pass private key contents on the command line
 or copy them into output artifacts.
 
@@ -169,7 +165,7 @@ or copy them into output artifacts.
 uv run --python 3.12 python -m rocknix.update_release \
   --source . --output .cache/device-release-0.1.1 --version 0.1.1 --sequence 3 \
   --archive-url https://github.com/davidguttman/cubby-arcade/releases/download/cubby-device-v0.1.1/app.zip \
-  --key /home/dguttman/.local/share/cubby-release/private-key.pem
+  --key /path/to/private-key.pem
 
 uv run --python 3.12 python -m rocknix.update_publish \
   --output .cache/device-release-0.1.1 \
@@ -222,34 +218,27 @@ Only runtimes that `current`, `previous`, `fallback` or a pending or staged rele
 do not use are removed, and never the baseline runtime.
 A power interruption during activation may reject an otherwise-good release; it
 must not leave an unconfirmed release in a reboot loop. Retention cleanup is
-intentionally not automatic yet.
+not automatic.
 
-## Verification boundary
+## Testing
 
 Whole-device updates, the guard and the bridge are tested off-device against the
 exact 0.11.0 baseline coordinator (`tests/test_update_everything.py`); the session
-itself is a stub there, because it needs root and the GPU. They have not yet run on
-hardware.
+itself is a stub there, because it needs root and the GPU. Unit tests use
+ephemeral keys and disposable files; browser regressions are explicit 640×480
+simulations.
 
-On 2026-11-05 the physical RG353V downloaded the signed production feed and app
-over Wi-Fi, rejected modified signed metadata, staged and activated 0.1.1, and
-confirmed browser readiness plus sustained process/server health. A real failed
-UI candidate timed out and automatically restored the previous working release.
-After a device reboot, version 0.1.1 / sequence 3 remained confirmed, Cubby's
-library rendered, and the adult update API reported configured/idle without error.
-All 34 installed game files were unchanged. Existing browser save progress and
-preferences remained present; ordinary gameplay may still update live save data.
-Evidence is retained locally under `.cache/production-update-acceptance/`.
+On an RG353V, release 0.1.1 downloaded the signed production feed and app over
+Wi-Fi, rejected modified signed metadata, staged and activated, and confirmed
+browser readiness plus sustained process/server health. A failing UI candidate
+timed out and automatically restored the previous working release. After a
+reboot the release stayed confirmed, installed game files were unchanged, and
+browser saves and preferences remained.
 
-The Python suite ran 256 tests with one skipped. Unit tests use ephemeral keys
-and disposable files; browser regressions are explicit 640×480 simulations.
-Default trust provisioning is tested, but a newly composed first-boot image and
-abrupt physical power interruption still need separate hardware acceptance.
+## Hardware testing of the whole-device layout
 
-## Hardware validation
-
-On 2026-11-06 an RG353V ran this path from its installed 0.20.1 layout, using
-signed test builds on a separate feed:
+An RG353V ran this path from an installed 0.20.1 layout, using signed test
+builds on a separate feed:
 
 - The old coordinator installed a release, then the bridge armed without moving
   `current`. The first boot through the guard confirmed the new layout 39 seconds

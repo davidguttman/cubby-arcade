@@ -1,6 +1,6 @@
 """Real browser storage smoke. Run with uv run --with playwright python.
-Uses an isolated context attached to the managed OpenClaw CDP browser.
-No server is started; target must already be hosted statically over HTTPS.
+Uses an isolated context in a Chromium already listening for CDP on 127.0.0.1:18800.
+No server is started; set CUBBY_BROWSER_ORIGIN to a static HTTPS deployment.
 """
 import asyncio,json,os
 from pathlib import Path

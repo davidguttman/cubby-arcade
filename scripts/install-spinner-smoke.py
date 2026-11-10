@@ -1,6 +1,7 @@
 """Install animation regression in an isolated browser with a synthetic bridge.
 Run: uv run --with playwright python scripts/install-spinner-smoke.py
-Uses the existing HTTPS preview; never downloads or changes installed games.
+Needs a Chromium listening for CDP on 127.0.0.1:18800 and CUBBY_BROWSER_ORIGIN
+set to a static HTTPS deployment; never downloads or changes installed games.
 """
 import asyncio
 import json

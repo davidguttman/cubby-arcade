@@ -14,15 +14,16 @@ ordinary browser play do not opt into this behavior.
 
 ## Optional starter game
 
-The room's Game Boy adds `&starter=line-cutter` to the valid handheld embed URL.
+An embedding page may add `&starter=line-cutter` to the valid handheld embed URL.
 This is a configuration opt-in, not a second launcher: the shared hub prepares the
 starter through the host's ordinary verified installer, then selects its actual
 Library entry. Ordinary `/play` (even with `starter` alone), desktop and native
 hosts keep their existing empty-library/Store behavior. A host may also configure
 `HandheldPlatformOptions.starterGame` to opt the same shared hub policy in.
 
-The room warms its existing iframe only after its first full interactive frame,
-using an idle callback (with a bounded fallback). Until pickup it remains hidden
+An embedding page should warm its iframe only after its own first full
+interactive frame, using an idle callback (with a bounded fallback). Until the
+player picks up the handheld, the iframe remains hidden
 and inactive under the protocol below; downloading/storage can proceed while
 animation and audio stay suspended. An immediate cold pickup can still wait for
 the first network download. The hub stays on Library with pictorial download
@@ -43,8 +44,8 @@ All messages are objects with `type: 'cubby:embed:v1'`. Use the exact iframe ori
 as `postMessage`'s target origin and validate both `event.origin` and
 `event.source === iframe.contentWindow` on receipt. Cubby binds the reverse
 direction to the exact `parentOrigin` and `window.parent`; it accepts only
-`https://david.app`, `https://www.david.app`, or HTTPS single-label preview
-subdomains under `davidguttman.jump.sh`.
+`https://david.app`, `https://www.david.app`, and the HTTPS development preview
+hosts matched by `allowed()` in `runtime/core/handheld-embed.js`.
 
 Child → parent:
 
@@ -52,7 +53,7 @@ Child → parent:
   (including game navigation and BFCache restoration). The hub/catalog may still
   be loading. Respond by sending the current active state; duplicate ready events
   are harmless.
-- `{type, event: 'exit'}`: Escape was pressed inside the frame. Return to the room.
+- `{type, event: 'exit'}`: Escape was pressed inside the frame. Return control to the embedding page.
 - `{type, event: 'audio-blocked'}`: browser autoplay policy rejected resuming media
   or an audio context. Do not claim audio resumed; allow a direct iframe gesture.
 
@@ -80,7 +81,7 @@ Reactivate the existing frame rather than replacing it: saves, downloads and
 running sessions retain their ordinary ownership. In handheld embed mode, Select
 alone toggles Cubby's game system menu; Start remains ordinary game input. Outside
 this mode the Select+Start and both-shoulder shortcuts are unchanged. Escape
-belongs to the embedding room.
+belongs to the embedding page.
 
 ## Verification
 
