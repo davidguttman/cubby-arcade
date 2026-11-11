@@ -293,7 +293,7 @@ function mount(host){
   const code=element(linkDialog,'div','link-code');code.setAttribute('role','img');code.setAttribute('aria-label','Pairing code');
   const squares=win.CubbyQR.matrix(address),size=squares.length+8;let path='';
   squares.forEach((row,y)=>row.forEach((dark,x)=>{if(dark)path+='M'+(x+4)+' '+(y+4)+'h1v1h-1z';}));
-  code.innerHTML='<svg viewBox="0 0 '+size+' '+size+'" shape-rendering="crispEdges"><rect width="'+size+'" height="'+size+'" fill="#fff"/><path d="'+path+'" fill="#000"/></svg>';
+  code.innerHTML='<svg viewBox="0 0 '+size+' '+size+'" shape-rendering="crispEdges"><rect width="'+size+'" height="'+size+'" fill="#fff" stroke="none"/><path d="'+path+'" fill="#000" stroke="none"/></svg>';
   saveButton(linkDialog,'Back',linkBack,'close-saves').focus();
   const known=new Set(link.pairings().filter(phone=>phone.confirmed).map(phone=>phone.id));
   linkWatch=link.onChange(()=>{if(linkDialog.open&&link.pairings().some(phone=>phone.confirmed&&!known.has(phone.id)))renderPhones('Phone paired.');});
