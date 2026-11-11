@@ -368,7 +368,8 @@
       async setRooms(id, list) {
         const reply = await post('rooms', {me: id, rooms: list, relay});
         // The server kept its connections while the page changed: tell this page where things stand.
-        for (const [room, now] of Object.entries(reply.rooms || {})) { await listener({type: 'presence', room, peers: now.peers || []}); if (now.open) await listener({type: 'open', room}); }
+        // Not awaited: the caller may be the very job these would queue behind.
+        for (const [room, now] of Object.entries(reply.rooms || {})) { listener({type: 'presence', room, peers: now.peers || []}); if (now.open) listener({type: 'open', room}); }
         if (!running) { running = true; events(); }
       },
       signal: (room, blob) => post('signal', {room, blob}),

@@ -153,3 +153,22 @@ test('a phone must say which Cubby, and oversize or bad input is refused', async
   assert.throws(() => cubby.link.channel('Bad Id'), /Invalid game id/);
   await assert.rejects(parent.link.acceptPairing('nope'), /Invalid pairing code/);
 });
+
+test('the handheld transport reports where things stand without waiting on the caller', async () => {
+  // The server keeps connections across pages; a page asking for its rooms is told what is already open.
+  const calls = [], storage = memoryStorage();
+  const fetch = async (url, init) => {
+    calls.push(url);
+    if (url === '/api/link/rooms') return {ok: true, json: async () => ({rooms: {['a'.repeat(32)]: {peers: ['b'.repeat(16)], open: true}}})};
+    if (url.startsWith('/api/link/events')) return new Promise(() => {});
+    return {ok: true, json: async () => ({})};
+  };
+  const transport = Link.createHostTransport({fetch, storage, relay: 'https://relay.test', setTimeout: () => {}});
+  const seen = []; let release; const blocked = new Promise(done => { release = done; });
+  transport.on(event => { seen.push(event.type); return blocked; });   // a listener that is still busy
+  await transport.setRooms('c'.repeat(16), ['a'.repeat(32)]);          // must return anyway
+  assert.deepEqual(seen, ['presence', 'open']); release();
+  const link = Link.createLink({role: 'cubby', storage: memoryStorage(), transport: Link.createHostTransport({fetch, storage: memoryStorage(), relay: 'https://relay.test', setTimeout: () => {}}), setTimeout: () => {}});
+  await link.start();
+  assert.match(await Promise.race([link.beginPairing(), new Promise(done => setTimeout(() => done('stalled'), 500))]), /^[A-Za-z0-9_-]{22}$/);
+});
