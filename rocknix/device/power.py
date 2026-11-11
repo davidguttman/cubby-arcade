@@ -323,6 +323,47 @@ class Host:
         result = self.run('pactl', 'get-sink-mute', '@DEFAULT_SINK@', timeout=AUDIO_TIMEOUT)
         return result.returncode == 0 and result.stdout.strip() == 'Mute: no'
 
+    def game_audio_active(self):
+        # The hub's video previews are deliberately silent. Old servers omit this
+        # field, which must leave their streams alone during a rolling update.
+        with urllib.request.urlopen('http://127.0.0.1:8080/api/power-state',
+                                    timeout=AUDIO_TIMEOUT) as response:
+            state = json.loads(response.read())
+        return isinstance(state, dict) and state.get('active_game') is True
+
+    def game_streams(self):
+        result = self.run('pactl', '--format=json', 'list', 'sink-inputs', timeout=AUDIO_TIMEOUT)
+        if result.returncode:
+            raise ValueError('game audio state unavailable')
+        streams = json.loads(result.stdout)
+        if not isinstance(streams, list) or not all(isinstance(item, dict) for item in streams):
+            raise ValueError('invalid game audio state')
+        return streams
+
+    def unmute_game_streams(self):
+        if not self.game_audio_active():
+            return False
+        changed = False
+        for stream in self.game_streams():
+            properties = stream.get('properties')
+            index = stream.get('index')
+            if (not isinstance(properties, dict) or properties.get('application.name') != 'Cog'
+                    or stream.get('corked') is not False or stream.get('mute') is not True
+                    or type(index) is not int or index < 0):
+                continue
+            # Recheck fake suspend before every mutation: its flags can appear
+            # while the server or audio service is answering the query.
+            if self.stock_sleeping():
+                return changed
+            if self.run('pactl', 'set-sink-input-mute', str(index), 'false',
+                        timeout=AUDIO_TIMEOUT).returncode:
+                raise ValueError('game audio unmute failed')
+            remaining = next((item for item in self.game_streams() if item.get('index') == index), None)
+            if remaining is not None and remaining.get('mute') is not False:
+                raise ValueError('game audio unmute not verified')
+            changed = True
+        return changed
+
     def awake_audio(self):
         """One check per second, even with a flood of input events. Awake callers only."""
         if self.stock_sleeping():
@@ -339,7 +380,8 @@ class Host:
             muted = result.stdout.strip() == 'Mute: yes'
             if muted and not self.unmute_sink():
                 raise ValueError('audio unmute not verified')
-            if muted or self.audio_reported:
+            streams_changed = self.unmute_game_streams()
+            if muted or streams_changed or self.audio_reported:
                 self.log('awake audio verified unmuted')
             self.audio_reported = False
         except (OSError, ValueError, subprocess.SubprocessError) as error:

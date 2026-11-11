@@ -208,6 +208,11 @@ class RuntimeTests(unittest.TestCase):
             self.state.updater.phase = phase
             self.assertEqual(busy(), expected, phase)
 
+    def test_power_state_identifies_gameplay_for_audio_recovery(self):
+        self.assertIs(json.loads(self.request('GET', '/api/power-state')[1])['active_game'], False)
+        self.state.active_game = 'trail-mix'
+        self.assertIs(json.loads(self.request('GET', '/api/power-state')[1])['active_game'], True)
+
     def test_pages_hear_system_events_by_long_polling(self):
         status, body = self.request('GET', '/api/system-events?after=-1')
         self.assertEqual((status, json.loads(body)), (200, {'seq': 0, 'events': []}))
