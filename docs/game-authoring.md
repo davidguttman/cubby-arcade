@@ -177,3 +177,11 @@ Test a fresh offline install, keyboard/controller input, pause/resume, return to
 library, save/restart and an update from a prior version. Verify all payload URLs
 use direct HTTPS (no redirects), and that uploaded byte sizes/hashes match.
 Physical controller and target-device performance need real hardware testing.
+
+## Cover and trailer shape
+
+The hub shows every cover and trailer in a 4:3 frame, the shape of the handheld's
+640 by 480 screen, and never crops them: a picture of another shape is shown whole
+with bars. Make `cover.png` and the attract video 4:3 (for example 1440 by 1080 and
+640 by 480). Keep a title a sixth of the way in from the top and the sides: the
+store's back button sits over the top left corner of the large preview.
