@@ -268,3 +268,4 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 
 /* Adult feed settings identify whose Store and Library these switches affect. */
 .feed-player{display:flex;align-items:center;gap:.5em;margin-left:auto}.feed-player .player-face{width:2.3em;height:2.3em}.feed-player .player-face svg{width:100%;height:100%}.feed-player-name{font-weight:700}
+.link-code{width:min(300px,56vh);margin:14px auto;border-radius:14px;overflow:hidden;background:#fff}.link-code svg{display:block;width:100%;height:auto}

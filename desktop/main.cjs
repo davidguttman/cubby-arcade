@@ -58,7 +58,7 @@ app.whenReady().then(async()=>{
       }
       if(!data)data=['/library','/catalog'].includes(pathname)?Buffer.from(JSON.stringify(library.entries())):await fs.readFile(file);
       if(pathname.startsWith('/games/')&&path.extname(file).toLowerCase()==='.html'){
-        let html=data.toString('utf8');const tag='<script src="/runtime/core/preferences.js"></script><script data-cubby-controller src="/runtime/core/host-osd.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script><script data-cubby-profile src="/runtime/core/profiles.js"></script>';
+        let html=data.toString('utf8');const tag='<script src="/runtime/core/preferences.js"></script><script data-cubby-controller src="/runtime/core/host-osd.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script><script data-cubby-link src="/runtime/core/link.js"></script><script data-cubby-profile src="/runtime/core/profiles.js"></script>';
         if(!html.includes(tag)){const match=/<!doctype[^>]*>/i.exec(html),at=match?match.index+match[0].length:0;data=Buffer.from(html.slice(0,at)+tag+html.slice(at));}
       }
       const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.webm':'video/webm','.mp4':'video/mp4','.mp3':'audio/mpeg','.png':'image/png'};

@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import yaml
 
 from runtime import battery, catalog, packages, server as assets
-from rocknix import network, updates
+from rocknix import link, network, updates
 
 UPDATE_CHECK_SECONDS = 15 * 60
 UPDATE_RETRY_SECONDS = 5 * 60
@@ -95,6 +95,7 @@ class State:
         self.pending = {}
         self.status = {}
         self.system_events = SystemEvents()
+        self.link = link.Link()
         self.developer = False
         self.fetched_feeds = {}
         self.catalog = catalog.validate_registry(yaml.safe_load(
@@ -372,6 +373,17 @@ class Handler(assets.Handler):
                 after = -1
             self.json_response(self.state.system_events.wait(after, SYSTEM_EVENT_WAIT))
             return
+        if path == '/api/link':
+            self.json_response({'available': self.state.link.available})
+            return
+        if path == '/api/link/events':
+            query = parse_qs(urlsplit(self.path).query)
+            try:
+                after = int(query.get('after', ['0'])[0])
+            except ValueError:
+                after = 0
+            self.json_response(self.state.link.read(query.get('boot', [''])[0], after, SYSTEM_EVENT_WAIT))
+            return
         if path == '/health':
             self.json_response({'ready': True})
             return
@@ -381,6 +393,9 @@ class Handler(assets.Handler):
     def do_POST(self):
         if self.path == '/api/system-events/ack':
             self.system_event_ack()
+            return
+        if self.path.startswith('/api/link/'):
+            self.link_request()
             return
         if self.path in {'/api/update', '/api/ui-ready'}:
             ready = self.path == '/api/ui-ready'
@@ -536,6 +551,23 @@ class Handler(assets.Handler):
                 raise ValueError('Unknown feed operation')
         except (ValueError, TypeError, OSError, KeyError):
             self.json_response({'error': 'invalid feed operation'}, 400)
+
+    def link_request(self):
+        """The page's link code asking the pipe to carry something (rocknix/link.py)."""
+        if (not self.valid_host() or self.headers.get('Origin') != self.origin
+                or self.headers.get('Content-Type') != 'application/json'):
+            self.send_error(403)
+            return
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 < size <= 300000:
+                raise ValueError('Invalid size')
+            self.json_response(self.state.link.request(self.path.removeprefix('/api/link/'), json.loads(self.rfile.read(size))))
+        except (ValueError, TypeError, KeyError):
+            self.json_response({'error': 'invalid request'}, 400)
+        except Exception:
+            # Relay unreachable, peer gone, or no WebRTC on this runtime: the page retries.
+            self.json_response({'error': 'unavailable'}, 503)
 
     def system_event_ack(self):
         if not self.valid_host() or self.headers.get('Origin') != self.origin:

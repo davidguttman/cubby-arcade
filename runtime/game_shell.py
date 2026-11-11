@@ -1,7 +1,7 @@
 """Host-owned system controls; package bytes on disk remain immutable."""
 import re
 
-TAG = '<script src="/runtime/core/handheld-embed.js"></script><script src="/runtime/core/preferences.js"></script><script data-cubby-controller src="/runtime/core/host-osd.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script><script data-cubby-profile src="/runtime/core/profiles.js"></script>'
+TAG = '<script src="/runtime/core/handheld-embed.js"></script><script src="/runtime/core/preferences.js"></script><script data-cubby-controller src="/runtime/core/host-osd.js"></script><script data-handheld-system src="/runtime/core/game-shell.js"></script><script data-cubby-link src="/runtime/core/link.js"></script><script data-cubby-profile src="/runtime/core/profiles.js"></script>'
 
 
 def inject(content):

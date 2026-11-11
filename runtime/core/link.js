@@ -20,6 +20,8 @@
   const STATE_KEY = 'cubby:link:v1', OUTBOX_KEY = 'cubby:link:outbox:v1', INBOX_KEY = 'cubby:link:inbox:v1:', SEEN_KEY = 'cubby:link:seen:v1', CURSOR_KEY = 'cubby:link:cursor:v1';
   // Set when the relay has a permanent address. Hosts and tests pass their own.
   const DEFAULT_RELAY = '';
+  // Where a phone lands after scanning: the grown-ups' pages, which load this same file.
+  const DEFAULT_COMPANION = '';
   const MAX_MESSAGE = 180000, MAX_HELD = 200, SEEN_IDS = 300;
   const PENDING_PAIRING_MS = 10 * 60 * 1000, NEGOTIATION_MS = 15000;
   const GAME_ID = /^[a-z0-9][a-z0-9-]{0,79}$/;
@@ -202,6 +204,8 @@
       },
       stop() { stopped = true; return transport.dispose(); },
       pairings() { return load().pairings.map(publicPairing); },
+      /* What the scanned code says: where to go, the code, and the relay when it is not the usual one. */
+      pairingAddress(code) { return (options.companion || DEFAULT_COMPANION) + '#pair=' + code + (options.relay && options.relay !== DEFAULT_RELAY ? '&relay=' + encodeURIComponent(options.relay) : ''); },
       onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
       /* Cubby: a fresh code for a phone to scan. Any earlier unscanned code stops working. */
       beginPairing() {
@@ -358,7 +362,12 @@
     }
     return {
       on(fn) { listener = fn; },
-      async setRooms(id, list) { await post('rooms', {me: id, rooms: list, relay}); if (!running) { running = true; events(); } },
+      async setRooms(id, list) {
+        const reply = await post('rooms', {me: id, rooms: list, relay});
+        // The server kept its connections while the page changed: tell this page where things stand.
+        for (const [room, now] of Object.entries(reply.rooms || {})) { await listener({type: 'presence', room, peers: now.peers || []}); if (now.open) await listener({type: 'open', room}); }
+        if (!running) { running = true; events(); }
+      },
       signal: (room, blob) => post('signal', {room, blob}),
       offer: async room => (await post('offer', {room})).sdp,
       answer: async (room, sdp) => (await post('answer', {room, sdp})).sdp,
@@ -393,7 +402,8 @@
       }
       if (!transport && win.RTCPeerConnection && relay) transport = createBrowserTransport({relay, fetch: win.fetch.bind(win), RTCPeerConnection: win.RTCPeerConnection});
       if (!transport) return null;
-      const link = createLink({role, storage, transport, crypto: win.crypto, describe, player});
+      let companion = options.companion || DEFAULT_COMPANION; try { companion = storage.getItem('cubby:link:companion') || companion; } catch (_) {}
+      const link = createLink({role, storage, transport, crypto: win.crypto, describe, player, relay, companion});
       await link.start(); return link;
     })().catch(() => null);
     return {
