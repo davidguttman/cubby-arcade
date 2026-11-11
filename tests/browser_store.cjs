@@ -129,3 +129,17 @@ test('background update detects multi-tab removal after fetching starts',async()
  const check=checkUpdates(updater);await started;await s.bridge.uninstall('test-game');release();await check;
  assert.deepEqual(await updater.library(),[]);assert.equal((await s.caches.keys()).filter(name=>name.startsWith('cubby-game-')).length,0);
 });
+test('many-file releases download several files at once, capped, and a failure settles every fetch before cleanup',async()=>{
+ const bytes={'play.html':'<canvas></canvas>','cover.png':'image'};for(let i=0;i<24;i++)bytes['part'+i+'.js']='// '+i;
+ const files={};for(const [name,body] of Object.entries(bytes))files[name]={url:'../releases/1.0/'+name,size:Buffer.byteLength(body),sha256:await hash(body)};
+ const manifest={schema_version:2,id:'test-game',version:'1.0',runtime:'web',entrypoint:'play.html',artwork:'cover.png',files};
+ let live=0,peak=0,fail=false;const caches=memoryCaches();
+ const fetch=async url=>{if(url===DEFAULT_URL)return Response.json([{id:manifest.id,title:'Test game',manifest_url:manifestURL,artwork:'https://games.test/cover.png'}]);if(url===manifestURL)return Response.json(manifest);
+  live++;peak=Math.max(peak,live);try{await new Promise(r=>setTimeout(r,5));const name=new URL(url).pathname.split('/').pop();if(fail&&name==='part7.js')throw Error('offline');return new Response(bytes[name]);}finally{live--;}};
+ const bridge=browserPlatform({origin,fetch,metadata:memoryMetadata(),caches,crypto:webcrypto});await bridge.catalog();await bridge.install('test-game');
+ assert.equal((await bridge.library())[0].version,'1.0');assert.ok(peak>1,'downloads ran one at a time');assert.ok(peak<=6,'too many downloads at once: '+peak);
+ const kept=(await caches.keys()).length;
+ manifest.version='1.1';for(const name of Object.keys(files)){bytes[name]+=' new';files[name]={url:'../releases/1.1/'+name,size:Buffer.byteLength(bytes[name]),sha256:await hash(bytes[name])};}fail=true;
+ await assert.rejects(bridge.install('test-game'),/offline/);assert.equal(live,0,'a fetch outlived the failed install');
+ assert.equal((await bridge.library())[0].version,'1.0');assert.equal((await caches.keys()).length,kept,'staging cache left behind');
+});

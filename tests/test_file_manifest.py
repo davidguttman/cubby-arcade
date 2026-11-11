@@ -91,6 +91,46 @@ class FileManifestTests(unittest.TestCase):
         with self.assertRaises(ValueError): catalog.install_entry(entry, games, developer=True)
         self.assertEqual(list(outside.iterdir()), [])
 
+    def test_many_files_download_several_at_once_and_failure_waits_for_all(self):
+        import threading, time
+        for i in range(24):
+            (self.build / f'part{i}.js').write_text(f'// {i}')
+        manifest = self.generate()
+        entry = {'id':'demo', 'title':'Demo', 'manifest_url':'https://game.example/manifest.json', 'artwork':'https://game.example/cover.svg'}
+        lock, state = threading.Lock(), {'live': 0, 'peak': 0, 'fail': False}
+        real = catalog.download
+        def fetch(url, destination, limit, developer=False, expected_size=None, digest=None, **kwargs):
+            if url.endswith('/manifest.json'):
+                Path(destination).write_text(json.dumps(manifest))
+                return url
+            with lock:
+                state['live'] += 1
+                state['peak'] = max(state['peak'], state['live'])
+            try:
+                time.sleep(0.01)
+                if state['fail'] and url.endswith('/part7.js'):
+                    raise OSError('offline')
+                return real((self.build / url.rsplit('/', 1)[1]).as_uri(), destination, limit, True, expected_size, digest)
+            finally:
+                with lock:
+                    state['live'] -= 1
+        games = self.root / 'games'
+        with patch.object(catalog, 'download', fetch):
+            catalog.install_entry(entry, games)
+            self.assertGreater(state['peak'], 1, 'downloads ran one at a time')
+            self.assertLessEqual(state['peak'], catalog.DOWNLOAD_WORKERS)
+            for i in range(24):
+                self.assertEqual((games / 'demo/current' / f'part{i}.js').read_text(), f'// {i}')
+            for i in range(24):
+                (self.build / f'part{i}.js').write_text(f'// {i} v2')
+            manifest = self.generate('2')
+            state['fail'] = True
+            with self.assertRaises(OSError):
+                catalog.install_entry(entry, games, update=True)
+            self.assertEqual(state['live'], 0, 'a download outlived the failed install')
+        self.assertEqual(json.loads((games / 'demo/current/manifest.json').read_text())['version'], '1')
+        self.assertEqual([p.name for p in games.iterdir() if p.name.startswith('.install')], [])
+
     def test_zip_migration_and_corrupt_reuse_downloads(self):
         import zipfile
         module = importlib.import_module('runtime.file_manifest')

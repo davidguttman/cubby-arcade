@@ -12,6 +12,16 @@ const MAX_BYTES=128*1024*1024,MAX_MANIFEST=256*1024;
 const idPattern=/^[a-z0-9][a-z0-9-]{0,79}$/,versionPattern=/^[a-z0-9][a-z0-9.-]{0,79}$/;
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const safePath=safePackagePath;
+const DOWNLOAD_WORKERS=6;
+// Games ship as many small files, so a serial fetch is all round trips.
+// Run a few at once; the first failure stops the rest, and this only settles
+// once every started task has, so callers can clean up safely.
+async function eachLimit(items,limit,signal,task){
+ const stop=new AbortController(),any=AbortSignal.any([signal,stop.signal]);let next=0,failure;
+ const worker=async()=>{while(next<items.length&&!any.aborted){const item=items[next++];try{await task(item,any);}catch(error){failure??={error};stop.abort(error);}}};
+ await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));
+ if(failure)throw failure.error;signal.throwIfAborted();
+}
 function httpsURL(value){if(typeof value!=='string')throw Error('Invalid download URL');const url=new URL(value);if(url.protocol!=='https:'||!url.hostname||url.username||url.password||url.hash)throw Error('HTTPS download required');return url;}
 function downloadURL(value,manifestURL){
  if(typeof value!=='string'||!value||/[\\\x00-\x20\x7f#]/.test(value)||/%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f|5c)/i.test(value)||value.startsWith('//'))throw Error('Invalid download URL');
@@ -166,19 +176,21 @@ class GameInstaller{
    noSymlinks(this.library.games,target);
    if(fs.existsSync(target)&&!sameInventory(await diskManifest(this.library.games,target),manifest))throw Error('Immutable release conflict');
    this.state(release.id,'downloading',{received,total});
-   for(const [name,file] of Object.entries(release.files)){
-    signal.throwIfAborted();let bytes;
+   const inflight=new Map(),report=()=>{let sum=received;for(const n of inflight.values())sum+=n;this.state(release.id,'downloading',{received:sum,total});};
+   await eachLimit(Object.entries(release.files),DOWNLOAD_WORKERS,signal,async([name,file],signal)=>{
+    let bytes;
     if(previous?.manifest.files[name]===file.sha256){
      try{
       const source=path.join(previous.directory,name);noSymlinks(this.library.games,source);
       const stat=await fsp.lstat(source);if(stat.isFile()&&stat.size===file.size){const local=await fsp.readFile(source);if(hash(local)===file.sha256)bytes=local;}
      }catch{/* Missing, changed or symlinked bytes must come from the release. */}
     }
-    if(bytes===undefined)bytes=await download(this.fetch,file.url,file.size,signal,n=>this.state(release.id,'downloading',{received:received+n,total}));
+    signal.throwIfAborted();
+    if(bytes===undefined){try{bytes=await download(this.fetch,file.url,file.size,signal,n=>{inflight.set(name,n);report();});}finally{inflight.delete(name);}}
     if(bytes.length!==file.size||hash(bytes)!==file.sha256)throw Error('Download checksum/size mismatch');
     const destination=path.join(temporary,name);await fsp.mkdir(path.dirname(destination),{recursive:true});await fsp.writeFile(destination,bytes,{mode:0o444});
-    received+=file.size;this.state(release.id,'downloading',{received,total});
-   }
+    received+=file.size;report();
+   });
    const metadata=JSON.stringify(manifest);if(Buffer.byteLength(metadata)>MAX_MANIFEST)throw Error('Manifest too large');
    await fsp.writeFile(path.join(temporary,'manifest.json'),metadata,{mode:0o444});return manifest;
   });

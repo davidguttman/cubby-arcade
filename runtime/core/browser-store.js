@@ -12,6 +12,16 @@
   const PREFIX='/__cubby_games__/',DB_NAME='cubby-browser-games-v1',CACHE_PREFIX='cubby-game-';
   const CATALOG_CACHE='cubby-discovery-v1',MAX_BYTES=128*1024*1024,MAX_MANIFEST=256*1024;
   const ID=/^[a-z0-9][a-z0-9-]{0,79}$/,VERSION=/^[a-z0-9][a-z0-9.-]{0,79}$/;
+  const DOWNLOAD_WORKERS=6;
+  // Games ship as many small files, so a serial fetch is all round trips.
+  // Run a few at once; the first failure stops the rest, and this only settles
+  // once every started task has, so callers can clean up safely.
+  async function eachLimit(items,limit,signal,task){
+   const stop=new AbortController(),any=AbortSignal.any([signal,stop.signal]);let next=0,failure;
+   const worker=async()=>{while(next<items.length&&!any.aborted){const item=items[next++];try{await task(item,any);}catch(error){failure??={error};stop.abort(error);}}};
+   await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));
+   if(failure)throw failure.error;signal.throwIfAborted();
+  }
   function safePath(name){
     if(typeof name!=='string'||!name||/[\\%?#\x00-\x1f\x7f]/.test(name)||name.endsWith(' ')||name.split('/').some(piece=>!piece||piece==='.'||piece==='..'))throw Error('Invalid game asset path');
     return name;
@@ -198,14 +208,16 @@
       const total=Object.values(manifest.files).reduce((sum,file)=>sum+file.size,0);
       state(id,'downloading',{received,total});
       try{
-        for(const [path,file] of Object.entries(manifest.files)){
-          signal.throwIfAborted();
-          const bytes=await readBytes(await ctx.fetch(file.url,{redirect:'error',cache:'no-store',signal}),file.size,n=>state(id,'downloading',{received:received+n,total}));
+        const inflight=new Map(),report=()=>{let sum=received;for(const n of inflight.values())sum+=n;state(id,'downloading',{received:sum,total});};
+        await eachLimit(Object.entries(manifest.files),DOWNLOAD_WORKERS,signal,async([path,file],signal)=>{
+          let bytes;
+          try{bytes=await readBytes(await ctx.fetch(file.url,{redirect:'error',cache:'no-store',signal}),file.size,n=>{inflight.set(path,n);report();});}
+          finally{inflight.delete(path);}
           signal.throwIfAborted();
           if(bytes.byteLength!==file.size||hex(await ctx.crypto.subtle.digest('SHA-256',bytes))!==file.sha256)throw Error('Download checksum/size mismatch');
           await cache.put(base+path.split('/').map(encodeURIComponent).join('/'),new Response(bytes,{headers:{'Content-Type':mediaType(path),'X-Content-Type-Options':'nosniff'}}));
-          received+=file.size;state(id,'downloading',{received,total});
-        }
+          received+=file.size;report();
+        });
         state(id,'verifying');
         await ctx.metadata.change(id,before.generation,record=>{signal.throwIfAborted();return {...record,title:offer.title,generation:record.generation+1,active:{token,manifest},releases:[...record.releases,token],identities:{...identities,[manifest.version]:currentIdentity}};});
         committed=true;

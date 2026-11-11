@@ -1,5 +1,6 @@
 """Adult/developer catalog management. Hashes verify bytes, not publisher identity."""
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -16,6 +17,7 @@ from . import packages, file_manifest
 
 MAX_CATALOG = 1024 * 1024
 MAX_RELEASE = 256 * 1024
+DOWNLOAD_WORKERS = 6
 ID = re.compile(r'[a-z0-9][a-z0-9-]{0,79}')
 VERSION = re.compile(r'[a-z0-9][a-z0-9.-]{0,79}')
 
@@ -281,6 +283,7 @@ def stage_files(release, root, developer=False):
     with tempfile.TemporaryDirectory(prefix='.install-files-', dir=root) as temporary:
         stage = Path(temporary) / 'release'
         stage.mkdir()
+        fetch = []
         for name, item in release['files'].items():
             destination = stage / name
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -299,7 +302,20 @@ def stage_files(release, root, developer=False):
                 except ValueError:
                     pass
             if not reused:
-                download(item['url'], destination, item['size'], developer, item['size'], item['sha256'], allow_redirects=False)
+                fetch.append((destination, item))
+        # Games ship as many small files, so a serial fetch is all round trips.
+        # A few at once fills the link; the first failure cancels the queue.
+        if fetch:
+            with concurrent.futures.ThreadPoolExecutor(min(DOWNLOAD_WORKERS, len(fetch))) as pool:
+                jobs = [pool.submit(download, item['url'], destination, item['size'], developer, item['size'], item['sha256'], allow_redirects=False) for destination, item in fetch]
+                try:
+                    for job in concurrent.futures.as_completed(jobs):
+                        job.result()
+                except BaseException:
+                    pool.shutdown(cancel_futures=True)
+                    raise
+        for name, item in release['files'].items():
+            destination = stage / name
             # Validate copied bytes too, not just the transport's declaration.
             if destination.stat().st_size != item['size'] or hashlib.sha256(destination.read_bytes()).hexdigest() != item['sha256']:
                 raise ValueError('File checksum/size mismatch')

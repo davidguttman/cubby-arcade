@@ -169,3 +169,14 @@ test('uninstall rejects an actual in-flight auto-update and refuses escaped rele
  const releases=path.join(f.lib.games,'demo/releases');fs.renameSync(releases,releases+'-original');fs.symlinkSync(f.root,releases);
  await assert.rejects(f.installer.uninstall('demo'),/symlink/i);assert(fs.existsSync(releases+'-original/2/index.html'));
 });
+test('many-file releases download several files at once, capped, and a failure settles every fetch before cleanup',async t=>{
+ const f=fixture(t),payload=Object.fromEntries(Array.from({length:24},(_,i)=>['part'+i+'.js','// '+i]));payload['index.html']='<canvas/>';payload['art.svg']='<svg/>';
+ offer(f,'1',payload);let live=0,peak=0;const plain=f.installer.fetch;
+ f.installer.fetch=async(url,options)=>{if(url.endsWith('manifest.json'))return plain(url,options);live++;peak=Math.max(peak,live);try{await new Promise(r=>setTimeout(r,5));if(url.endsWith('part7.js')&&f.fail)throw Error('offline');return await plain(url,options);}finally{live--;}};
+ await f.installer.install('demo');assert.equal(f.lib.entries()[0].version,'1');
+ assert(peak>1,'downloads ran one at a time');assert(peak<=6,'too many downloads at once: '+peak);
+ for(const name of Object.keys(payload))assert.equal(fs.readFileSync(path.join(f.lib.games,'demo/releases/1',name),'utf8'),payload[name]);
+ f.fail=true;offer(f,'2',Object.fromEntries(Object.entries(payload).map(([k,v])=>[k,v+' v2'])));
+ await assert.rejects(f.installer.install('demo'),/offline/);assert.equal(live,0,'a fetch outlived the failed install');
+ assert.equal(f.lib.entries()[0].version,'1');assert.deepEqual(fs.readdirSync(f.lib.games).filter(n=>n.startsWith('.install-')),[]);
+});
