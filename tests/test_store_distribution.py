@@ -41,12 +41,12 @@ class StoreDistribution(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         web.default_registry()
 
-    def test_default_fallback_has_four_offers_but_no_payloads(self):
+    def test_default_fallback_has_five_offers_but_no_payloads(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = web.build(Path(tmp) / 'site', registry=web.default_registry())
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'line-cutter', 'fox-barrister', 'small-change'])
+                             ['trail-mix', 'line-cutter', 'fox-barrister', 'small-change', 'owl-the-way-home'])
             trail = next(e for e in json.loads((site / 'catalog').read_text()) if e['id'] == 'trail-mix')
             self.assertEqual(trail['manifest_url'], 'https://trailmix.david.app/arcade/manifest.json')
             self.assertEqual(trail['artwork'], 'https://trailmix.david.app/discovery/cover.png')
@@ -72,7 +72,7 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertFalse((site / 'games').exists())
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'line-cutter', 'fox-barrister', 'small-change'])
+                             ['trail-mix', 'line-cutter', 'fox-barrister', 'small-change', 'owl-the-way-home'])
             self.assertEqual((site / 'store/little-camp/1/little-camp-1.game.zip').read_bytes(), old.read_bytes())
             self.assertFalse((site / 'store/trail-mix').exists())
             self.assertTrue((site / 'store/line-cutter/1/line-cutter-1.game.zip').is_file())

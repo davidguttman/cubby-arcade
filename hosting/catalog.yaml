@@ -17,3 +17,7 @@
   title: Small Change
   manifest_url: https://smallchange.david.app/arcade/manifest.json
   artwork: https://smallchange.david.app/discovery/cover.png
+- id: owl-the-way-home
+  title: Owl the Way Home
+  manifest_url: https://owlthewayhome.david.app/arcade/manifest.json
+  artwork: https://owlthewayhome.david.app/discovery/cover.png
