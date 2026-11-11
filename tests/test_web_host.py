@@ -11,6 +11,54 @@ import zipfile
 import web
 
 class WebHostTests(unittest.TestCase):
+    def test_beta_catalog_is_separate_and_cached_by_browser_without_breaking_native_inventory(self):
+        beta = [{'id': 'early', 'title': 'Early Game',
+                 'manifest_url': 'https://early.example/beta/manifest.json',
+                 'artwork': 'https://early.example/cover.png'}]
+        original_read = Path.read_text
+        def read_with_beta(path, *args, **kwargs):
+            if path == web.HERE / 'hosting/beta-catalog.yaml':
+                return json.dumps(beta)
+            return original_read(path, *args, **kwargs)
+        with tempfile.TemporaryDirectory() as tmp:
+            output = web.build(Path(tmp) / 'site')
+            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), [])
+            old_worker = (output / 'cubby-worker.js').read_text()
+            with patch.object(Path, 'read_text', read_with_beta):
+                web.build(output, registry=[], manifest_urls={'early': 'https://stable.example/manifest.json'})
+            self.assertEqual(json.loads((output / 'catalog').read_text()), [])
+            content = (output / 'beta/catalog').read_bytes()
+            self.assertEqual(json.loads(content), beta)
+            worker = (output / 'cubby-worker.js').read_text()
+            self.assertNotEqual(worker, old_worker)
+            settings = json.loads(worker.split('attachWorker(self,', 1)[1].removesuffix(');\n'))
+            self.assertIn('/beta/catalog', settings['shellPaths'])
+            inventory = json.loads((output / 'hub-manifest.json').read_text())['files']
+            # Existing native clients reject unknown shell paths; their feed
+            # manager maintains the independent last-good catalog cache.
+            self.assertNotIn('/beta/catalog', inventory)
+
+    def test_invalid_beta_catalog_preserves_previous_export(self):
+        original_read = Path.read_text
+        with tempfile.TemporaryDirectory() as tmp:
+            output = web.build(Path(tmp) / 'site')
+            previous = (output / 'hub-manifest.json').read_bytes()
+            for invalid in ('[broken', '{}', '[{"id":"early","title":"Early","manifest_url":"http://unsafe.example/manifest","artwork":"https://early.example/cover.png"}]'):
+                def read_with_invalid(path, *args, **kwargs):
+                    return invalid if path == web.HERE / 'hosting/beta-catalog.yaml' else original_read(path, *args, **kwargs)
+                with self.subTest(invalid=invalid), patch.object(Path, 'read_text', read_with_invalid):
+                    with self.assertRaises(ValueError):
+                        web.build(output)
+                self.assertEqual((output / 'hub-manifest.json').read_bytes(), previous)
+
+    def test_cli_default_build_exports_beta_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / 'site'
+            result = subprocess.run([sys.executable, 'web.py', 'build', '--output', str(output)],
+                                    cwd=web.HERE, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), [])
+
     def test_shell_only_build_does_not_require_posix_publisher_lock(self):
         script = '''
 import builtins, json, tempfile
@@ -78,6 +126,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 archive.writestr('manifest.json', json.dumps(manifest))
             output = root / 'output'
             web.build(output, [package])
+            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), [])
             self.assertEqual((output / 'index.html').read_bytes(), (web.HERE / 'runtime/index.html').read_bytes())
             self.assertFalse((output / 'games').exists())
             self.assertEqual(json.loads((output / 'library').read_text()), [])

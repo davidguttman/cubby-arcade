@@ -130,7 +130,8 @@ class GameUpdates(unittest.TestCase):
             self.publisher.publish('3')
             for mode in ['disable', 'remove']:
                 self.publisher.requests.clear()
-                self.assertEqual(run(mode)[0]['version'], '2')
+                self.assertEqual(run(mode), [])
+                self.assertEqual(device.packages.library(self.state.games)[0]['version'], '2')
                 self.assertNotIn('/manifest.json', self.publisher.requests)
             del self.publisher.documents['/other-catalog']
             self.assertEqual(run('offline')[0]['version'], '2')

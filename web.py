@@ -45,10 +45,15 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
                 entry['manifest_url'] = urls[entry['id']]
         catalog.validate_registry(registry)
         (site / 'catalog').write_bytes(publishing.encoded(registry))
+        # Beta discovery is independent of archive discovery and stable lock
+        # overrides. Every export includes it, even an empty desktop fallback.
+        beta = default_beta_registry()
+        (site / 'beta').mkdir()
+        (site / 'beta/catalog').write_bytes(publishing.encoded(beta))
 
         # Browser worker has its own explicit offline shell; native hosts bypass it.
         # Hash the shell bytes so independently deployed builds never share caches.
-        browser_paths = ['/play', '/play/', '/native/index.html', '/catalog',
+        browser_paths = ['/play', '/play/', '/native/index.html', '/catalog', '/beta/catalog',
                          *['/' + p.relative_to(site).as_posix() for p in sorted((site / 'runtime/core').glob('*')) if p.is_file()]]
         browser_hash = hashlib.sha256(b''.join(
             (site / name.lstrip('/')).read_bytes() for name in browser_paths
@@ -59,6 +64,8 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
                 'shellVersion': browser_hash, 'shellPaths': browser_paths}) + ');\n')
 
         # Small coherent cloud-shell inventory: game payloads are deliberately excluded.
+        # Older native clients whitelist these paths. Beta catalogs use the feed
+        # manager's independent last-good cache, not the native shell inventory.
         shell = [site / 'index.html', site / 'catalog', *sorted((site / 'runtime/core').glob('*'))]
         cloud_files = {'/' + p.relative_to(site).as_posix(): {'size': p.stat().st_size,
             'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in shell if p.is_file()}
@@ -78,12 +85,21 @@ def default_manifest_urls():
 
 def default_registry():
     """Reviewed discovery pointers; downloading/installing remains explicit."""
+    return read_registry('catalog.yaml')
+
+
+def default_beta_registry():
+    """Opt-in early-release discovery, never merged into the stable catalog."""
+    return read_registry('beta-catalog.yaml')
+
+
+def read_registry(filename):
     # Only builds parse hand-authored YAML; static serving remains stdlib-only.
     import yaml
     try:
-        registry = yaml.safe_load((HERE / 'hosting/catalog.yaml').read_text())
+        registry = yaml.safe_load((HERE / 'hosting' / filename).read_text())
     except yaml.YAMLError as error:
-        raise ValueError('Invalid Store catalog YAML') from error
+        raise ValueError(f'Invalid Store catalog YAML: {filename}') from error
     catalog.validate_registry(registry)
     return registry
 

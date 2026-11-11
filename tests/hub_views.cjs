@@ -656,8 +656,9 @@ test('player screens show no words but players’ names and keyboard letters',as
 
 // Game feeds: an adult page with no words but feed names, like the Players screens.
 const Feeds=require('../runtime/core/game-feeds.js');
+function stableFeedState(){const config={schema:1,feeds:[{url:Feeds.DEFAULT_URL,name:'Cubby Arcade',enabled:true}]};return {schema:1,config,profiles:{p_first:config},cache:{},sources:{}};}
 function feedHub(extra={},windowOverrides={},fetchCatalog=null){
- let saved=null,writes=0;
+ let saved=stableFeedState(),writes=0;
  const manager=Feeds.createManager({read:async()=>saved,write:async value=>{writes++;saved=structuredClone(value);},fetchCatalog:fetchCatalog||(async url=>[{id:url===Feeds.DEFAULT_URL?'cubby':'custom',title:'Game',artwork:url===Feeds.DEFAULT_URL?'https://assets.test/cubby.png':'https://assets.test/custom.png',manifest_url:'https://assets.test/game.json'}])});
  const mounted=mountedHub(games,[],{}, {feedConfig:()=>manager.config(),setFeedConfig:config=>manager.setConfig(config),catalog:()=>manager.catalog(),feedStatus:()=>manager.status(),...extra},windowOverrides);
  return {...mounted,manager,saved:()=>saved,writes:()=>writes};
@@ -733,7 +734,7 @@ test('a saved feed configuration is not reported as failed if the following cata
  assert.equal((await manager.config()).feeds[0].enabled,false);assert.equal(dialog.querySelector('.feed-toggle').getAttribute('aria-checked'),'false');assert.equal(dialog.querySelector('.feed-toggle').classList.contains('refused'),false);assert.equal(dialog.querySelector('.feed-up').disabled,true);dialog.querySelector('.close-feeds').click();hub.dispose();
 });
 test('handheld feed fields are typed with the shared controller keyboard on whichever field is chosen',async()=>{
- let config=Feeds.defaultConfig();const {host,hub,action}=mountedHub(games,[],{}, {feedConfig:async()=>config,setFeedConfig:async next=>(config=Feeds.validateConfig(next))},device);await settle();const dialog=await openFeedsPage(host,hub);
+ let config=stableFeedState().config;const {host,hub,action}=mountedHub(games,[],{}, {feedConfig:async()=>config,setFeedConfig:async next=>(config=Feeds.validateConfig(next))},device);await settle();const dialog=await openFeedsPage(host,hub);
  dialog.querySelector('.add-feed').click();let keys=dialog.querySelector('.feed-keyboard');assert.ok(keys,'Keys are there at once, with nothing to press first');assert.equal(dialog.querySelector('.type-feed-name'),null);
  assert.equal(keys.dataset.layout,'web');assert.ok(keys.children.includes(host.ownerDocument.activeElement),'The D-pad starts on the keys');
  keys.querySelectorAll('button').find(b=>b.textContent==='Q').click();assert.equal(dialog.querySelector('.feed-name-input').value,'Q','A name starts with a capital');
@@ -743,7 +744,7 @@ test('handheld feed fields are typed with the shared controller keyboard on whic
  action('nextView','gamepad');assert.ok(keys.querySelectorAll('button').some(b=>b.textContent==='Q'));action('pause','gamepad');await settle();assert.equal(config.feeds[1].url,'https://q.test/feed');assert.equal(config.feeds[1].name,'Q');dialog.querySelector('.close-feeds').click();hub.dispose();
 });
 test('feed cards show failed and saved-copy loads as pictures, after save and on reopening',async()=>{
- let saved=null,fail=new Set();
+ let saved=stableFeedState(),fail=new Set();
  const manager=Feeds.createManager({read:async()=>saved,write:async value=>{saved=value;},fetchCatalog:async url=>{if(fail.has(url))throw Error('Failed to fetch');return url===Feeds.DEFAULT_URL?[]:[{id:'other',title:'Other',artwork:'https://assets.test/o.png',manifest_url:'https://assets.test/o.json'}];}});
  const {host,hub}=feedHub({feedConfig:()=>manager.config(),setFeedConfig:next=>manager.setConfig(next),catalog:()=>manager.catalog(),feedStatus:()=>manager.status()});await settle();const dialog=await openFeedsPage(host,hub);
  assert.ok(dialog.querySelector('.feed-none'),'A feed that loaded with no games shows an empty box');
@@ -780,4 +781,17 @@ test('the D-pad moves spatially between a feed card’s controls and from card t
  action('down','gamepad');assert.equal(host.ownerDocument.activeElement,dialog.querySelectorAll('.feed-remove')[1]);
  action('confirm','gamepad');assert.ok(dialog.querySelector('.remove-confirm'),'Confirm presses the focused button');action('back','gamepad');assert.equal(dialog.querySelectorAll('.feed-card').length,2);
  action('back','gamepad');assert.equal(dialog.open,false);hub.dispose();
+});
+
+test('profile switches clear both shelves immediately and discard an older profile refresh',async()=>{
+ let active=Profiles.FIRST,finish;
+ const stale=new Promise(resolve=>finish=resolve);let delayed=false;
+ const {host,hub}=playersHub({list:three,pin:Profiles.FIRST,overrides:{setFeedProfile:id=>active=id,useProfile:async id=>{active=id;},library:async()=>active===Profiles.FIRST?[games[0]]:[games[1]],catalog:async()=>delayed&&active===Profiles.FIRST?stale:active===Profiles.FIRST?[games[0]]:[games[1]]}});
+ await settle();assert.deepEqual(shelfIds(host),['one']);delayed=true;const pending=hub.refreshCatalog();
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[1].click();await settle();assert.deepEqual(shelfIds(host),['two']);
+ delayed=false;finish([games[0]]);await pending;await settle();hub.show('store');assert.equal(shelfIds(host).includes('one'),false);hub.dispose();
+});
+test('adult feeds show the active player face and name',async()=>{
+ const {host,hub}=playersHub({list:three,pin:'p_fixture1',overrides:{feedConfig:async()=>Feeds.defaultConfig(),setFeedConfig:async next=>next}});await settle();const dialog=await openFeedsPage(host,hub);
+ assert.equal(dialog.querySelector('.feed-player-name').textContent,'Fox');assert.ok(dialog.querySelector('.feed-player').querySelector('.player-face'));assert.deepEqual(feedNames(dialog),['Cubby Arcade','Cubby Beta']);assert.equal(dialog.querySelectorAll('.feed-toggle')[1].getAttribute('aria-checked'),'false');hub.dispose();
 });

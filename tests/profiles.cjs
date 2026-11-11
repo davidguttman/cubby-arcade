@@ -179,7 +179,7 @@ test('the browser host keeps players in browser storage',()=>{
 });
 function preload(){
  const load=Module._load;let exposed;const invoked=[];
- Module._load=function(name,...rest){return name==='electron'?{contextBridge:{exposeInMainWorld(_key,value){exposed=value;}},ipcRenderer:{invoke:async(channel,...args)=>{invoked.push([channel,...args]);return [];},on(){},removeListener(){},sendSync(){return {};}}}:load.call(this,name,...rest);};
+ Module._load=function(name,...rest){return name==='electron'?{contextBridge:{exposeInMainWorld(_key,value){exposed=value;}},ipcRenderer:{invoke:async(channel,...args)=>{invoked.push([channel,...args]);return channel==='hub:feeds-read'?null:[];},on(){},removeListener(){},sendSync(){return {};}}}:load.call(this,name,...rest);};
  try{delete require.cache[require.resolve('../desktop/preload.cjs')];require('../desktop/preload.cjs');}finally{Module._load=load;}
  return {exposed,invoked};
 }
@@ -188,7 +188,7 @@ test('the desktop host tells its main process the player and removes that player
  assert.equal(p.capabilities.profiles,true);
  const made=Profiles.createProfiles({storage:storage(),session:storage(),platform:p});const second=made.add('owl');
  await made.select(second.id);await p.savedGames(second.id);await p.resetGameSaves('one',second.id);await made.remove(second.id);
- assert.deepEqual(invoked,[['hub:profile',second.id],['hub:saved-games',second.id],['hub:reset-game-saves','one',second.id],['hub:remove-profile',second.id]]);
+ assert.deepEqual(invoked.filter(([channel])=>!channel.startsWith('hub:feeds-')),[['hub:profile',second.id],['hub:saved-games',second.id],['hub:reset-game-saves','one',second.id],['hub:remove-profile',second.id]]);
  // A desktop app from before players, running a newer cloud hub, keeps one player.
  const old={...exposed.bridge};delete old.useProfile;delete old.removeProfile;
  assert.equal(createPlatform({kind:'desktop',bridge:old,storage:storage()}).capabilities.profiles,false);
