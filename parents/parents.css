@@ -1,0 +1,11 @@
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;background:#1f1633;color:#fff4e6;font:17px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:560px;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 20px 40px}
+h1{font-size:28px;margin:8px 0 16px}h2{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:21px;margin:0 0 10px}
+ol{padding-left:22px}li{margin:6px 0}
+.cubby{background:#2b2046;border:1px solid #4a3a6e;border-radius:20px;padding:18px;margin:0 0 16px}
+.state{font-size:13px;font-weight:600;padding:4px 10px;border-radius:999px;background:#3b2f58;color:#cfc3e6}.state.on{background:#1f5a3c;color:#c8f5d8}
+.players{list-style:none;display:flex;flex-wrap:wrap;gap:8px;padding:0;margin:0 0 12px}.players li{margin:0;padding:6px 14px;border-radius:999px;background:#3b2f58;font-weight:600}
+.hint{font-size:14px;color:#cfc3e6;margin:0 0 12px}
+button{font:inherit;min-height:44px;padding:8px 16px;border-radius:14px;border:0;background:#ffc94d;color:#3a2410;font-weight:700}
+button.quiet{background:transparent;color:#cfc3e6;border:1px solid #4a3a6e;font-weight:500}

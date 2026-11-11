@@ -17,7 +17,9 @@
   else { root.CubbyLinkAPI = api; root.CubbyLink = api.install(root); }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
-  const STATE_KEY = 'cubby:link:v1', OUTBOX_KEY = 'cubby:link:outbox:v1', INBOX_KEY = 'cubby:link:inbox:v1:', SEEN_KEY = 'cubby:link:seen:v1', CURSOR_KEY = 'cubby:link:cursor:v1';
+  // A phone's pages may share an address with a web Cubby, so each role keeps its own storage.
+  const prefix = role => role === 'parent' ? 'cubby:parent-link:' : 'cubby:link:';
+  const CURSOR_KEY = 'cubby:link:cursor:v1';
   // Set when the relay has a permanent address. Hosts and tests pass their own.
   const DEFAULT_RELAY = '';
   // Where a phone lands after scanning: the grown-ups' pages, which load this same file.
@@ -72,6 +74,7 @@
     const describe = options.describe || (() => ({})), currentPlayer = options.player || (() => null);
     const listeners = new Set(), handlers = new Map(), live = new Map();
     let state = null, started = false, stopped = false, work = Promise.resolve(), counter = 0;
+    const STATE_KEY = prefix(role) + 'v1', OUTBOX_KEY = prefix(role) + 'outbox:v1', INBOX_KEY = prefix(role) + 'inbox:v1:', SEEN_KEY = prefix(role) + 'seen:v1';
 
     function read(key, fallback) { try { const value = storage.getItem(key); return value === null ? fallback : JSON.parse(value); } catch (_) { return fallback; } }
     function write(key, value) { storage.setItem(key, JSON.stringify(value)); }
@@ -394,7 +397,7 @@
       const registry = win.HandheldProfiles.readRegistry(storage);
       return {name: options.name || 'Cubby', players: registry.profiles.map(p => ({id: p.id, name: p.name || win.HandheldProfiles.ANIMAL_NAMES[p.avatar] || '', avatar: p.avatar}))};
     });
-    let relay = options.relay || DEFAULT_RELAY; try { relay = storage.getItem('cubby:link:relay') || relay; } catch (_) {}
+    let relay = options.relay || DEFAULT_RELAY; try { relay = storage.getItem(prefix(role) + 'relay') || relay; } catch (_) {}
     const ready = (async () => {
       let transport = options.transport;
       if (!transport && role === 'cubby' && /^https?:$/.test(win.location.protocol)) {
@@ -402,7 +405,7 @@
       }
       if (!transport && win.RTCPeerConnection && relay) transport = createBrowserTransport({relay, fetch: win.fetch.bind(win), RTCPeerConnection: win.RTCPeerConnection});
       if (!transport) return null;
-      let companion = options.companion || DEFAULT_COMPANION; try { companion = storage.getItem('cubby:link:companion') || companion; } catch (_) {}
+      let companion = options.companion || DEFAULT_COMPANION; try { companion = storage.getItem(prefix(role) + 'companion') || companion; } catch (_) {}
       const link = createLink({role, storage, transport, crypto: win.crypto, describe, player, relay, companion});
       await link.start(); return link;
     })().catch(() => null);
@@ -415,5 +418,5 @@
     };
   }
 
-  return {createLink, createBrowserTransport, createHostTransport, createCrypto, install, validCode, DEFAULT_RELAY, MAX_MESSAGE};
+  return {createLink, createBrowserTransport, createHostTransport, createCrypto, install, validCode, storagePrefix: prefix, DEFAULT_RELAY, MAX_MESSAGE};
 });
