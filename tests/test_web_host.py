@@ -22,7 +22,7 @@ class WebHostTests(unittest.TestCase):
             return original_read(path, *args, **kwargs)
         with tempfile.TemporaryDirectory() as tmp:
             output = web.build(Path(tmp) / 'site')
-            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), [])
+            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), web.default_beta_registry())   # whatever the checked-in beta list holds
             old_worker = (output / 'cubby-worker.js').read_text()
             with patch.object(Path, 'read_text', read_with_beta):
                 web.build(output, registry=[], manifest_urls={'early': 'https://stable.example/manifest.json'})
@@ -57,7 +57,7 @@ class WebHostTests(unittest.TestCase):
             result = subprocess.run([sys.executable, 'web.py', 'build', '--output', str(output)],
                                     cwd=web.HERE, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), [])
+            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), web.default_beta_registry())   # whatever the checked-in beta list holds
 
     def test_shell_only_build_does_not_require_posix_publisher_lock(self):
         script = '''
@@ -126,7 +126,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 archive.writestr('manifest.json', json.dumps(manifest))
             output = root / 'output'
             web.build(output, [package])
-            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), [])
+            self.assertEqual(json.loads((output / 'beta/catalog').read_text()), web.default_beta_registry())   # whatever the checked-in beta list holds
             self.assertEqual((output / 'index.html').read_bytes(), (web.HERE / 'runtime/index.html').read_bytes())
             self.assertFalse((output / 'games').exists())
             self.assertEqual(json.loads((output / 'library').read_text()), [])

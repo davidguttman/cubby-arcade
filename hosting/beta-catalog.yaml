@@ -1,2 +1,6 @@
 # Opt-in early-release discovery pointers. Keep unfinished games out of catalog.yaml.
-[]
+- id: word-wand
+  title: Word Wand
+  manifest_url: https://word-wand.onrender.com/arcade/manifest.json
+  artwork: https://word-wand.onrender.com/discovery/cover.png
+  attract: https://word-wand.onrender.com/discovery/trailer.webm
