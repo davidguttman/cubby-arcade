@@ -70,8 +70,9 @@ class ProductionImageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); (root/'rocknix').mkdir()
             source=(ROOT/'rocknix/updates.py').read_text()
-            self.assertIn("result.get('error') is not None",source)
-            (root/'rocknix/updates.py').write_text(source.replace("result.get('error') is not None", "'error' in result"))
+            current = "if 'phase' not in result and result.get('error') is not None:"
+            self.assertEqual(source.count(current), 1)
+            (root/'rocknix/updates.py').write_text(source.replace(current, "if 'error' in result:"))
             with self.assertRaises(Exception) as error:
                 module.validate_updater(root)
             self.assertEqual(type(error.exception).__name__,'Rejected')
