@@ -62,26 +62,28 @@ class Rooms:
             self.changed.notify_all()
             return room['seq']
 
-    def poll(self, name, member, after, wait):
-        """Messages from others after `after`, and who else is here. Returns early on either changing."""
+    def poll(self, name, member, after, wait, known=None):
+        """Messages from others after `after`, and who else is here.
+
+        `known` is who the caller last heard was here. It returns at once when that
+        is out of date (or never given), otherwise when something changes.
+        """
         deadline = self.clock() + min(max(wait, 0), MAX_WAIT)
         with self.changed:
             room = self._room(name)
             # A cursor from before a relay restart is ahead of this room: start over.
             if after > room['seq']:
                 after = 0
-            before = None
+            if member not in self._present(room, self.clock()):
+                room['seen'][member] = self.clock()
+                self.changed.notify_all()     # everyone waiting learns this member arrived
             while True:
                 now = self.clock()
                 room['seen'][member] = now
                 peers = [other for other in self._present(room, now) if other != member]
                 messages = [{'seq': item['seq'], 'from': item['from'], 'blob': item['blob']}
                             for item in self._fresh(room, now) if item['seq'] > after and item['from'] != member]
-                if before is None:
-                    before = peers
-                    # Tell everyone already waiting that this member arrived.
-                    self.changed.notify_all()
-                if messages or peers != before or now >= deadline:
+                if messages or peers != known or now >= deadline:
                     return {'seq': max([after] + [item['seq'] for item in messages]),
                             'messages': messages, 'peers': peers}
                 self.changed.wait(min(deadline - now, 5))
@@ -114,14 +116,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if parts.path == '/health':
             return self.reply(200, {'ready': True})
         match = ROOM.match(parts.path)
-        query = parse_qs(parts.query)
+        query = parse_qs(parts.query, keep_blank_values=True)
         member = query.get('me', [''])[0]
         if not match or not MEMBER.match(member):
             return self.reply(404, {'error': 'not found'})
         try:
             after = int(query.get('after', ['0'])[0])
             wait = float(query.get('wait', ['25'])[0])
-            self.reply(200, self.server.rooms.poll(match.group(1), member, after, wait))
+            known = query.get('peers')
+            known = None if known is None else sorted(peer for peer in known[0].split(',') if peer)
+            self.reply(200, self.server.rooms.poll(match.group(1), member, after, wait, known))
         except ValueError:
             self.reply(400, {'error': 'bad request'})
         except OverflowError:

@@ -98,22 +98,26 @@ class Link:
         return {room: {'peers': peers, 'open': self.is_open(room)} for room, peers in current.items()}
 
     def poll(self, room, entry, me, relay):
-        after = 0
+        after, known = 0, None
         while not entry['stop'].is_set():
             try:
+                # Saying who we last saw lets the relay answer at once when that changed.
                 url = f'{relay}/v1/rooms/{room}/messages?me={me}&after={after}&wait={POLL_SECONDS}'
+                if known is not None:
+                    url += '&peers=' + ','.join(known)
                 with self.opener(url, timeout=POLL_SECONDS + 10) as reply:
                     body = json.loads(reply.read(1 << 20))
                 if entry['stop'].is_set():
                     return
                 after = body['seq']
-                peers = [str(peer) for peer in body['peers']]
+                peers = known = sorted(str(peer) for peer in body['peers'])
                 if peers != entry['peers']:
                     entry['peers'] = peers
                     self.emit({'type': 'presence', 'room': room, 'peers': peers})
                 for message in body['messages']:
                     self.emit({'type': 'signal', 'room': room, 'blob': str(message['blob'])})
             except (OSError, ValueError, KeyError, TypeError):
+                known = None
                 if entry['peers']:
                     entry['peers'] = []
                     self.emit({'type': 'presence', 'room': room, 'peers': []})

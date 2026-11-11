@@ -277,15 +277,16 @@
     const emit = event => { try { listener(event); } catch (_) {} };
     const url = room => relay + '/v1/rooms/' + room + '/messages';
     async function poll(room, entry) {
-      let after = 0;
+      let after = 0, known = null;
       while (!disposed && watched.get(room) === entry) {
         try {
-          const reply = await fetcher(url(room) + '?me=' + me + '&after=' + after + '&wait=25', {cache: 'no-store', signal: entry.abort.signal});
+          // Saying who we last saw lets the relay answer at once when that has changed.
+          const reply = await fetcher(url(room) + '?me=' + me + '&after=' + after + '&wait=25' + (known ? '&peers=' + known.join(',') : ''), {cache: 'no-store', signal: entry.abort.signal});
           if (!reply.ok) throw Error('Relay unavailable');
-          const body = await reply.json(); after = body.seq;
+          const body = await reply.json(); after = body.seq; known = [...body.peers].sort();
           emit({type: 'presence', room, peers: body.peers});
           for (const message of body.messages) emit({type: 'signal', room, blob: message.blob});
-        } catch (_) { if (!disposed && watched.get(room) === entry) await new Promise(done => wait(done, 3000)); }
+        } catch (_) { known = null; if (!disposed && watched.get(room) === entry) await new Promise(done => wait(done, 3000)); }
       }
     }
     function drop(room) { const line = lines.get(room); if (!line) return; lines.delete(room); try { line.channel?.close(); line.pc.close(); } catch (_) {} }
@@ -408,7 +409,10 @@
       if (!transport) return null;
       let companion = options.companion || DEFAULT_COMPANION; try { companion = storage.getItem(prefix(role) + 'companion') || companion; } catch (_) {}
       const link = createLink({role, storage, transport, crypto: win.crypto, describe, player, relay, companion});
-      await link.start(); return link;
+      await link.start();
+      // Leaving for good closes the line at once, so the other side knows without waiting to time out.
+      win.addEventListener?.('pagehide', event => { if (!event.persisted) link.stop(); });
+      return link;
     })().catch(() => null);
     return {
       game, role,
