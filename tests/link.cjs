@@ -35,7 +35,8 @@ function world() {
   }
   return {transport};
 }
-const settle = async () => { for (let i = 0; i < 40; i++) await new Promise(done => setImmediate(done)); };
+// Key derivation runs off-thread, so give real time, not just turns of the loop.
+const settle = async () => { for (let i = 0; i < 6; i++) await new Promise(done => setTimeout(done, 20)); };
 function device(net, role, extra = {}) {
   const storage = extra.storage || memoryStorage(), transport = net.transport();
   const link = Link.createLink({role, storage, transport, describe: () => role === 'cubby' ? {name: 'Cubby', players: [{id: 'p_first', name: 'Lex', avatar: 'cat'}]} : {name: 'Phone'}, player: extra.player, setTimeout: extra.setTimeout || (() => {})});

@@ -209,7 +209,7 @@ test('desktop disk saves: the first player keeps the old directory, others get t
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 test('every host injects the player script after its own modules and before game scripts',()=>{
- const tag='<script data-handheld-system src="/runtime/core/game-shell.js"></script><script data-cubby-profile src="/runtime/core/profiles.js"></script>';
+ const tag='<script data-handheld-system src="/runtime/core/game-shell.js"></script><script data-cubby-link src="/runtime/core/link.js"></script><script data-cubby-profile src="/runtime/core/profiles.js"></script>';
  for(const file of ['runtime/game_shell.py','desktop/main.cjs','runtime/core/browser-store.js'])assert.ok(fs.readFileSync(file,'utf8').includes(tag),file);
  const index=fs.readFileSync('runtime/index.html','utf8');
  assert.ok(index.indexOf('profiles.js')<index.indexOf('platform.js')&&index.indexOf('avatars.js')<index.indexOf('hub.js'));assert.doesNotMatch(index,/data-cubby-profile/,'The hub is never rescoped');
