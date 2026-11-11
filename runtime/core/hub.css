@@ -265,3 +265,6 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .feed-wait{display:grid;place-items:center;min-height:140px;color:#ffd770}.hub .feed-wait svg{width:64px;height:64px;stroke-width:1.8}
 @media (max-width:460px){.feed-card{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "covers" "tools"}.hub .feed-management .feed-tools .feed-edit{margin-left:auto}}
 @media (max-height:540px){.feed-card{gap:8px 10px;padding:8px 10px}.feed-rows{gap:8px;margin:8px 0 2px}.feed-covers{min-height:36px}.feed-covers img{height:36px}.hub .feed-management .feed-tools .icon-button{width:40px;height:40px;min-width:40px;min-height:40px}.hub .feed-field input{height:44px}.feed-fields{gap:8px;margin:0 0 10px}.feed-management .feed-keyboard{grid-auto-rows:28px;margin:0 0 8px}.hub .feed-management .add-feed{height:50px}.hub .feed-heading svg{width:32px;height:32px}}
+
+/* Adult feed settings identify whose Store and Library these switches affect. */
+.feed-player{display:flex;align-items:center;gap:.5em;margin-left:auto}.feed-player .player-face{width:2.3em;height:2.3em}.feed-player .player-face svg{width:100%;height:100%}.feed-player-name{font-weight:700}

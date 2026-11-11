@@ -28,21 +28,34 @@
     const fetcher = options.fetch || globalThis.fetch;
     const native = options.bridge || {};
     const nativeSaves = typeof native.saves === 'function';
+    const existingProfiles=Profiles&&storage?Profiles.readRegistry(storage).profiles.map(p=>p.id):['p_first'];
+    let profile=Profiles&&storage?Profiles.readRegistry(storage).active:'p_first',profileEpoch=0;
+    const currentEpoch=epoch=>{if(epoch!==profileEpoch)throw Error('Player profile changed');};
+    function setFeedProfile(id){if(!Profiles||!Profiles.validId(id))throw Error('Invalid player');if(profile!==id){profile=id;profileEpoch++;offers=[];}}
     const feeds = Feeds && ['readFeedState','writeFeedState','fetchCatalog'].every(name => typeof native[name] === 'function')
-      ? Feeds.createManager({read:()=>native.readFeedState(),write:value=>native.writeFeedState(value),fetchCatalog:url=>native.fetchCatalog(url)}) : null;
+      ? Feeds.createManager({profileIds:()=>existingProfiles,read:()=>native.readFeedState(),write:value=>native.writeFeedState(value),fetchCatalog:url=>native.fetchCatalog(url)}) : null;
     let offers=[];
-    async function library() {
+    const installingSources=new Map(),installJobs=new Map();
+    async function rawLibrary() {
       if(native.library)return native.library();
       const response=await fetcher(options.libraryURL||'/library');
       if(!response.ok)throw Error('Library unavailable');
       const entries=await response.json();if(!Array.isArray(entries))throw Error('Invalid library');return entries;
+    }
+    async function library(){
+      const epoch=profileEpoch,player=profile,entries=await rawLibrary();
+      if(!feeds)return entries;
+      await migrate();
+      const visible=new Set(await feeds.visible(entries.map(game=>game.id),player));
+      const config=await feeds.config(player),enabled=new Set(config.feeds.filter(feed=>feed.enabled).map(feed=>feed.url));
+      currentEpoch(epoch);return entries.filter(game=>visible.has(game.id)&&(!installingSources.has(game.id)||enabled.has(installingSources.get(game.id).feed_url)));
     }
     // Only the library that predates this platform's managed installs is legacy.
     // A native install may expose bytes before its source pin is durable.
     let legacyIds=null,migration=Promise.resolve();
     function migrate(){
       const job=migration.then(async()=>{
-        if(!legacyIds)legacyIds=new Set((await library()).map(game=>game.id));
+        if(!legacyIds)legacyIds=new Set((await rawLibrary()).map(game=>game.id));
         await feeds.migrateInstalled([...legacyIds]);
       });
       migration=job.catch(()=>{});return job;
@@ -55,7 +68,7 @@
       legacyIds?.delete(id);
     }
     async function catalog(requestOptions={}) {
-      if(feeds){const entries=await feeds.catalog(requestOptions);await migrate();offers=entries;return entries;}
+      if(feeds){const epoch=profileEpoch,player=profile,entries=await feeds.catalog(requestOptions,player);await migrate();currentEpoch(epoch);offers=entries;return entries;}
       if(native.catalog)return native.catalog(requestOptions);
       const response=await fetcher(options.catalogURL||'/catalog',{...requestOptions,cache:'no-store'});
       if(!response.ok)throw Error('Catalog unavailable');
@@ -64,24 +77,42 @@
     async function install(id,requestOptions={}) {
       if(!feeds)return native.install(id,requestOptions);
       requestOptions.signal?.throwIfAborted();
+      const epoch=profileEpoch,player=profile;
       if(!offers.length)await catalog(requestOptions);
       await migrate();
-      const offer=offers.find(entry=>entry.id===id);if(!offer)throw Error('Game not offered');
+      currentEpoch(epoch);
+      const allowed=await feeds.config(player);
+      const offer=offers.find(entry=>entry.id===id);if(!offer||!allowed.feeds.some(feed=>feed.enabled&&feed.url===offer._source.feed_url))throw Error('Game not offered');
+      currentEpoch(epoch);
       const pin=await feeds.source(id),selected=Feeds.sourceOf(offer);
       if(pin&&(pin.feed_url!==selected.feed_url||pin.manifest_url!==selected.manifest_url))throw Error('Game already belongs to another source');
-      if(!pin&&(await library()).some(game=>game.id===id))throw Error('Installed game source unavailable');
-      await retireLegacy(id);
-      const result=await native.install(id,{...requestOptions,offer});
-      // Keep this exact issued object, never an IPC-returned/serialized clone.
-      await feeds.pin(id,offer);return result;
+      if(!pin&&(await rawLibrary()).some(game=>game.id===id))throw Error('Installed game source unavailable');
+      await retireLegacy(id);currentEpoch(epoch);
+      if(installJobs.has(id))return installJobs.get(id);
+      installingSources.set(id,selected);
+      const job=(async()=>{
+        let pinned=false;
+        try{
+          // Persist the exact issued offer before a host can expose game bytes.
+          // Even partial activation or a restart must retain their provenance.
+          await feeds.pin(id,offer);pinned=true;currentEpoch(epoch);
+          return await native.install(id,{...requestOptions,offer});
+        }catch(error){
+          if(!pin&&pinned)try{
+            if(!(await rawLibrary()).some(game=>game.id===id))await feeds.forget(id);
+          }catch{/* Unknown activation/storage state: keep the durable source. */}
+          throw error;
+        }finally{installingSources.delete(id);installJobs.delete(id);}
+      })();
+      installJobs.set(id,job);return job;
     }
     async function update(id,requestOptions={}) {
       if(!feeds)return native.update?native.update(id,requestOptions):native.install(id,requestOptions);
-      requestOptions.signal?.throwIfAborted();await migrate();
-      const offer=await feeds.updateOffer(id);if(!offer)return;
-      if(!(await library()).some(game=>game.id===id))return;
+      requestOptions.signal?.throwIfAborted();const epoch=profileEpoch,player=profile;await migrate();
+      const offer=await feeds.updateOffer(id,player);currentEpoch(epoch);if(!offer)return;
+      if(!(await rawLibrary()).some(game=>game.id===id))return;currentEpoch(epoch);
       const result=await (native.update?native.update(id,{...requestOptions,offer}):native.install(id,{...requestOptions,offer}));
-      if((await library()).some(game=>game.id===id))await feeds.pin(id,offer);return result;
+      if((await rawLibrary()).some(game=>game.id===id))await feeds.pin(id,offer);return result;
     }
     function saves(gameId, legacyKeys) {
       if (!/^[a-z0-9][a-z0-9-]*$/.test(gameId)) throw Error('Invalid game id');
@@ -155,6 +186,7 @@
         const player = Profiles.prefix(profile);
         if (nativeSaves && !native.removeProfile) throw Error('Player removal unavailable');
         if (native.removeProfile) await native.removeProfile(profile);
+        if(feeds)await feeds.removeProfile(profile);
         if (!storage) return;
         const keys = [];
         if (player) for (let i = 0; i < storage.length; i++) { const name = storage.key(i); if (name && name.startsWith(player)) keys.push(name); }
@@ -169,10 +201,10 @@
       saves,
       library,
       catalog,
-      feedConfig: feeds ? ()=>feeds.config() : undefined,
-      feedStatus: feeds ? ()=>feeds.status() : undefined,
-      setFeedConfig: feeds ? async config=>{const result=await feeds.setConfig(config);offers=[];return result;} : undefined,
-      updateOffer: feeds ? id=>feeds.updateOffer(id) : undefined,
+      feedConfig: feeds ? ()=>feeds.config(profile) : undefined,
+      feedStatus: feeds ? ()=>feeds.status(profile) : undefined,
+      setFeedConfig: feeds ? async config=>{const player=profile;const result=await feeds.setConfig(config,player);if(player===profile)offers=[];return result;} : undefined,
+      updateOffer: feeds ? id=>feeds.updateOffer(id,profile) : undefined,
       async fullscreen() {
         if (!doc || !doc.documentElement || !doc.documentElement.requestFullscreen) return false;
         await doc.documentElement.requestFullscreen(); return true;
@@ -192,7 +224,12 @@
       onInstallState: native.onInstallState && native.onInstallState.bind(native),
       updateAttention: native.updateAttention && native.updateAttention.bind(native),
       version: native.version && native.version.bind(native),
-      useProfile: native.useProfile && native.useProfile.bind(native),
+      setFeedProfile,
+      async useProfile(id){
+        if(!Profiles||!Profiles.validId(id))throw Error('Invalid player');
+        if(native.useProfile)await native.useProfile(id);
+        setFeedProfile(id);
+      },
       setVolume: native.setVolume && native.setVolume.bind(native),
       sleep: native.sleep && native.sleep.bind(native)
     };

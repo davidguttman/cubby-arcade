@@ -8,7 +8,7 @@ const cache=(...entries)=>Object.fromEntries(entries);
 function memory(initial){let value=initial;const writes=[];return {read:async()=>structuredClone(value),write:async next=>{value=structuredClone(next);writes.push(value);},writes,value:()=>structuredClone(value)};}
 
 test('absent configuration migrates to Cubby; explicit empty feeds stays empty',()=>{
- assert.deepEqual(Feeds.defaultConfig(),config([feed(A,'Cubby Arcade')]));
+ assert.deepEqual(Feeds.defaultConfig(),config([feed(A,'Cubby Arcade'),feed(Feeds.BETA_URL,'Cubby Beta',false)]));
  assert.deepEqual(Feeds.validateConfig(config([])),config([]));
  const first=Feeds.defaultConfig();first.feeds[0].name='Changed';assert.equal(Feeds.defaultConfig().feeds[0].name,'Cubby Arcade');
 });

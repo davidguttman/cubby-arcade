@@ -919,11 +919,11 @@ headers in the dashboard/API alongside the `cubby.david.app` custom domain:
 - Rewrite `/play` and `/play/` to `/native/index.html` (not redirects).
 - On `/*`, set `Access-Control-Allow-Origin: *` and
   `X-Content-Type-Options: nosniff` (not a blanket cache rule).
-- On `/catalog`, `/library`, and `/hub-manifest.json`, set
+- On `/catalog`, `/beta/catalog`, `/library`, and `/hub-manifest.json`, set
   `Content-Type: application/json; charset=utf-8`.
 - Set `Cache-Control: public, max-age=0, must-revalidate, no-transform` on the
   mutable paths `/`, `/index`, `/index.html`, `/play`, `/play/`, `/native/*`,
-  `/runtime/*`, `/site/*`, `/docs/*`, `/catalog`, `/library`,
+  `/runtime/*`, `/site/*`, `/docs/*`, `/catalog`, `/beta/catalog`, `/library`,
   `/hub-manifest.json`, and `/browser-sw.js`. Apply the same policy separately
   to each exact stable `/store/<game>/manifest.json` path, including
   `/store/line-cutter/manifest.json` and `/store/little-camp/manifest.json`.

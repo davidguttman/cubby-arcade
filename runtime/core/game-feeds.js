@@ -3,7 +3,7 @@
  * Shared refresh IO has no caller-owned signal: fetchCatalog must enforce its
  * own deadline. A catalog caller's signal only cancels that caller's wait.
  * Hosts retain the exact catalog()/updateOffer() object across install and pass
- * it to pin() after successful IO; copies sent through host IPC are not pins.
+ * it to pin() before install IO exposes bytes; IPC-returned copies are not pins.
  */
 (function(root,factory){
   const api=factory();
@@ -11,7 +11,8 @@
   else root.HandheldGameFeeds=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const DEFAULT_URL='https://cubby.david.app/catalog',MAX_FEEDS=16;
+  const DEFAULT_URL='https://cubby.david.app/catalog',BETA_URL='https://cubby.david.app/beta/catalog',MAX_FEEDS=16;
+  const FIRST='p_first',profileId=value=>{if(typeof value!=='string'||!/^p_[a-z0-9]{1,24}$/.test(value))throw Error('Invalid player');return value;};
   const ID=/^[a-z0-9][a-z0-9-]{0,79}$/;
   const copy=value=>JSON.parse(JSON.stringify(value));
   const gameId=value=>typeof value==='string'&&ID.test(value);
@@ -22,7 +23,7 @@
     if(url.protocol!=='https:'||!url.hostname||url.username||url.password||url.hash)throw Error('A feed needs an absolute HTTPS URL');
     return url.href;
   }
-  function defaultConfig(){return {schema:1,feeds:[{url:DEFAULT_URL,name:'Cubby Arcade',enabled:true}]};}
+  function defaultConfig(){return {schema:1,feeds:[{url:DEFAULT_URL,name:'Cubby Arcade',enabled:true},{url:BETA_URL,name:'Cubby Beta',enabled:false}]};}
   function validateConfig(value){
     if(!object(value)||value.schema!==1||!Array.isArray(value.feeds)||value.feeds.length>MAX_FEEDS)throw Error('Invalid feed configuration');
     const seen=new Set();
@@ -86,7 +87,9 @@
   }
   function createManager(options){
     if(typeof options?.read!=='function'||typeof options.write!=='function'||typeof options.fetchCatalog!=='function')throw Error('Feed storage and fetch IO required');
-    let state,loading,queue=Promise.resolve(),refreshing;
+    let state,loading,queue=Promise.resolve(),needsPersist=false;
+    const refreshing=new Map();
+    const selected=(value,profile)=>value.profiles[profileId(profile)]||defaultConfig();
     // Weak keys keep provenance alive exactly as long as a host retains an
     // issued offer, without retaining an ever-growing history of old catalogs.
     const issued=new WeakMap(),outcomes=new Map();
@@ -95,7 +98,7 @@
     async function load(){
       if(!loading)loading=(async()=>{
         const saved=await options.read();
-        if(saved===undefined||saved===null){state={schema:1,config:defaultConfig(),cache:{},sources:{}};return;}
+        if(saved===undefined||saved===null){state={schema:1,config:defaultConfig(),profiles:{},cache:{},sources:{}};return;}
         if(!object(saved)||saved.schema!==1||!object(saved.cache)||!object(saved.sources))throw Error('Invalid saved feeds');
         const cache={},sources={};
         for(const [url,entries] of Object.entries(saved.cache)){
@@ -106,7 +109,19 @@
           if(!gameId(id))throw Error('Invalid saved game source');
           sources[id]=source(pin);
         }
-        state={schema:1,config:validateConfig(saved.config),cache,sources};
+        const config=validateConfig(saved.config),profiles={};
+        if(saved.profiles!==undefined){
+          if(!object(saved.profiles))throw Error('Invalid player feeds');
+          for(const [id,config] of Object.entries(saved.profiles))profiles[profileId(id)]=validateConfig(config);
+        }else{
+          // Snapshot everyone who existed before profile-scoped feeds. Later
+          // players start with defaults, never another player's beta choices.
+          const migrated=copy(config);
+          if(migrated.feeds.length&&migrated.feeds.length<MAX_FEEDS&&!migrated.feeds.some(feed=>feed.url===BETA_URL))migrated.feeds.push({url:BETA_URL,name:'Cubby Beta',enabled:false});
+          for(const id of options.profileIds?.()||[FIRST])profiles[profileId(id)]=copy(migrated);
+        }
+        state={schema:1,config,profiles,cache,sources};
+        needsPersist=saved.profiles===undefined;
       })();
       await loading;
     }
@@ -114,28 +129,29 @@
       const job=queue.then(async()=>{
         await load();const next=copy(state),result=fn(next);
         // Publish in memory only after durable write succeeds.
-        await options.write(copy(next));state=next;return result;
+        await options.write(copy(next));state=next;needsPersist=false;return result;
       });
       queue=job.catch(()=>{});return job;
     }
     const manager={
-      async config(){await load();await queue;return copy(state.config);},
-      async setConfig(config){const checked=validateConfig(config);await change(next=>{next.config=checked;});return copy(checked);},
-      async status(){
+      async config(profile=FIRST){await load();await queue;if(needsPersist)await change(()=>{});return copy(selected(state,profile));},
+      async setConfig(config,profile=FIRST){profileId(profile);const checked=validateConfig(config);await change(next=>{next.profiles[profile]=checked;if(profile===FIRST)next.config=checked;});return copy(checked);},
+      async status(profile=FIRST){
         await load();await queue;
-        return Object.fromEntries(state.config.feeds.map(feed=>{
+        return Object.fromEntries(selected(state,profile).feeds.map(feed=>{
           const count=(state.cache[feed.url]||[]).length,outcome=outcomes.get(feed.url);
           const status={state:!feed.enabled?'disabled':outcome?.ok?'loaded':Object.hasOwn(state.cache,feed.url)?'cached':outcome?'unavailable':'unchecked',count};
           if(feed.enabled&&outcome?.error)status.error=outcome.error;
           return [feed.url,status];
         }));
       },
-      async catalog({signal}={}){
+      async catalog({signal}={},profile=FIRST){
+        profileId(profile);
         signal?.throwIfAborted();
-        if(!refreshing){
+        if(!refreshing.has(profile)){
           const pending=(async()=>{
             await load();await queue;
-            const feeds=state.config.feeds.filter(feed=>feed.enabled);
+            const feeds=selected(state,profile).feeds.filter(feed=>feed.enabled);
             const results=await Promise.all(feeds.map(async feed=>{
               try{return {url:feed.url,entries:validate(await options.fetchCatalog(feed.url,{}))};}
               catch(error){return {url:feed.url,error:typeof error?.message==='string'?error.message.slice(0,200):'Catalog request failed'};}
@@ -144,14 +160,14 @@
             if(valid.length)await change(next=>{for(const result of valid)next.cache[result.url]=result.entries;});
             for(const result of results)outcomes.set(result.url,result.entries!==undefined?{ok:true}:{error:result.error});
           })();
-          refreshing=pending;
+          refreshing.set(profile,pending);
           // Only shared work completion releases the refresh, never a caller's
           // cancellation. Handle failures even if every waiting caller left.
-          const clear=()=>{if(refreshing===pending)refreshing=null;};
+          const clear=()=>{if(refreshing.get(profile)===pending)refreshing.delete(profile);};
           pending.then(clear,clear);
         }
-        await waitFor(refreshing,signal);await waitFor(queue,signal);signal?.throwIfAborted();
-        return mergeCatalog(state.config,state.cache).map(issue);
+        await waitFor(refreshing.get(profile),signal);await waitFor(queue,signal);signal?.throwIfAborted();
+        return mergeCatalog(selected(state,profile),state.cache).map(issue);
       },
       async pin(id,offer){
         if(!gameId(id)||offer?.id!==id)throw Error('Invalid game source identity');
@@ -162,7 +178,7 @@
           const previous=Object.hasOwn(next.sources,id)?next.sources[id]:null;
           if(previous&&(previous.feed_url!==pin.feed_url||previous.manifest_url!==pin.manifest_url))throw Error('Game already belongs to another source');
           // Catalog changes/removal during install cannot erase the provenance
-          // of actual installed bytes. The issued record was checked above.
+          // reserved for its bytes. The issued record was checked above.
           next.sources[id]=pin;
         });
       },
@@ -176,10 +192,12 @@
           const pin=legacySource(id,next.cache);if(pin)next.sources[id]=pin;
         }});
       },
-      async updateOffer(id){await load();await queue;return issue(updateOffer(id,Object.hasOwn(state.sources,id)?state.sources[id]:null,state.config,state.cache));},
+      async updateOffer(id,profile=FIRST){await load();await queue;return issue(updateOffer(id,Object.hasOwn(state.sources,id)?state.sources[id]:null,selected(state,profile),state.cache));},
+      async visible(ids,profile=FIRST){await load();await queue;const enabled=new Set(selected(state,profile).feeds.filter(feed=>feed.enabled).map(feed=>feed.url));return ids.filter(id=>!Object.hasOwn(state.sources,id)||enabled.has(state.sources[id].feed_url));},
+      async removeProfile(profile){profileId(profile);await change(next=>{delete next.profiles[profile];if(profile===FIRST)next.config=defaultConfig();});},
       async source(id){await load();await queue;return Object.hasOwn(state.sources,id)?copy(state.sources[id]):null;}
     };
     return manager;
   }
-  return {DEFAULT_URL,MAX_FEEDS,feedURL,defaultConfig,validateConfig,validateEntries,sourceOf,mergeCatalog,updateOffer,legacySource,createManager};
+  return {DEFAULT_URL,BETA_URL,MAX_FEEDS,feedURL,defaultConfig,validateConfig,validateEntries,sourceOf,mergeCatalog,updateOffer,legacySource,createManager};
 });

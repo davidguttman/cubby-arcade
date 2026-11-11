@@ -33,8 +33,9 @@ async function exercise(make,d){
  d.publish('other.test','2');d.requests.length=0;await sweepGameUpdates(p);assert.equal((await p.library())[0].version,'2');assert(d.requests.includes('https://other.test/manifest.json'));assert(!d.requests.includes('https://first.test/manifest.json'));
  // Recreate real adapter+platform: disk/browser raw state retains source despite reorder.
  p=createPlatform({bridge:make()});d.publish('other.test','3');await sweepGameUpdates(p);assert.equal((await p.library())[0].version,'3');
- await p.setFeedConfig(config([[DEFAULT_URL],[custom,false]]));d.publish('other.test','4');await sweepGameUpdates(p);assert.equal((await p.library())[0].version,'3');
- await p.setFeedConfig(config([[DEFAULT_URL]]));await sweepGameUpdates(p);assert.equal((await p.library())[0].version,'3');
+ await p.setFeedConfig(config([[DEFAULT_URL],[custom,false]]));d.publish('other.test','4');await sweepGameUpdates(p);assert.deepEqual(await p.library(),[]);assert.equal((await make().library())[0].version,'3');
+ await p.setFeedConfig(config([[DEFAULT_URL]]));await sweepGameUpdates(p);assert.deepEqual(await p.library(),[]);assert.equal((await make().library())[0].version,'3');
+ await p.useProfile('p_kid');assert.deepEqual((await p.feedConfig()).feeds.filter(feed=>feed.enabled).map(feed=>feed.url),[DEFAULT_URL]);assert.deepEqual(await p.library(),[]);await p.useProfile('p_first');
  // A failed feed must not erase its independent last-good catalog.
  await p.setFeedConfig(config([[custom],[DEFAULT_URL]]));d.docs.delete(custom);assert.equal((await p.catalog())[0].title,'other.test');
  await p.uninstall('demo');await p.setFeedConfig(config([[DEFAULT_URL]]));await p.catalog();await p.install('demo');assert.equal((await p.library())[0].version,'1');
@@ -50,6 +51,7 @@ test('desktop real preload/FeedIO/installer follow selected sources and reject u
   const io=new FeedIO(path.join(root,'feeds.json'),{fetch:d.fetch});let exposed;
   const invoke=async(channel,...args)=>{
    if(channel==='hub:feeds-read')return io.read();if(channel==='hub:feeds-write')return io.write(args[0]);if(channel==='hub:feeds-fetch')return io.catalog(args[0]);
+   if(channel==='hub:profile')return;
    if(channel==='hub:library')return library.entries();if(channel==='hub:uninstall')return installer.uninstall(args[0]);
    assert(['hub:install','hub:update'].includes(channel));const [id,{offer}]=args;
    if(channel==='hub:update'&&!library.entries().some(game=>game.id===id))return;
