@@ -362,7 +362,8 @@ class Handler(assets.Handler):
             self.json_response({'attention': update_attention(self.state)})
             return
         if path == '/api/power-state':
-            self.json_response({'busy': power_busy(self.state)})
+            self.json_response({'busy': power_busy(self.state),
+                                'active_game': self.state.active_game is not None})
             return
         if path == '/api/system-events':
             try:

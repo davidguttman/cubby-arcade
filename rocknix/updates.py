@@ -752,7 +752,8 @@ class HostClient:
                 if not block:break
                 data+=block
         result=json.loads(data)
-        if result.get('error') is not None: raise Rejected(result['error'])
+        # Status carries a past failure as state, not an operation rejection.
+        if 'phase' not in result and result.get('error') is not None: raise Rejected(result['error'])
         return result
 
 

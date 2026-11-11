@@ -398,6 +398,16 @@ class HostClientReplyTests(unittest.TestCase):
                 finally:thread.join(timeout=3)
     def test_successful_status_with_null_error_is_not_rejected(self):
         self.assertEqual(self.reply({'phase':'idle','error':None}),{'phase':'idle','error':None})
+    def test_status_after_failed_check_preserves_error_and_version(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            manager=updates.Manager(temporary)
+            manager.phase='error';manager.error='Update failed; current Cubby is unchanged.'
+            updates.atomic(manager.dir/'record.json',{'version':'1.2.3','sequence':7})
+            with mock.patch.object(manager,'config',return_value={}):
+                status=manager.status()
+            self.assertEqual(self.reply(status),status)
+            self.assertEqual(status['installed'],'1.2.3')
+            self.assertEqual(status['phase'],'error')
     def test_explicit_error_remains_rejected(self):
         with self.assertRaises(updates.Rejected):self.reply({'error':'Unavailable'})
 

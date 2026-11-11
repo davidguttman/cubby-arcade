@@ -58,7 +58,11 @@ lit, and a marker in `/run` restores the display if the helper dies while dark.
 
 Mute is not a user setting: silence means volume zero. At startup and once per
 second while awake, the existing power helper checks the default speaker and clears
-any mute without changing volume. It retries if audio starts late or a command fails,
+any mute without changing volume. During gameplay it also clears mute on active,
+uncorked Cog application streams, checking the result after each change. The
+`/api/power-state` gameplay flag keeps intentionally muted hub previews and unrelated
+applications alone; old servers without the flag leave streams untouched. Server and
+PulseAudio queries use the same short timeout. It retries if audio starts late or a command fails,
 and verifies the unmute by reading it back. Input events cannot make the check run
 more often. The check never runs during managed sleep, dark wakes or power-off.
 Wake restoration always unmutes; only the temporary internal sleep mute is allowed.

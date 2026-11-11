@@ -668,6 +668,9 @@ class HostAudioRecoveryTests(unittest.TestCase):
         self.fail_query = False
         self.display_ok = True
         self.commands = []
+        self.game_active = False
+        self.streams = []
+        self.stream_failure = False
         self.clock = 1000.0
         self.host = self.make_host()
 
@@ -676,6 +679,7 @@ class HostAudioRecoveryTests(unittest.TestCase):
         host.run = self.command
         host.thaw = lambda: None
         host.monotonic = lambda: self.clock
+        host.game_audio_active = lambda: self.game_active
         return host
 
     def command(self, *args, **kwargs):
@@ -690,9 +694,124 @@ class HostAudioRecoveryTests(unittest.TestCase):
                 code = 1
             else:
                 self.muted = args[-1] == 'true'
+        elif args == ('pactl', '--format=json', 'list', 'sink-inputs'):
+            output = json.dumps(self.streams)
+        elif args[:2] == ('pactl', 'set-sink-input-mute'):
+            code = int(self.stream_failure)
+            if not code:
+                next(item for item in self.streams if str(item['index']) == args[2])['mute'] = False
         elif args[0] == 'swaymsg':
             code = 0 if self.display_ok else 1
         return subprocess.CompletedProcess(args, code, output, '')
+
+    def game_stream(self, index=7, **values):
+        return dict(index=index, mute=True, corked=False,
+                    properties={'application.name': 'Cog'}, **values)
+
+    def test_watchdog_recovers_game_stream_and_later_repeated_mute(self):
+        self.game_active = True
+        self.streams = [self.game_stream()]
+        self.host.awake_audio()
+        self.assertFalse(self.streams[0]['mute'])
+        self.streams[0]['mute'] = True
+        self.host.awake_audio()
+        self.assertTrue(self.streams[0]['mute'])
+        self.clock += 1
+        self.host.awake_audio()
+        self.assertFalse(self.streams[0]['mute'])
+        self.assertFalse(any('volume' in part for command in self.commands for part in command))
+
+    def test_stream_watchdog_preserves_previews_unrelated_and_corked_streams(self):
+        self.streams = [self.game_stream()]
+        self.host.awake_audio()
+        self.assertTrue(self.streams[0]['mute'])  # hub preview
+        self.game_active = True
+        self.streams += [dict(index=8, mute=True, corked=False,
+                              properties={'application.name': 'Other'}),
+                         dict(index=9, mute=True, corked=True,
+                              properties={'application.name': 'Cog'})]
+        self.clock += 1
+        self.host.awake_audio()
+        self.assertEqual([item['mute'] for item in self.streams], [False, True, True])
+
+    def test_stream_watchdog_failure_retries_without_changing_volume(self):
+        self.game_active = True
+        self.streams = [self.game_stream()]
+        self.stream_failure = True
+        self.host.awake_audio()
+        self.assertTrue(self.streams[0]['mute'])
+        self.stream_failure = False
+        self.clock += 1
+        self.host.awake_audio()
+        self.assertFalse(self.streams[0]['mute'])
+
+    def test_stream_watchdog_defers_during_stock_sleep(self):
+        self.game_active = True
+        self.streams = [self.game_stream()]
+        Path(self.stock_markers[0]).touch()
+        self.host.awake_audio()
+        self.assertTrue(self.streams[0]['mute'])
+        self.assertEqual(self.commands, [])
+
+    def test_stream_watchdog_bounds_all_pactl_calls_and_verifies_unmute(self):
+        self.game_active = True
+        self.streams = [self.game_stream()]
+        with patch.object(self.host, 'run', wraps=self.command) as run:
+            self.host.awake_audio()
+        self.assertEqual([call.kwargs for call in run.call_args_list],
+                         [{'timeout': power.AUDIO_TIMEOUT}] * 4)
+        self.assertEqual(run.call_args_list[-1].args,
+                         ('pactl', '--format=json', 'list', 'sink-inputs'))
+
+    def test_stream_query_timeout_does_not_block_speaker_recovery_or_next_interval(self):
+        self.game_active = True
+        self.streams = [self.game_stream()]
+        self.muted = True
+        def unavailable(*args, **kwargs):
+            if '--format=json' in args:
+                raise subprocess.TimeoutExpired(args, power.AUDIO_TIMEOUT)
+            return self.command(*args, **kwargs)
+        with patch.object(self.host, 'run', side_effect=unavailable):
+            self.host.awake_audio()
+        self.assertFalse(self.muted)
+        self.assertTrue(self.host.audio_reported)
+        self.clock += 1
+        self.host.awake_audio()
+        self.assertFalse(self.streams[0]['mute'])
+        self.assertFalse(self.host.audio_reported)
+
+    def test_stream_watchdog_reports_unverified_unmute(self):
+        self.game_active = True
+        self.streams = [self.game_stream()]
+        def ignored(*args, **kwargs):
+            if args[:2] == ('pactl', 'set-sink-input-mute'):
+                return subprocess.CompletedProcess(args, 0, '', '')
+            return self.command(*args, **kwargs)
+        with patch.object(self.host, 'run', side_effect=ignored):
+            self.host.awake_audio()
+        self.assertTrue(self.streams[0]['mute'])
+        self.assertTrue(self.host.audio_reported)
+
+    def test_stream_watchdog_defers_when_suspend_begins_during_query(self):
+        self.game_active = True
+        self.streams = [self.game_stream()]
+        def sleeping(*args, **kwargs):
+            result = self.command(*args, **kwargs)
+            if '--format=json' in args:
+                Path(self.stock_markers[0]).touch()
+            return result
+        with patch.object(self.host, 'run', side_effect=sleeping):
+            self.host.awake_audio()
+        self.assertTrue(self.streams[0]['mute'])
+
+    def test_game_audio_query_is_bounded_and_old_server_fails_closed(self):
+        with patch.object(power.urllib.request, 'urlopen') as request:
+            response = request.return_value.__enter__.return_value
+            response.read.return_value = b'{"busy":false}'
+            self.assertFalse(power.Host.game_audio_active(self.host))
+            response.read.return_value = b'{"active_game":true}'
+            self.assertTrue(power.Host.game_audio_active(self.host))
+            self.assertEqual(request.call_args.kwargs, {'timeout': power.AUDIO_TIMEOUT})
 
     def test_reboot_recovers_sleep_mute_without_volatile_marker(self):
         self.assertTrue(self.host.go_dark())
