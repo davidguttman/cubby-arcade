@@ -104,6 +104,7 @@ def build(output):
                 '<meta name="viewport" content="width=device-width,initial-scale=1">'
                 '<title>' + title + ' — Cubby Arcade</title>'
                 '<link rel="stylesheet" href="/site/style.css">'
+                '<script src="https://www.saasco.com/sdk/saasco-sdk.js" data-projectId="cmwdybu1l001lpsp73l6cljit" async></script>'
                 '<meta name="theme-color" content="#2a1f3d"></head><body>'
                 '<header><a class="brand" href="/">' + LOGO + '<span>Cubby Arcade</span></a>'
                 '<nav aria-label="Documentation">'
