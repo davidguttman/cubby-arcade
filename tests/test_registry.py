@@ -138,9 +138,12 @@ class RegistryTests(unittest.TestCase):
         entry = self.publish(self.archive())
         with patch.object(catalog, 'download', side_effect=AssertionError('manifest fetched')):
             self.assertEqual(catalog.validate_registry([entry], developer=True), [entry])
+            # A game's grown-ups page, shown in Cubby's at /parents/<id>/.
+            self.assertEqual(catalog.validate_registry([dict(entry, parents='https://example.com/parent/')], developer=True)[0]['parents'], 'https://example.com/parent/')
         for bad in [dict(entry, manifest_url='http://example.com/manifest.json'),
                     dict(entry, artwork='javascript:alert(1)'), dict(entry, id='../escape'),
-                    dict(entry, screenshots=['https://u:p@host/image.png'])]:
+                    dict(entry, screenshots=['https://u:p@host/image.png']),
+                    dict(entry, parents='javascript:alert(1)')]:
             with self.assertRaises(ValueError):
                 catalog.validate_registry([bad], developer=True)
         with self.assertRaises(ValueError):

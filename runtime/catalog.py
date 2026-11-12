@@ -124,6 +124,8 @@ def validate_registry(document, developer=False):
             check_url(entry.get(key), developer)
         if 'attract' in entry:
             check_url(entry['attract'], developer)
+        if 'parents' in entry:   # the game's grown-ups page, opened inside Cubby's at /parents/<id>/
+            check_url(entry['parents'], developer)
         screenshots = entry.get('screenshots', [])
         if not isinstance(screenshots, list) or len(screenshots) > 12:
             raise ValueError('Invalid screenshots')
