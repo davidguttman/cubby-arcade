@@ -3,7 +3,12 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const root=path.join(__dirname,'..');
 const windows='https://github.com/davidguttman/cubby-arcade/releases/latest/download/CubbyArcade-win32-x64.zip';
 const linux='https://github.com/davidguttman/cubby-arcade/releases/latest/download/CubbyArcade-linux-x64.tar.gz';
-// The landing page is a waitlist now (#19) and offers no desktop download; the script stays for when one returns.
+test('landing download defaults to Windows without JavaScript',()=>{
+ const html=fs.readFileSync(path.join(root,'website/index.html'),'utf8');
+ assert.match(html,/<a[^>]*data-desktop-download[^>]*>Download for Windows ↓<\/a>/);
+ assert(html.includes('href="'+windows+'"'));
+ assert.match(html,/<script[^>]*src="\/site\/desktop-download.js"[^>]*defer/);
+});
 test('desktop Linux changes both label and target; other clients retain Windows',()=>{
  const script=fs.readFileSync(path.join(root,'website/desktop-download.js'),'utf8');
  for(const [userAgent,isLinux] of [
@@ -14,11 +19,11 @@ test('desktop Linux changes both label and target; other clients retain Windows'
   ['Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)',false],
   ['',false],[undefined,false]
  ]){
-  const link={href:windows,textContent:'Get the Windows app ↓'};
+  const link={href:windows,textContent:'Download for Windows ↓'};
   const context={document:{querySelector:()=>link}};
   if(userAgent!==undefined)context.navigator={userAgent};
   vm.runInNewContext(script,context);
-  assert.equal(link.textContent,isLinux?'Get the Linux app ↓':'Get the Windows app ↓',userAgent);
+  assert.equal(link.textContent,isLinux?'Download for Linux ↓':'Download for Windows ↓',userAgent);
   assert.equal(link.href,isLinux?linux:windows,userAgent);
  }
 });
