@@ -50,7 +50,7 @@ document.querySelector('.waitlist').addEventListener('submit', async e => {
   v.addEventListener('play', go); }
 </script><script>
 // Game cards: a wave left to right, one at a time: a poster turns into a few seconds of its gameplay, then back, then the next card.
-// Hovering a card plays that game's whole trailer (muted) on it instead, and the wave waits; the other cards stay posters.
+// Hovering a card (or tapping it on a phone) plays that game's whole trailer (muted) on it instead, and the wave waits; the other cards stay posters.
 { const cards = [...document.querySelectorAll('.games a')], SHOW = 3300, FADE = 500, REST = 2000;
   const wait = ms => new Promise(r => setTimeout(r, ms));
   let run = 0, hovering = null;
@@ -67,15 +67,18 @@ document.querySelector('.waitlist').addEventListener('submit', async e => {
       }
       await hold(REST);
     } };
-  if (matchMedia('(hover: hover)').matches) cards.forEach(a => {
-    a.addEventListener('mouseenter', () => {
-      hovering = a; cards.forEach(c => c !== a && c.classList.remove('live', 'hover'));
-      let f = a.querySelector('video.full');
-      if (!f) { f = document.createElement('video'); f.className = 'full'; f.muted = true; f.playsInline = true; f.loop = true; f.src = a.dataset.trailer; f.setAttribute('aria-hidden', 'true'); a.append(f); }
-      f.currentTime = 0; f.play().then(() => { if (hovering === a) a.classList.add('hover'); }).catch(() => {}); });
-    a.addEventListener('mouseleave', () => {
-      if (hovering === a) hovering = null; a.classList.remove('hover');
-      const f = a.querySelector('video.full'); if (f) setTimeout(() => !a.classList.contains('hover') && f.pause(), FADE); }); });
+  const start = a => {
+    hovering = a; cards.forEach(c => { if (c !== a) stop(c); c.classList.remove('live'); });
+    let f = a.querySelector('video.full');
+    if (!f) { f = document.createElement('video'); f.className = 'full'; f.muted = true; f.playsInline = true; f.loop = true; f.src = a.dataset.trailer; f.setAttribute('aria-hidden', 'true'); a.append(f); }
+    f.currentTime = 0; f.play().then(() => { if (hovering === a) a.classList.add('hover'); }).catch(() => {}); };
+  const stop = a => {
+    if (hovering === a) hovering = null; a.classList.remove('hover');
+    const f = a.querySelector('video.full'); if (f) setTimeout(() => !a.classList.contains('hover') && f.pause(), FADE); };
+  if (matchMedia('(hover: hover)').matches) cards.forEach(a => { a.addEventListener('mouseenter', () => start(a)); a.addEventListener('mouseleave', () => stop(a)); });
+  else {   // touch: the first tap plays the trailer on that card, a second tap on it opens the game; a tap anywhere else stops it
+    cards.forEach(a => a.addEventListener('click', e => { if (hovering !== a) { e.preventDefault(); start(a); } }));
+    document.addEventListener('click', e => { if (hovering && !hovering.contains(e.target)) stop(hovering); }); }
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window)
     new IntersectionObserver(([e]) => { if (e.isIntersecting && !run) wave(run = Date.now()); else if (!e.isIntersecting) run = 0; }).observe(document.querySelector('.games')); }
 </script></body></html>
