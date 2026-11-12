@@ -121,7 +121,7 @@ test('empty Library remains an empty pictorial state',async()=>{
 test('mounted hub disposal removes its window lifecycle listeners and is idempotent',async()=>{
  const {host,hub}=mountedHub(games);await settle();
  const win=host.ownerDocument.defaultView;
- assert.equal(win.listenerCount(),4);
+ assert.equal(win.listenerCount(),5);
  assert.doesNotThrow(()=>hub.dispose());assert.equal(win.listenerCount(),0);
  hub.dispose();assert.equal(win.listenerCount(),0);
 });
