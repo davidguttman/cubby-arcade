@@ -436,7 +436,11 @@
     const player = () => { try { return role === 'cubby' && win.HandheldProfiles ? win.HandheldProfiles.current({storage, session}) : null; } catch (_) { return null; } };
     const describe = options.describe || (() => {
       // A phone's own name, set in Cubby's grown-ups app, holds for every page that speaks for it.
-      if (role === 'parent') { let own = null; try { own = storage.getItem(prefix(role) + 'name'); } catch (_) {} return {name: own || options.name || 'Phone'}; }
+      if (role === 'parent') {
+        let own = null; try { own = storage.getItem(prefix(role) + 'name'); } catch (_) {}
+        const agent = String(win.navigator?.userAgent || ''), kind = /iPhone/.test(agent) ? 'iPhone' : /iPad/.test(agent) ? 'iPad' : /Android/.test(agent) ? 'Android phone' : 'Phone';
+        return {name: own || options.name || kind};
+      }
       if (!win.HandheldProfiles) return {name: options.name || 'Cubby'};
       const registry = win.HandheldProfiles.readRegistry(storage);
       return {name: options.name || 'Cubby', players: registry.profiles.map(p => ({id: p.id, name: p.name || win.HandheldProfiles.ANIMAL_NAMES[p.avatar] || '', avatar: p.avatar}))};
