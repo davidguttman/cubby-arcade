@@ -187,6 +187,14 @@ test('two pages on one phone never write back each other\'s stale copy', async (
   assert.ok(seen.length > 0, 'a page hears about a change made by another'); assert.equal(parent.link.pairings()[0].name, 'Kitchen');
 });
 
+test('a game asks its channel who is playing', async () => {
+  let who = 'p_dad';
+  const net = world(), cubby = device(net, 'cubby', {player: () => who});
+  await cubby.link.start();
+  assert.equal(cubby.link.channel('good-bribes-only').player(), 'p_dad');
+  who = 'p_lex'; assert.equal(cubby.link.channel('good-bribes-only').player(), 'p_lex');
+});
+
 test('a phone must say which Cubby, and oversize or bad input is refused', async () => {
   const {cubby, parent} = await pair(world());
   assert.throws(() => parent.link.channel('good-bribes-only').send('x'), /which Cubby/);

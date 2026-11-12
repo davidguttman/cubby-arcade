@@ -278,6 +278,9 @@
             return () => handlers.get(game).delete(fn);
           },
           peers: () => link.pairings().filter(item => item.confirmed),
+          /* Who is playing, as the link tags messages. A game page's own localStorage is that
+           * player's private copy, so games ask here rather than reading profiles themselves. */
+          player: () => currentPlayer() || null,
           waiting: () => held().filter(item => item.game === game).length,
           /* A secret both sides can work out with no connection, for this game and label. */
           key(peer, label) { const item = pairing(peer); if (!item) return Promise.reject(Error('Unknown paired device')); return crypto.appKey(item.code, game + ':' + String(label)); }
