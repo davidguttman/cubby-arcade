@@ -63,7 +63,7 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual(fox['title'], 'Fox Barrister')
             self.assertEqual(fox['manifest_url'], 'https://foxbarrister.david.app/arcade/manifest.json')
             self.assertEqual(fox['artwork'], 'https://foxbarrister.david.app/discovery/cover.png')
-            self.assertNotIn('attract', fox)
+            self.assertEqual(fox['attract'], 'https://foxbarrister.david.app/discovery/trailer.webm')
             self.assertFalse((site / 'games').exists())
             self.assertFalse((site / 'store').exists())
 

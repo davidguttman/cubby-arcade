@@ -8,10 +8,12 @@
   title: Fox Barrister
   manifest_url: https://foxbarrister.david.app/arcade/manifest.json
   artwork: https://foxbarrister.david.app/discovery/cover.png
+  attract: https://foxbarrister.david.app/discovery/trailer.webm
 - id: small-change
   title: Small Change
   manifest_url: https://smallchange.david.app/arcade/manifest.json
   artwork: https://smallchange.david.app/discovery/cover.png
+  attract: https://smallchange.david.app/discovery/trailer.webm
 - id: owl-the-way-home
   title: Owl the Way Home
   manifest_url: https://owlthewayhome.david.app/arcade/manifest.json
