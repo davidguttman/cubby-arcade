@@ -75,6 +75,11 @@ document.querySelector('.waitlist').addEventListener('submit', async e => {
   const stop = a => {
     if (hovering === a) hovering = null; a.classList.remove('hover');
     const f = a.querySelector('video.full'); if (f) setTimeout(() => !a.classList.contains('hover') && f.pause(), FADE); };
+  // Each card plays its game's own store trailer, read from the game's live manifest, so a release updates the page too.
+  // data-trailer stays as the fallback (a game with no trailer yet, or a browser that can't play WebM).
+  if (document.createElement('video').canPlayType('video/webm; codecs="vp9"')) cards.forEach(a => {
+    const m = new URL('arcade/manifest.json', a.href);
+    fetch(m, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(d => { const f = d && d.attract && d.files && d.files[d.attract]; if (f && f.url) a.dataset.trailer = new URL(f.url, m).href; }).catch(() => {}); });
   if (matchMedia('(hover: hover)').matches) cards.forEach(a => { a.addEventListener('mouseenter', () => start(a)); a.addEventListener('mouseleave', () => stop(a)); });
   else {   // touch: the first tap plays the trailer on that card, a second tap on it opens the game; a tap anywhere else stops it
     cards.forEach(a => a.addEventListener('click', e => { if (hovering !== a) { e.preventDefault(); start(a); } }));
