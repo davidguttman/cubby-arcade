@@ -4,3 +4,8 @@
   manifest_url: https://word-wand.onrender.com/arcade/manifest.json
   artwork: https://word-wand.onrender.com/discovery/cover.png
   attract: https://word-wand.onrender.com/discovery/trailer.webm
+- id: line-cutter
+  title: Line Cutter
+  manifest_url: https://linecutter.david.app/store/line-cutter/manifest.json
+  artwork: https://linecutter.david.app/store/line-cutter/0.4.0/files/cover.png
+  attract: https://linecutter.david.app/store/line-cutter/0.4.0/files/trailer-handheld.webm
