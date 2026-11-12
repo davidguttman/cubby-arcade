@@ -183,6 +183,19 @@
         if (after.length !== before.length) { write(OUTBOX_KEY, after); changed(); }
       }
     }
+    // Who this device is (its name, and on a Cubby its players). Sent whenever a line opens, and again
+    // to every open line the moment it changes, so the other side never shows a stale name or player.
+    let told = null, watch = null;
+    function hello() { const value = {t: 'hello', id: state.id, role, ...describe()}; told = JSON.stringify(value); return value; }
+    function announce() {
+      return queue(async () => {
+        if (stopped || !started) return;
+        let now; try { now = JSON.stringify({t: 'hello', id: state.id, role, ...describe()}); } catch (_) { return; }
+        if (now === told) return;
+        const value = hello();
+        for (const item of load().pairings) if (live.get(item.room)?.open) await wire(item.room, value).catch(() => {});
+      });
+    }
     function onEvent(event) {
       return queue(async () => {
         if (stopped) return;
@@ -193,7 +206,7 @@
           if (line.present && role === 'parent' && !line.open) await negotiate(event.room);
         } else if (event.type === 'open') {
           Object.assign(line, {open: true, offering: 0, tries: 0});
-          await wire(event.room, {t: 'hello', id: state.id, role, ...describe()}).catch(() => {});
+          await wire(event.room, hello()).catch(() => {});
           await flush(event.room); changed();
         } else if (event.type === 'close') {
           if (!line.open && !line.offering) return;
@@ -211,9 +224,14 @@
           if (expirePending()) write(STATE_KEY, state);
           transport.on(onEvent);
           await rooms();
+          // Names and players change in other code (the hub's player picker, the phone's name), so look.
+          const every = options.setInterval || ((fn, ms) => { const timer = setInterval(fn, ms); timer.unref?.(); return timer; });
+          watch = every(() => { announce(); }, options.announceMs || 2000);
         });
       },
-      stop() { stopped = true; return transport.dispose(); },
+      /* Tell every connected device about a change to this one now, rather than on the next look. */
+      announce,
+      stop() { stopped = true; if (watch) clearInterval(watch); return transport.dispose(); },
       pairings() { return load().pairings.map(publicPairing); },
       /* Another page on this device changed what is stored: pick it up and tell listeners. */
       refresh() { return queue(async () => { const before = raw; load(); if (raw !== before) { await rooms(); changed(); } }); },

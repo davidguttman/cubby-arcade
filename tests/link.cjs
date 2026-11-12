@@ -39,7 +39,7 @@ function world() {
 const settle = async () => { for (let i = 0; i < 6; i++) await new Promise(done => setTimeout(done, 20)); };
 function device(net, role, extra = {}) {
   const storage = extra.storage || memoryStorage(), transport = net.transport();
-  const link = Link.createLink({role, storage, transport, describe: () => role === 'cubby' ? {name: 'Cubby', players: [{id: 'p_first', name: 'Lex', avatar: 'cat'}]} : {name: 'Phone'}, player: extra.player, setTimeout: extra.setTimeout || (() => {})});
+  const link = Link.createLink({role, storage, transport, describe: () => role === 'cubby' ? {name: 'Cubby', players: [{id: 'p_first', name: 'Lex', avatar: 'cat'}]} : {name: 'Phone'}, player: extra.player, setTimeout: extra.setTimeout || (() => {}), setInterval: () => null});   // tests announce by hand
   return {link, storage, transport};
 }
 async function pair(net, cubbyExtra, parentExtra) {
@@ -193,6 +193,24 @@ test('a game asks its channel who is playing', async () => {
   await cubby.link.start();
   assert.equal(cubby.link.channel('good-bribes-only').player(), 'p_dad');
   who = 'p_lex'; assert.equal(cubby.link.channel('good-bribes-only').player(), 'p_lex');
+});
+
+test('when a Cubby\'s players change, a connected phone hears at once', async () => {
+  const net = world(), players = [{id: 'p_first', name: 'Lex', avatar: 'cat'}];
+  const storage = memoryStorage(), transport = net.transport();
+  const cubby = Link.createLink({role: 'cubby', storage, transport, describe: () => ({name: 'Cubby', players}), setTimeout: () => {}, setInterval: () => null});
+  const parent = device(net, 'parent');
+  await cubby.start(); await parent.link.start();
+  await parent.link.acceptPairing(await cubby.beginPairing()); await settle();
+  assert.deepEqual(parent.link.pairings()[0].players.map(p => p.name), ['Lex']);
+  players.push({id: 'p_dad', name: 'Dad', avatar: 'bear'}); players[0].name = 'Lexi';
+  await cubby.announce(); await settle();
+  assert.deepEqual(parent.link.pairings()[0].players.map(p => p.name), ['Lexi', 'Dad']);
+  let sends = 0; const send = transport.send; transport.send = (r, d) => { sends++; return send(r, d); };
+  await cubby.announce(); await settle();
+  assert.equal(sends, 0, 'nothing is sent when nothing changed');
+  players.pop(); await cubby.announce(); await settle();
+  assert.equal(sends, 1); assert.deepEqual(parent.link.pairings()[0].players.map(p => p.name), ['Lexi']);
 });
 
 test('a phone must say which Cubby, and oversize or bad input is refused', async () => {

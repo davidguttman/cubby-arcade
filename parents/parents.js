@@ -46,7 +46,8 @@
     me.addEventListener('click', () => {
       const next = win.prompt('Name this phone', win.CubbyLinkOptions.name || 'Phone'); if (next === null || !next.trim()) return;
       try { win.localStorage.setItem('cubby:parent-link:name', next.trim().slice(0, 40)); } catch (_) {}
-      win.location.reload();
+      win.CubbyLinkOptions.name = next.trim().slice(0, 40);
+      link.announce?.(); render(link);   // the Cubby hears the new name now
     });
     for (const cubby of cubbies) {
       const remove = add(app, 'button', 'Forget ' + (cubby.name || 'this Cubby'), 'quiet'); remove.type = 'button';
