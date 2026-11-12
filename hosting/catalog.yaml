@@ -22,3 +22,8 @@
   manifest_url: https://owlthewayhome.david.app/arcade/manifest.json
   artwork: https://owlthewayhome.david.app/discovery/cover.png
   attract: https://owlthewayhome.david.app/discovery/trailer.webm
+- id: good-bribes-only
+  title: Good Bribes Only
+  manifest_url: https://goodbribesonly.david.app/arcade/manifest.json
+  artwork: https://goodbribesonly.david.app/discovery/cover.png
+  attract: https://goodbribesonly.david.app/discovery/trailer.webm
