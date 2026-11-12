@@ -272,7 +272,7 @@
   function createBrowserTransport(options) {
     const relay = String(options.relay || '').replace(/\/+$/, ''), fetcher = options.fetch || globalThis.fetch.bind(globalThis);
     const Peer = options.RTCPeerConnection || globalThis.RTCPeerConnection, wait = options.setTimeout || ((fn, ms) => setTimeout(fn, ms));
-    const watched = new Map(), lines = new Map();
+    const watched = new Map(), lines = new Map(), relayLines = new Map();
     let listener = () => {}, me = '', disposed = false;
     const emit = event => { try { listener(event); } catch (_) {} };
     const url = room => relay + '/v1/rooms/' + room + '/messages';
@@ -285,7 +285,14 @@
           if (!reply.ok) throw Error('Relay unavailable');
           const body = await reply.json(); after = body.seq; known = [...body.peers].sort();
           emit({type: 'presence', room, peers: body.peers});
-          for (const message of body.messages) emit({type: 'signal', room, blob: message.blob});
+          for (const message of body.messages) {
+            const blob = String(message.blob || '');
+            if (blob.startsWith('d:')) {
+              if (relayLines.has(room) && message.from !== me) emit({type: 'message', room, data: blob.slice(2)});
+            } else {
+              emit({type: 'signal', room, blob: message.blob});
+            }
+          }
         } catch (_) { known = null; if (!disposed && watched.get(room) === entry) await new Promise(done => wait(done, 3000)); }
       }
     }
@@ -314,7 +321,7 @@
       on(fn) { listener = fn; },
       async setRooms(id, list) {
         me = id;
-        for (const [room, entry] of watched) if (!list.includes(room)) { watched.delete(room); entry.abort.abort(); drop(room); }
+        for (const [room, entry] of watched) if (!list.includes(room)) { watched.delete(room); entry.abort.abort(); drop(room); relayLines.delete(room); }
         for (const room of list) if (!watched.has(room)) { const entry = {abort: new AbortController()}; watched.set(room, entry); poll(room, entry); }
       },
       async signal(room, blob) {
@@ -322,20 +329,32 @@
         if (!reply.ok) throw Error('Relay unavailable');
       },
       async offer(room) {
+        if (!Peer) { relayLines.set(room, true); return 'relay-only'; }
         const line = connection(room); attach(room, line, line.pc.createDataChannel('cubby'));
         await line.pc.setLocalDescription(await line.pc.createOffer()); await gathered(line.pc);
         return line.pc.localDescription.sdp;
       },
       async answer(room, sdp) {
+        if (sdp === 'relay-only' || !Peer) { drop(room); relayLines.set(room, true); emit({type: 'open', room}); return 'relay-only'; }
         const line = connection(room); line.pc.ondatachannel = event => attach(room, line, event.channel);
         await line.pc.setRemoteDescription({type: 'offer', sdp});
         await line.pc.setLocalDescription(await line.pc.createAnswer()); await gathered(line.pc);
         return line.pc.localDescription.sdp;
       },
-      async accept(room, sdp) { const line = lines.get(room); if (!line) throw Error('No offer'); await line.pc.setRemoteDescription({type: 'answer', sdp}); },
-      async send(room, data) { const line = lines.get(room); if (!line?.channel || line.channel.readyState !== 'open') throw Error('Not connected'); line.channel.send(data); },
-      async close(room) { drop(room); },
-      async dispose() { disposed = true; for (const entry of watched.values()) entry.abort.abort(); watched.clear(); for (const room of [...lines.keys()]) drop(room); }
+      async accept(room, sdp) {
+        if (sdp === 'relay-only') { drop(room); relayLines.set(room, true); emit({type: 'open', room}); return; }
+        const line = lines.get(room); if (!line) throw Error('No offer'); await line.pc.setRemoteDescription({type: 'answer', sdp});
+      },
+      async send(room, data) {
+        if (relayLines.has(room)) {
+          const reply = await fetcher(url(room), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({from: me, blob: 'd:' + data})});
+          if (!reply.ok) throw Error('Relay unavailable');
+          return;
+        }
+        const line = lines.get(room); if (!line?.channel || line.channel.readyState !== 'open') throw Error('Not connected'); line.channel.send(data);
+      },
+      async close(room) { drop(room); relayLines.delete(room); },
+      async dispose() { disposed = true; for (const entry of watched.values()) entry.abort.abort(); watched.clear(); for (const room of [...lines.keys()]) drop(room); relayLines.clear(); }
     };
   }
 

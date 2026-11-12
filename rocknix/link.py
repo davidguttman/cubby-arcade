@@ -43,12 +43,15 @@ class Link:
         self.boot = secrets.token_hex(8)
         self.opener, self.wait = opener, wait
         # Loaded on first use: a Cubby with nothing paired never pays for it.
-        self.load_rtc, self.rtc, self.available = rtc, None, bool(installed())
+        self.load_rtc, self.rtc = rtc, None
+        self.has_rtc = bool(installed())
+        self.available = True  # relay-only fallback works without aiortc
         self.changed = threading.Condition()
         self.events, self.seq = [], 0
         self.me, self.relay = None, None
-        self.rooms = {}      # room -> {'stop': Event, 'peers': [...]}
-        self.lines = {}      # room -> {'pc': ..., 'channel': ...}; touched only on the loop thread
+        self.rooms = {}        # room -> {'stop': Event, 'peers': [...]}
+        self.lines = {}        # room -> {'pc': ..., 'channel': ...}; touched only on the loop thread
+        self.relay_lines = {}  # room -> True; relay-only connections when aiortc unavailable
         self.loop = None
 
     # --- events for the page ---
@@ -111,11 +114,23 @@ class Link:
                     return
                 after = body['seq']
                 peers = known = sorted(str(peer) for peer in body['peers'])
+                batch = []
                 if peers != entry['peers']:
                     entry['peers'] = peers
-                    self.emit({'type': 'presence', 'room': room, 'peers': peers})
+                    batch.append({'type': 'presence', 'room': room, 'peers': peers})
                 for message in body['messages']:
-                    self.emit({'type': 'signal', 'room': room, 'blob': str(message['blob'])})
+                    blob = str(message['blob'])
+                    if blob.startswith('d:'):
+                        if str(message.get('from', '')) != me:  # skip own data echoed back
+                            batch.append({'type': 'message', 'room': room, 'data': blob[2:]})
+                    else:
+                        batch.append({'type': 'signal', 'room': room, 'blob': blob})
+                if batch:
+                    with self.changed:
+                        for event in batch:
+                            self.seq += 1
+                            self.events = (self.events + [{'seq': self.seq, **event}])[-MAX_EVENTS:]
+                        self.changed.notify_all()
             except (OSError, ValueError, KeyError, TypeError):
                 known = None
                 if entry['peers']:
@@ -134,7 +149,7 @@ class Link:
 
     # --- data channels; aiortc runs on its own loop thread ---
     def run(self, job, timeout=20):
-        if not self.available:
+        if not self.has_rtc:
             job.close()
             raise RuntimeError('Link unavailable')
         with self.changed:
@@ -145,6 +160,8 @@ class Link:
         return asyncio.run_coroutine_threadsafe(job, self.loop).result(timeout)
 
     def is_open(self, room):
+        if room in self.relay_lines:
+            return True
         line = self.lines.get(room)
         return bool(line and line['channel'] is not None and line['channel'].readyState == 'open')
 
@@ -213,21 +230,38 @@ class Link:
         self.lines[room]['channel'].send(data)
 
     def answer(self, room, sdp):
+        if not self.has_rtc or sdp == 'relay-only':
+            self.known(room)
+            self.relay_lines[room] = True
+            self.emit({'type': 'open', 'room': room})
+            return 'relay-only'
         return self.run(self._answer(self.known(room), sdp))
 
     def offer(self, room):
+        if not self.has_rtc:
+            self.known(room)
+            self.relay_lines[room] = True
+            self.emit({'type': 'open', 'room': room})
+            return 'relay-only'
         return self.run(self._offer(self.known(room)))
 
     def accept(self, room, sdp):
+        if sdp == 'relay-only' or not self.has_rtc:
+            return  # offerer already emitted open in offer()
         self.run(self._accept(self.known(room), sdp))
 
     def send(self, room, data):
         if not isinstance(data, str) or len(data) > MAX_DATA:
             raise ValueError('Invalid data')
+        if room in self.relay_lines:
+            self.signal(room, 'd:' + data)
+            return
         self.run(self._send(self.known(room), data))
 
     def close(self, room):
-        if ROOM.match(room or '') and self.available and self.loop is not None:
+        if self.relay_lines.pop(room, None):
+            self.emit({'type': 'close', 'room': room})
+        if ROOM.match(room or '') and self.has_rtc and self.loop is not None:
             self.run(self.drop(room))
 
     def known(self, room):
