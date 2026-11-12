@@ -49,12 +49,21 @@ document.querySelector('.waitlist').addEventListener('submit', async e => {
   b.addEventListener('click', () => { go(); v.muted = false; v.play(); });
   v.addEventListener('play', go); }
 </script><script>
-// Game cards: a wave left to right, each poster turns into a few seconds of its gameplay, then back
-{ const cards = [...document.querySelectorAll('.games a')], STAGGER = 900, SHOW = 3300, REST = 4000;
-  const show = a => { const v = a.querySelector('video'); v.currentTime = 0;
-    v.play().then(() => { a.classList.add('live'); setTimeout(() => { a.classList.remove('live'); setTimeout(() => v.pause(), 500); }, SHOW); }).catch(() => {}); };
-  let timer = null;
-  const wave = () => { cards.forEach((a, i) => setTimeout(() => show(a), i * STAGGER)); timer = setTimeout(wave, cards.length * STAGGER + SHOW + REST); };
+// Game cards: a wave left to right, one at a time: a poster turns into a few seconds of its gameplay, then back, then the next card
+{ const cards = [...document.querySelectorAll('.games a')], SHOW = 3300, FADE = 500, REST = 2000;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  let run = 0;
+  const wave = async id => {
+    while (id === run) {
+      for (const a of cards) {
+        if (id !== run) return;
+        const v = a.querySelector('video'); v.currentTime = 0;
+        try { await v.play(); } catch (e) { continue; }
+        a.classList.add('live'); await wait(SHOW);
+        a.classList.remove('live'); await wait(FADE); v.pause();
+      }
+      await wait(REST);
+    } };
   if (!matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window)
-    new IntersectionObserver(([e]) => { if (e.isIntersecting && !timer) timer = setTimeout(wave, 600); else if (!e.isIntersecting) { clearTimeout(timer); timer = null; } }).observe(document.querySelector('.games')); }
+    new IntersectionObserver(([e]) => { if (e.isIntersecting && !run) wave(run = Date.now()); else if (!e.isIntersecting) run = 0; }).observe(document.querySelector('.games')); }
 </script></body></html>
