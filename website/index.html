@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Cubby Buddy — a handheld arcade for little players. Join the waitlist."><meta name="theme-color" content="#2a1f3d"><title>Cubby Buddy — a handheld for little players</title><link rel="stylesheet" href="/site/style.css"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/site/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/site/apple-touch-icon.png"><script src="https://www.saasco.com/sdk/saasco-sdk.js" data-projectId="cmwdybu1l001lpsp73l6cljit" async></script><style>
+.games a{position:relative}.games video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .5s;pointer-events:none}.games a.live video{opacity:1}
 .hero-media{position:relative}.play{position:absolute;z-index:1;inset:0;margin:auto;width:104px;height:104px;border:0;border-radius:50%;background:linear-gradient(180deg,#ffd970,#ffab28);box-shadow:0 7px 0 #bf690e,0 16px 30px rgba(6,2,14,.5),inset 0 2px 0 rgba(255,255,255,.6);cursor:pointer;display:grid;place-items:center;transition:transform .15s}.play:hover{transform:scale(1.06)}.play svg{width:44px;height:44px;fill:#4a2a08;margin-left:6px}.play[hidden]{display:none}
 .joined{margin:30px 0 18px;color:var(--honey);font-size:21px;font-weight:800}
 .waitlist{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:30px 0 18px}
@@ -23,10 +24,10 @@
 <section class="hero"><div class="hero-copy"><p class="eyebrow">Coming soon</p><h1>Cubby<br>Buddy.</h1><p class="intro">A handheld for little players. No words required.</p><form class="waitlist" action="/waitlist" method="post"><input class="email-input" type="email" name="email" placeholder="your@email.com" required><button class="button" type="submit">Join the waitlist <span>→</span></button></form><p class="note">Can't wait? <a href="/play">Try the web demo ↗</a> · <a href="/steam">Steam ↗</a></p></div>
 <div class="hero-media"><button class="play" type="button" aria-label="Play" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"/></svg></button><video controls playsinline preload="metadata" poster="https://media.publit.io/file/0b695f0a-141c-47a6-b12a-5ff213b261ae.jpg"><source src="https://media.publit.io/file/cc12e938-57a1-4525-b856-2fe9b767323b.mp4" type="video/mp4"></video></div></section>
 <section class="games" aria-label="Games on Cubby Buddy">
-<a href="https://trailmix.cubbyarcade.com/"><img src="/site/trail-mix-poster.png" alt="Trail Mix"></a>
-<a href="https://foxbarrister.cubbyarcade.com/"><img src="https://media.publit.io/file/c_fit,w_640,h_400/f842dfb1-3a29-47fa-aeed-c0d807a1f6b3.png" alt="Fox Barrister"></a>
-<a href="https://owlthewayhome.cubbyarcade.com/"><img src="https://media.publit.io/file/c_fit,w_640,h_400/f1ddc83c-35c8-476a-bf30-ffd9c46fd9b2.png" alt="Owl the Way Home"></a>
-<a href="https://smallchange.cubbyarcade.com/"><img src="https://smallchange.cubbyarcade.com/discovery/cover.png" alt="Small Change"></a>
+<a href="https://trailmix.cubbyarcade.com/"><img src="/site/trail-mix-poster.png" alt="Trail Mix"><video muted playsinline preload="none" src="https://media.publit.io/file/6c8b54db-994d-4952-8052-79e6393c5bdf.mp4" aria-hidden="true"></video></a>
+<a href="https://foxbarrister.cubbyarcade.com/"><img src="https://media.publit.io/file/c_fit,w_640,h_400/f842dfb1-3a29-47fa-aeed-c0d807a1f6b3.png" alt="Fox Barrister"><video muted playsinline preload="none" src="https://media.publit.io/file/0f0a153a-ed86-4eb1-8478-d3ac7a2d4a53.mp4" aria-hidden="true"></video></a>
+<a href="https://owlthewayhome.cubbyarcade.com/"><img src="https://media.publit.io/file/c_fit,w_640,h_400/f1ddc83c-35c8-476a-bf30-ffd9c46fd9b2.png" alt="Owl the Way Home"><video muted playsinline preload="none" src="https://media.publit.io/file/87903b93-e802-45af-b9cc-f9b278023bd3.mp4" aria-hidden="true"></video></a>
+<a href="https://smallchange.cubbyarcade.com/"><img src="https://smallchange.cubbyarcade.com/discovery/cover.png" alt="Small Change"><video muted playsinline preload="none" src="https://media.publit.io/file/1aefe722-c6e6-41de-879d-2f68ff01db11.mp4" aria-hidden="true"></video></a>
 </section>
 <section class="feature"><p class="eyebrow">Your games</p><h2>Your agent. Your games.</h2><p>Tell it what to make. The game lands on the console.</p></section>
 </main>
@@ -47,4 +48,13 @@ document.querySelector('.waitlist').addEventListener('submit', async e => {
   const go = () => { b.hidden = true; v.controls = true; };
   b.addEventListener('click', () => { go(); v.muted = false; v.play(); });
   v.addEventListener('play', go); }
+</script><script>
+// Game cards: a wave left to right, each poster turns into a few seconds of its gameplay, then back
+{ const cards = [...document.querySelectorAll('.games a')], STAGGER = 900, SHOW = 3300, REST = 4000;
+  const show = a => { const v = a.querySelector('video'); v.currentTime = 0;
+    v.play().then(() => { a.classList.add('live'); setTimeout(() => { a.classList.remove('live'); setTimeout(() => v.pause(), 500); }, SHOW); }).catch(() => {}); };
+  let timer = null;
+  const wave = () => { cards.forEach((a, i) => setTimeout(() => show(a), i * STAGGER)); timer = setTimeout(wave, cards.length * STAGGER + SHOW + REST); };
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window)
+    new IntersectionObserver(([e]) => { if (e.isIntersecting && !timer) timer = setTimeout(wave, 600); else if (!e.isIntersecting) { clearTimeout(timer); timer = null; } }).observe(document.querySelector('.games')); }
 </script></body></html>
