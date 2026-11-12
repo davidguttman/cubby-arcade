@@ -7,5 +7,6 @@
   try { if (relay && /^https:\/\/[a-z0-9.-]+(:\d+)?$|^http:\/\/127\.0\.0\.1:\d+$/.test(relay)) win.localStorage.setItem('cubby:parent-link:relay', relay); } catch (_) {}
   if (code) win.history.replaceState(null, '', win.location.pathname + win.location.search);
   win.CubbyPairingCode = code || null;
-  win.CubbyLinkOptions = {role: 'parent', name};
+  let own = null; try { own = win.localStorage.getItem('cubby:parent-link:name'); } catch (_) {}
+  win.CubbyLinkOptions = {role: 'parent', name: own || name};   // link.js reads the stored name too, for game pages
 })(window);

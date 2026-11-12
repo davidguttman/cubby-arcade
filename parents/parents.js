@@ -20,8 +20,10 @@
     if (!cubbies.length) return unpaired();
     app.replaceChildren(); head();
     for (const cubby of cubbies) {
-      const card = add(app, 'section', '', 'card'), top = add(card, 'div', '', 'top');
-      add(top, 'span', cubby.name || 'Cubby', 'name');
+      const card = add(app, 'section', '', 'card'), top = add(card, 'div', '', 'top'), title = add(top, 'button', '', 'name'); title.type = 'button';
+      add(title, 'span', cubby.name || 'Cubby'); add(title, 'span', '✎', 'pen'); title.setAttribute('aria-label', 'Rename ' + (cubby.name || 'Cubby'));
+      // A name of your own for each Cubby, so two in one house can be told apart. Kept on this phone.
+      title.addEventListener('click', () => { const next = win.prompt('Name this Cubby', cubby.name || 'Cubby'); if (next !== null) link.renamePairing(cubby.id, next.trim() === (cubby.ownName || '') ? '' : next); });
       add(top, 'span', cubby.connected ? 'Connected' : cubby.confirmed ? 'Not in reach' : 'Pairing…', 'state' + (cubby.connected ? ' on' : ''));
       if (!cubby.confirmed) { add(card, 'p', 'Keep the Cubby on and this page open for a moment.', 'hint'); continue; }
       const players = add(card, 'ul', '', 'players');
@@ -38,6 +40,14 @@
         add(a, 'span', game.title);
       }
     }
+    // What this phone calls itself on the Cubby's Phones page; the Cubby hears it next time they connect.
+    const me = add(app, 'button', '', 'quiet self'); me.type = 'button';
+    add(me, 'span', 'This phone: ' + (win.CubbyLinkOptions.name || 'Phone')); add(me, 'span', '✎', 'pen');
+    me.addEventListener('click', () => {
+      const next = win.prompt('Name this phone', win.CubbyLinkOptions.name || 'Phone'); if (next === null || !next.trim()) return;
+      try { win.localStorage.setItem('cubby:parent-link:name', next.trim().slice(0, 40)); } catch (_) {}
+      win.location.reload();
+    });
     for (const cubby of cubbies) {
       const remove = add(app, 'button', 'Forget ' + (cubby.name || 'this Cubby'), 'quiet'); remove.type = 'button';
       remove.addEventListener('click', () => { if (win.confirm('Forget ' + (cubby.name || 'this Cubby') + '? You can pair again from its settings.')) link.removePairing(cubby.id); });

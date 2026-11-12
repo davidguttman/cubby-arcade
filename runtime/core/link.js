@@ -74,23 +74,28 @@
     const now = options.now || (() => Date.now()), later = options.setTimeout || ((fn, ms) => setTimeout(fn, ms));
     const describe = options.describe || (() => ({})), currentPlayer = options.player || (() => null);
     const listeners = new Set(), handlers = new Map(), live = new Map();
-    let state = null, started = false, stopped = false, work = Promise.resolve(), counter = 0;
+    let state = null, raw = null, started = false, stopped = false, work = Promise.resolve(), counter = 0;
     const STATE_KEY = prefix(role) + 'v1', OUTBOX_KEY = prefix(role) + 'outbox:v1', INBOX_KEY = prefix(role) + 'inbox:v1:', SEEN_KEY = prefix(role) + 'seen:v1';
 
     function read(key, fallback) { try { const value = storage.getItem(key); return value === null ? fallback : JSON.parse(value); } catch (_) { return fallback; } }
     function write(key, value) { storage.setItem(key, JSON.stringify(value)); }
+    // Another page on this device (the grown-ups app and a game's page, say) may have changed it since:
+    // always start from what is stored, so one page never writes back another's stale copy.
     function load() {
-      if (state) return state;
-      const saved = read(STATE_KEY, null);
-      state = saved && typeof saved.id === 'string' && Array.isArray(saved.pairings) ? saved : {id: crypto.newId(), pairings: []};
+      let now = null; try { now = storage.getItem(STATE_KEY); } catch (_) {}
+      if (state && now === raw) return state;
+      let saved = null; try { saved = now === null ? null : JSON.parse(now); } catch (_) {}
+      state = saved && typeof saved.id === 'string' && Array.isArray(saved.pairings) ? saved : (state || {id: crypto.newId(), pairings: []});
       if (!saved) write(STATE_KEY, state);
+      raw = storage.getItem(STATE_KEY);
       return state;
     }
-    function save() { write(STATE_KEY, state); changed(); }
+    function save() { write(STATE_KEY, state); raw = storage.getItem(STATE_KEY); changed(); }
     function changed() { for (const fn of [...listeners]) { try { fn(); } catch (_) {} } }
     function pairing(room) { return load().pairings.find(item => item.room === room); }
     function status(room) { let value = live.get(room); if (!value) live.set(room, value = {open: false, present: false, offering: 0, tries: 0}); return value; }
-    function publicPairing(item) { return {id: item.room, role: item.role, name: item.name || null, confirmed: !!item.confirmed, connected: !!live.get(item.room)?.open, players: item.players || [], since: item.created}; }
+    // `label` is what this device's owner calls the other one; `name` is what it calls itself.
+    function publicPairing(item) { return {id: item.room, role: item.role, name: item.label || item.name || null, ownName: item.name || null, confirmed: !!item.confirmed, connected: !!live.get(item.room)?.open, players: item.players || [], since: item.created}; }
     // One thing at a time: events from the transport and calls from the page share state.
     function queue(job) { const run = work.then(job, job); work = run.catch(() => {}); return run; }
 
@@ -210,6 +215,8 @@
       },
       stop() { stopped = true; return transport.dispose(); },
       pairings() { return load().pairings.map(publicPairing); },
+      /* Another page on this device changed what is stored: pick it up and tell listeners. */
+      refresh() { return queue(async () => { const before = raw; load(); if (raw !== before) { await rooms(); changed(); } }); },
       /* What the scanned code says: where to go, the code, and the relay when it is not the usual one. */
       pairingAddress(code) { return (options.companion || DEFAULT_COMPANION) + '#pair=' + code + (options.relay && options.relay !== DEFAULT_RELAY ? '&relay=' + encodeURIComponent(options.relay) : ''); },
       onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
@@ -229,6 +236,15 @@
           load(); const room = await crypto.room(code);
           if (!pairing(room)) { state.pairings.push({room, code, role: role === 'parent' ? 'cubby' : 'parent', created: now()}); save(); await rooms(); }
           return room;
+        });
+      },
+      /* Call a paired device something of your own, kept on this device only. Empty goes back to its own name. */
+      renamePairing(id, label) {
+        return queue(async () => {
+          load(); const item = pairing(id); if (!item) throw Error('Unknown paired device');
+          const clean = String(label || '').trim().slice(0, 40);
+          if (clean) item.label = clean; else delete item.label;
+          save();
         });
       },
       removePairing(id) {
@@ -419,7 +435,9 @@
     const role = options.role === 'parent' ? 'parent' : 'cubby';
     const player = () => { try { return role === 'cubby' && win.HandheldProfiles ? win.HandheldProfiles.current({storage, session}) : null; } catch (_) { return null; } };
     const describe = options.describe || (() => {
-      if (role !== 'cubby' || !win.HandheldProfiles) return {name: options.name || (role === 'cubby' ? 'Cubby' : 'Phone')};
+      // A phone's own name, set in Cubby's grown-ups app, holds for every page that speaks for it.
+      if (role === 'parent') { let own = null; try { own = storage.getItem(prefix(role) + 'name'); } catch (_) {} return {name: own || options.name || 'Phone'}; }
+      if (!win.HandheldProfiles) return {name: options.name || 'Cubby'};
       const registry = win.HandheldProfiles.readRegistry(storage);
       return {name: options.name || 'Cubby', players: registry.profiles.map(p => ({id: p.id, name: p.name || win.HandheldProfiles.ANIMAL_NAMES[p.avatar] || '', avatar: p.avatar}))};
     });
@@ -436,6 +454,7 @@
       await link.start();
       // Leaving for good closes the line at once, so the other side knows without waiting to time out.
       win.addEventListener?.('pagehide', event => { if (!event.persisted) link.stop(); });
+      win.addEventListener?.('storage', event => { if (!event.key || event.key.startsWith(prefix(role))) link.refresh(); });
       return link;
     })().catch(() => null);
     return {

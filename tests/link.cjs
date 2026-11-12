@@ -162,6 +162,31 @@ test('what crosses the line is sealed, and a message not sealed with the pairing
   assert.deepEqual(got, [{word: 'tiger'}]);
 });
 
+test('a paired device can be renamed on this side only, and keeps the name when it says hello again', async () => {
+  const net = world(), {cubby, parent, room} = await pair(net);
+  await parent.link.renamePairing(room, '  Living room Cubby  ');
+  assert.deepEqual([parent.link.pairings()[0].name, parent.link.pairings()[0].ownName], ['Living room Cubby', 'Cubby']);
+  assert.equal(cubby.link.pairings()[0].name, 'Phone', 'the other side is untouched');
+  parent.transport.offline(); parent.transport.online(); await settle();
+  const next = device(net, 'parent', {storage: parent.storage}); await next.link.start(); await settle();
+  assert.equal(next.link.pairings()[0].name, 'Living room Cubby', 'kept across pages and after a fresh hello');
+  await next.link.renamePairing(room, ''); assert.equal(next.link.pairings()[0].name, 'Cubby');
+  await assert.rejects(next.link.renamePairing('nope', 'x'), /Unknown/);
+});
+
+test('two pages on one phone never write back each other\'s stale copy', async () => {
+  const net = world(), {parent, room} = await pair(net);
+  const other = device(net, 'parent', {storage: parent.storage}); await other.link.start(); await settle();
+  await other.link.renamePairing(room, 'Car Cubby');
+  // The first page then saves something of its own (a hello arriving, say).
+  parent.transport.offline(); parent.transport.online(); await settle();
+  await parent.link.channel('good-bribes-only').key(room, 'x');
+  assert.equal(parent.link.pairings()[0].name, 'Car Cubby');
+  assert.equal(JSON.parse(parent.storage.getItem('cubby:parent-link:v1')).pairings[0].label, 'Car Cubby');
+  const seen = []; parent.link.onChange(() => seen.push(1)); await other.link.renamePairing(room, 'Kitchen'); await parent.link.refresh();
+  assert.ok(seen.length > 0, 'a page hears about a change made by another'); assert.equal(parent.link.pairings()[0].name, 'Kitchen');
+});
+
 test('a phone must say which Cubby, and oversize or bad input is refused', async () => {
   const {cubby, parent} = await pair(world());
   assert.throws(() => parent.link.channel('good-bribes-only').send('x'), /which Cubby/);
