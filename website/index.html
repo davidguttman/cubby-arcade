@@ -51,18 +51,29 @@ document.querySelector('.waitlist').addEventListener('submit', async e => {
 </script><script>
 // Game cards: a wave left to right, one at a time: a poster turns into a few seconds of its gameplay, then back, then the next card.
 // Hovering a card (or tapping it on a phone) plays that game's whole trailer (muted) on it instead, and the wave waits; the other cards stay posters.
-{ const cards = [...document.querySelectorAll('.games a')], SHOW = 3300, FADE = 500, REST = 2000;
+{ const cards = [...document.querySelectorAll('.games a')], SHOW = 3300, CLIP = 4000, FADE = 500, REST = 2000;
   const wait = ms => new Promise(r => setTimeout(r, ms));
   let run = 0, hovering = null;
   const hold = async ms => { for (let t = 0; t < ms && !hovering; t += 100) await wait(100); };
+  // A game with a store trailer shows a random four seconds from the middle of it (David: "four seconds of random"), so a
+  // release changes these too; one without keeps its fixed clip from the start.
+  const once = (v, ev) => new Promise(r => v.addEventListener(ev, r, { once: true }));
+  const cue = async (a, v) => {
+    const src = a.dataset.store;
+    if (!src) { v.currentTime = 0; return SHOW; }
+    if (v.getAttribute('src') !== src) { v.preload = 'auto'; v.src = src; }
+    if (!(v.duration > 0)) await Promise.race([once(v, 'loadedmetadata'), wait(4000)]);
+    const d = v.duration || 0, lo = d * 0.2, hi = Math.max(lo, d * 0.8 - CLIP / 1000);
+    v.currentTime = lo + Math.random() * (hi - lo); await Promise.race([once(v, 'seeked'), wait(2000)]);
+    return CLIP; };
   const wave = async id => {
     while (id === run) {
       for (const a of cards) {
         while (hovering && id === run) await wait(200);
         if (id !== run) return;
-        const v = a.querySelector('video.clip'); v.currentTime = 0;
+        const v = a.querySelector('video.clip'), show = await cue(a, v);
         try { await v.play(); } catch (e) { continue; }
-        a.classList.add('live'); await hold(SHOW);
+        a.classList.add('live'); await hold(show);
         a.classList.remove('live'); await wait(FADE); v.pause();
       }
       await hold(REST);
@@ -79,7 +90,7 @@ document.querySelector('.waitlist').addEventListener('submit', async e => {
   // data-trailer stays as the fallback (a game with no trailer yet, or a browser that can't play WebM).
   if (document.createElement('video').canPlayType('video/webm; codecs="vp9"')) cards.forEach(a => {
     const m = new URL('arcade/manifest.json', a.href);
-    fetch(m, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(d => { const f = d && d.attract && d.files && d.files[d.attract]; if (f && f.url) a.dataset.trailer = new URL(f.url, m).href; }).catch(() => {}); });
+    fetch(m, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(d => { const f = d && d.attract && d.files && d.files[d.attract]; if (f && f.url) a.dataset.trailer = a.dataset.store = new URL(f.url, m).href; }).catch(() => {}); });
   if (matchMedia('(hover: hover)').matches) cards.forEach(a => { a.addEventListener('mouseenter', () => start(a)); a.addEventListener('mouseleave', () => stop(a)); });
   else {   // touch: the first tap plays the trailer on that card, a second tap on it opens the game; a tap anywhere else stops it
     cards.forEach(a => a.addEventListener('click', e => { if (hovering !== a) { e.preventDefault(); start(a); } }));
