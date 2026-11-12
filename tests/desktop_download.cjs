@@ -3,12 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const root=path.join(__dirname,'..');
 const windows='https://github.com/davidguttman/cubby-arcade/releases/latest/download/CubbyArcade-win32-x64.zip';
 const linux='https://github.com/davidguttman/cubby-arcade/releases/latest/download/CubbyArcade-linux-x64.tar.gz';
-test('landing download defaults to Windows without JavaScript',()=>{
- const html=fs.readFileSync(path.join(root,'website/index.html'),'utf8');
- assert.match(html,/<a[^>]*data-desktop-download[^>]*>Get the Windows app ↓<\/a>/);
- assert(html.includes('href="'+windows+'"'));
- assert.match(html,/<script[^>]*src="\/site\/desktop-download.js"[^>]*defer/);
-});
+// The landing page is a waitlist now (#19) and offers no desktop download; the script stays for when one returns.
 test('desktop Linux changes both label and target; other clients retain Windows',()=>{
  const script=fs.readFileSync(path.join(root,'website/desktop-download.js'),'utf8');
  for(const [userAgent,isLinux] of [

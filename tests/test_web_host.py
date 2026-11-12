@@ -146,7 +146,7 @@ with tempfile.TemporaryDirectory() as tmp:
             for name, metadata in cloud['files'].items():
                 content = (output / name.lstrip('/')).read_bytes()
                 self.assertEqual(metadata, {'size':len(content), 'sha256':hashlib.sha256(content).hexdigest()})
-            self.assertIn('Little games.<br>Big discoveries.', (output / 'site/index.html').read_text())
+            self.assertIn('Cubby<br>Buddy.', (output / 'site/index.html').read_text())   # the waitlist landing page
             self.assertIn('/docs/game-authoring.html', (output / 'site/index.html').read_text())
             self.assertIn('schema_version', (output / 'docs/game-release-manifest.html').read_text())
             self.assertEqual((output / 'docs/game-release-manifest.md').read_bytes(), (web.HERE / 'docs/game-release-manifest.md').read_bytes())
