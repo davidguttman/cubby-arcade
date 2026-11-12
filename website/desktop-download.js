@@ -5,5 +5,5 @@
   const link=document.querySelector('[data-desktop-download]');
   if(!link)return;
   link.href='https://github.com/davidguttman/cubby-arcade/releases/latest/download/CubbyArcade-linux-x64.tar.gz';
-  link.textContent='Get the Linux app ↓';
+  link.textContent='Download for Linux ↓';
 })();
