@@ -21,7 +21,7 @@ MEMBER = re.compile(r'^[0-9a-f]{16}$')
 RELAY = re.compile(r'^(https://[a-z0-9.-]+(:\d+)?|http://127\.0\.0\.1:\d+)$')
 MAX_EVENTS = 2000
 MAX_ROOMS = 16
-MAX_DATA = 200000
+MAX_DATA = 262144  # a sealed link message; matches the relay's MAX_BLOB
 POLL_SECONDS = 25
 
 
@@ -109,7 +109,7 @@ class Link:
                 if known is not None:
                     url += '&peers=' + ','.join(known)
                 with self.opener(url, timeout=POLL_SECONDS + 10) as reply:
-                    body = json.loads(reply.read(1 << 20))
+                    body = json.loads(reply.read(1 << 25))
                 if entry['stop'].is_set():
                     return
                 after = body['seq']
@@ -253,10 +253,11 @@ class Link:
     def send(self, room, data):
         if not isinstance(data, str) or len(data) > MAX_DATA:
             raise ValueError('Invalid data')
-        if room in self.relay_lines:
+        # No open data channel: the relay carries it. Both sides always read relay data.
+        if room in self.relay_lines or not self.is_open(self.known(room)):
             self.signal(room, 'd:' + data)
             return
-        self.run(self._send(self.known(room), data))
+        self.run(self._send(room, data))
 
     def close(self, room):
         if self.relay_lines.pop(room, None):

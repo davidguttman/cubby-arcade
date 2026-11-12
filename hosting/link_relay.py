@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlsplit
 
 ROOM = re.compile(r'^/v1/rooms/([0-9a-f]{32})/messages$')
 MEMBER = re.compile(r'^[0-9a-f]{16}$')
-MAX_BLOB = 16384
+MAX_BLOB = 262144  # a sealed message carried by the relay when there is no data channel
 MAX_MESSAGES = 32
 MESSAGE_SECONDS = 60
 PRESENT_SECONDS = 40

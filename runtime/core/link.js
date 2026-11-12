@@ -107,7 +107,8 @@
       if (seen.includes(id)) return false;
       write(SEEN_KEY, [...seen, id].slice(-SEEN_IDS)); return true;
     }
-    function wire(room, value) { return transport.send(room, JSON.stringify(value)); }
+    // Sealed with the pairing secret whatever carries it, so the relay can neither read nor forge what passes.
+    async function wire(room, value) { const item = pairing(room); if (!item) throw Error('Unknown paired device'); return transport.send(room, await crypto.seal(item.code, value)); }
     async function flush(room) {
       if (!status(room).open) return;
       for (const item of held()) if (item.to === room) await wire(room, {t: 'msg', id: item.id, game: item.game, player: item.player, body: item.body}).catch(() => {});
@@ -155,9 +156,10 @@
     }
     async function onMessage(room, data) {
       const item = pairing(room); if (!item) return;
-      let message; try { message = JSON.parse(data); } catch (_) { return; }
+      let message; try { message = await crypto.open(item.code, data); } catch (_) { return; }
+      if (!message || typeof message !== 'object') return;
       if (message.t === 'hello') {
-        // Arrives over the data channel, which only the holder of the pairing secret could open.
+        // Sealed with the pairing secret, so only the device that scanned the code could have sent it.
         if (message.role !== item.role) return;
         Object.assign(item, {peer: String(message.id || ''), name: String(message.name || '').slice(0, 40) || item.name, confirmed: true,
           players: Array.isArray(message.players) ? message.players.slice(0, 16).map(p => ({id: String(p.id), name: String(p.name || '').slice(0, 20), avatar: String(p.avatar || '')})) : item.players});
@@ -288,7 +290,7 @@
           for (const message of body.messages) {
             const blob = String(message.blob || '');
             if (blob.startsWith('d:')) {
-              if (relayLines.has(room) && message.from !== me) emit({type: 'message', room, data: blob.slice(2)});
+              if (message.from !== me) emit({type: 'message', room, data: blob.slice(2)});
             } else {
               emit({type: 'signal', room, blob: message.blob});
             }
@@ -346,12 +348,14 @@
         const line = lines.get(room); if (!line) throw Error('No offer'); await line.pc.setRemoteDescription({type: 'answer', sdp});
       },
       async send(room, data) {
-        if (relayLines.has(room)) {
+        const line = lines.get(room);
+        // No open data channel: the relay carries it. Both sides always read relay data.
+        if (relayLines.has(room) || !line?.channel || line.channel.readyState !== 'open') {
           const reply = await fetcher(url(room), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({from: me, blob: 'd:' + data})});
           if (!reply.ok) throw Error('Relay unavailable');
           return;
         }
-        const line = lines.get(room); if (!line?.channel || line.channel.readyState !== 'open') throw Error('Not connected'); line.channel.send(data);
+        line.channel.send(data);
       },
       async close(room) { drop(room); relayLines.delete(room); },
       async dispose() { disposed = true; for (const entry of watched.values()) entry.abort.abort(); watched.clear(); for (const room of [...lines.keys()]) drop(room); relayLines.clear(); }

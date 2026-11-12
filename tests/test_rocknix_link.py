@@ -150,7 +150,7 @@ class LinkTests(unittest.TestCase):
         self.on_loop(lambda: channel.fire('close'))
         self.assertEqual(self.events(seen, 0.1), [])
 
-    def test_a_dropped_connection_is_reported_once_and_sending_then_fails(self):
+    def test_a_dropped_connection_is_reported_once_and_sending_then_goes_by_the_relay(self):
         self.link.set_rooms(ME, [ROOM], RELAY)
         self.link.request('answer', {'room': ROOM, 'sdp': 'offer-sdp'})
         pc, channel = Connection.made[0], Channel()
@@ -159,8 +159,8 @@ class LinkTests(unittest.TestCase):
         self.on_loop(lambda: pc.fire('connectionstatechange'))
         self.on_loop(lambda: channel.fire('close'))
         self.assertEqual(self.events()[1:], [{'type': 'close', 'room': ROOM}])
-        with self.assertRaises(ConnectionError):
-            self.link.request('send', {'room': ROOM, 'data': 'late'})
+        self.link.request('send', {'room': ROOM, 'data': 'late'})
+        self.assertEqual(self.relay.posts[-1][1], {'from': ME, 'blob': 'd:late'})
 
     def test_removing_a_room_stops_its_poll_and_closes_its_connection(self):
         self.link.set_rooms(ME, [ROOM, OTHER], RELAY)
@@ -241,7 +241,8 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(self.request('POST', '/api/link/rooms', rooms, {'Origin': 'https://elsewhere.test'})[0], 403)
         self.assertEqual(self.request('POST', '/api/link/rooms', rooms, {'Content-Type': 'text/plain'})[0], 403)
         self.assertEqual(self.request('POST', '/api/link/rooms', {'me': 'bad'}), (400, {'error': 'invalid request'}))
-        self.assertEqual(self.request('POST', '/api/link/send', {'room': ROOM, 'data': 'x'}), (503, {'error': 'unavailable'}))
+        self.assertEqual(self.request('POST', '/api/link/send', {'room': ROOM, 'data': 'x'}), (200, {}))  # no open channel yet: the relay carries it
+        self.assertEqual(self.relay.posts[-1][1], {'from': ME, 'blob': 'd:x'})
         self.state.link.emit({'type': 'open', 'room': ROOM})
         status, body = self.request('GET', '/api/link/events?boot=' + self.state.link.boot + '&after=0')
         self.assertEqual((status, [event['type'] for event in body['events']]), (200, ['open']))

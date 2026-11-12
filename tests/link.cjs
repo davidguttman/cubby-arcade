@@ -144,7 +144,22 @@ test('pairing survives a new page, an unscanned code expires, and removing a pho
   await next.link.removePairing(room);
   assert.deepEqual(next.link.pairings().filter(p => p.confirmed), []);
   assert.equal(JSON.parse(next.storage.getItem('cubby:link:outbox:v1')).length, 0);
+  await settle();   // the phone opens what was already in flight before it hears the line close
   assert.equal(parent.link.pairings()[0].connected, false);
+});
+
+test('what crosses the line is sealed, and a message not sealed with the pairing secret is ignored', async () => {
+  const net = world(), {cubby, parent, room} = await pair(net);
+  const seen = [], got = [];
+  const send = parent.transport.send; parent.transport.send = (r, data) => { seen.push(data); return send(r, data); };
+  cubby.link.channel('good-bribes-only').onMessage(message => got.push(message.body));
+  parent.link.channel('good-bribes-only').send({word: 'tiger'}, {to: room}); await settle();
+  assert.deepEqual(got, [{word: 'tiger'}]);
+  assert.ok(seen.length > 0 && seen.every(data => !data.includes('tiger') && !data.includes('msg')));
+  // Whoever carries the bytes (the relay, when there is no data channel) cannot forge one.
+  await cubby.transport.end.listener({type: 'message', room, data: JSON.stringify({t: 'msg', id: 'forged', game: 'good-bribes-only', body: 'forged'})});
+  await settle();
+  assert.deepEqual(got, [{word: 'tiger'}]);
 });
 
 test('a phone must say which Cubby, and oversize or bad input is refused', async () => {
