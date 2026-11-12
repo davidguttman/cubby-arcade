@@ -183,13 +183,20 @@ class LinkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.link.request('send', {'room': ROOM, 'data': 'x' * (link.MAX_DATA + 1)})
 
-    def test_a_runtime_without_webrtc_says_so_and_never_loads_it(self):
+    def test_a_runtime_without_webrtc_uses_relay_only_and_never_loads_it(self):
         loaded = []
         bare = link.Link(opener=self.relay, rtc=lambda: loaded.append(1), installed=lambda: False)
-        self.assertFalse(bare.available)
+        self.assertTrue(bare.available, 'relay-only mode is always available')
         bare.set_rooms(ME, [ROOM], RELAY)
-        with self.assertRaises(RuntimeError):
-            bare.request('answer', {'room': ROOM, 'sdp': 'offer'})
+        # answer with any SDP enters relay-only mode
+        self.assertEqual(bare.request('answer', {'room': ROOM, 'sdp': 'offer-sdp'}), {'sdp': 'relay-only'})
+        events = [{k: v for k, v in e.items() if k != 'seq'} for e in bare.read(bare.boot, 0, 0)['events']]
+        self.assertIn({'type': 'open', 'room': ROOM}, events)
+        # send posts data to the relay with d: prefix
+        bare.request('send', {'room': ROOM, 'data': 'hello'})
+        self.assertEqual(self.relay.posts[-1], (f'{RELAY}/v1/rooms/{ROOM}/messages', {'from': ME, 'blob': 'd:hello'}))
+        # offer also returns relay-only without loading aiortc
+        self.assertEqual(bare.request('offer', {'room': ROOM}), {'sdp': 'relay-only'})
         self.assertEqual(loaded, [])
         self.assertEqual(self.link.rtc, None, 'loaded only when a connection is first needed')
 

@@ -194,22 +194,29 @@ test('returning from a worded page keeps the answered gate once; other arrivals 
  stored.set('cubby:settings-return','1');
  const home=mountedHub(games,[],{},{settings},{sessionStorage,history,location:{}});await settle();assert.equal(stored.size,0);home.hub.show('options');assert.equal(home.host.querySelector('.settings-tile'),null);
 });
-test('power tiles confirm first, stay put while shutting down, and report failure',async()=>{
+test('power tile opens submenu; confirms each action before executing; reports failure',async()=>{
  let calls=[],fail=false,expired=null;const settings=[{icon:'trash',label:'Game saves',href:'#adult-saves'}];
  const {host,hub,action}=mountedHub(games,[],{power:true},{settings,power:async mode=>{calls.push(mode);if(fail)throw Error('busy');}},{setTimeout:fn=>{expired=fn;return 1;}});await settle();hub.show('options');
- assert.equal(host.querySelector('.power-off'),null);passGate(host);
- const off=host.querySelector('.power-off'),restart=host.querySelector('.restart-device'),dialog=host.querySelector('.quit-confirm');
- off.click();assert.equal(dialog.open,true);assert.equal(dialog.getAttribute('aria-label'),'Power off?');assert.deepEqual(calls,[]);assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-quit'));
- action('back');assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,off);assert.deepEqual(calls,[]);
- restart.click();assert.equal(dialog.getAttribute('aria-label'),'Restart?');action('right');action('confirm');await settle();assert.deepEqual(calls,['reboot']);
+ assert.equal(host.querySelector('.power-menu'),null);passGate(host);
+ const powerTile=host.querySelector('.power-menu'),dialog=host.querySelector('.quit-confirm');
+ // Open power menu, cancel
+ powerTile.click();assert.equal(dialog.open,true);assert.equal(dialog.getAttribute('aria-label'),'Power');assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-quit'));
+ action('back');assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,powerTile);assert.deepEqual(calls,[]);
+ // Open menu → choose Power off → cancel from confirmation
+ powerTile.click();host.querySelector('.power-off').click();
+ assert.equal(dialog.open,true);assert.equal(dialog.getAttribute('aria-label'),'Power off?');assert.deepEqual(calls,[]);assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-quit'));
+ action('back');assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,powerTile);assert.deepEqual(calls,[]);
+ // Open menu → choose Restart → confirm
+ powerTile.click();host.querySelector('.power-restart').click();assert.equal(dialog.getAttribute('aria-label'),'Restart?');action('right');action('confirm');await settle();assert.deepEqual(calls,['reboot']);
  assert.equal(host.querySelector('.power-note').textContent,'Restarting…');assert.ok(host.querySelector('.confirm-quit').disabled);action('back');assert.equal(dialog.open,true,'Cannot back out of a shutdown');
  expired();assert.match(host.querySelector('.power-note').textContent,/Could not restart/);assert.equal(host.querySelector('.confirm-quit').disabled,false);
- action('back');assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,restart);
- fail=true;off.click();host.querySelector('.confirm-quit').click();await settle();assert.deepEqual(calls,['reboot','poweroff']);assert.match(host.querySelector('.power-note').textContent,/Could not power off/);assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-quit'));
+ action('back');assert.equal(dialog.open,false);assert.equal(host.ownerDocument.activeElement,powerTile);
+ // Fail path: power off
+ fail=true;powerTile.click();host.querySelector('.power-off').click();host.querySelector('.confirm-quit').click();await settle();assert.deepEqual(calls,['reboot','poweroff']);assert.match(host.querySelector('.power-note').textContent,/Could not power off/);assert.equal(host.ownerDocument.activeElement,host.querySelector('.cancel-quit'));
 });
-test('hosts without power control show no power tiles',async()=>{
+test('hosts without power control show no power tile',async()=>{
  const {host,hub}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();hub.show('options');passGate(host);
- assert.equal(host.querySelector('.power-off'),null);assert.equal(host.querySelector('.restart-device'),null);
+ assert.equal(host.querySelector('.power-menu'),null);
 });
 test('tab activation never focuses a disabled Play action',async()=>{
  const {host}=mountedHub(games,[],{tokens:true},{account:async()=>({available:true,balance:0})});await settle();
@@ -490,7 +497,7 @@ for(const device of [false,true])test('everyday settings precede setup and feeds
   updateAttention:async()=>({attention:true})
  },windowOverrides:{HandheldOSD:{calibration,reset(){}},setInterval:()=>0,clearInterval(){}}});
  await settle();hub.show('options');assert.equal(host.querySelector('.manage-feeds'),null);passGate(host);
- const expected=device?['Wi-Fi settings','Cubby updates','Players','Game saves','Adult controller setup','Game feeds','Restart','Power off','Quit application']:['Players','Manage game saves','Adult controller setup','Adult keyboard setup','Game feeds','Quit application'];
+ const expected=device?['Wi-Fi settings','Cubby updates','Players','Game saves','Adult controller setup','Game feeds','Power','Quit application']:['Players','Manage game saves','Adult controller setup','Adult keyboard setup','Game feeds','Quit application'];
  assert.deepEqual(settingsLabels(host),expected);
  assert.equal(host.ownerDocument.activeElement.getAttribute('aria-label'),expected[0]);
  if(device){const update=host.querySelectorAll('.settings-tile').find(tile=>tile.getAttribute('aria-label')==='Cubby updates');assert.ok(Object.hasOwn(update.dataset,'notice'),'Update tile retains its attention marker');assert.ok(host.querySelectorAll('.view-tab')[2].classList.contains('has-notice'),'Gear retains update attention');}

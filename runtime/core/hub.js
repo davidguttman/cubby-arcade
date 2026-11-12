@@ -187,6 +187,16 @@ function mount(host){
    if(quitting)return;quitting=true;note.textContent=busyText;for(const b of actions.querySelectorAll('button'))b.disabled=true;
    try{await platform.power(mode);if(!disposed)powerTimer=win.setTimeout(failed,30000);}catch{if(!disposed)failed();}
   },'confirm-quit');
+  if(!quitDialog.open)quitDialog.showModal();cancel.focus();
+ }
+ function openPowerMenu(opener){
+  if(!platform.capabilities.power||quitting)return;
+  quitOpener=opener;quitDialog.setAttribute('aria-label','Power');quitDialog.replaceChildren();
+  const picture=element(quitDialog,'div','quit-picture');picture.innerHTML=icon('quit');
+  const actions=element(quitDialog,'div','quit-actions');
+  const cancel=button(actions,'back','Cancel',closeQuit,'cancel-quit');
+  button(actions,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',opener),'power-restart');
+  button(actions,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',opener),'power-off');
   quitDialog.showModal();cancel.focus();
  }
  quitDialog.addEventListener('cancel',e=>{e.preventDefault();closeQuit();});
@@ -713,7 +723,7 @@ function mount(host){
  const quit=()=>{if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');};
  // Device hosts have physical controls and their own adult pages, so they list
  // those here; key remapping only applies to hosts with a real keyboard.
- if(platform.settings?.length){for(const entry of platform.settings){if(entry.href==='#adult-players'&&!profiles)continue;if(entry.href==='#adult-link'&&!link)continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();feeds();if(platform.capabilities.power){const restart=button(tiles,'retry','Restart',()=>openPower('reboot','retry','Restart','Restarting…',restart),'settings-tile restart-device'),off=button(tiles,'quit','Power off',()=>openPower('poweroff','quit','Power off','Powering off…',off),'settings-tile power-off');}quit();
+ if(platform.settings?.length){for(const entry of platform.settings){if(entry.href==='#adult-players'&&!profiles)continue;if(entry.href==='#adult-link'&&!link)continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();feeds();if(platform.capabilities.power){const powerTile=button(tiles,'quit','Power',()=>openPowerMenu(powerTile),'settings-tile power-menu');}quit();
   // Past six tiles, a short screen takes four smaller ones a row to stay in two rows.
   tiles.classList.toggle('many',tiles.children.length>6);showNotice();showVersion();return;}
  if(profiles)button(tiles,'players','Players',()=>openSetting('#adult-players'),'manage-players settings-tile');
