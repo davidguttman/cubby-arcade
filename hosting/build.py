@@ -63,6 +63,7 @@ def build(output=None):
     # Native cache keys remain /index.html, but native transport is a distinct
     # physical file. Root becomes the adult landing page with no runtime router.
     shutil.copyfile(result / 'site/index.html', result / 'index.html')
+    shutil.copyfile(result / 'site/favicon.ico', result / 'favicon.ico')
     return result
 
 
