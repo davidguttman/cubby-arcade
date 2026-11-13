@@ -143,10 +143,36 @@ use a root-relative base so its download references mean the same thing at both.
 See the [complete release manifest specification](/docs/game-release-manifest.html)
 for fields, validation, size limits, media and compatibility.
 
-## Add the game to the store once
+## Play it on your own Cubby
 
-Cubby's trusted developer registry is the `/catalog` JSON array. Ask its
-maintainer to add a listing with this shape; there is no public submission API:
+You don't need anyone's permission to put your game on a Cubby. Host your own
+game feed and the player's adult adds it once on the device.
+
+1. Publish the game as above, on any static HTTPS host (GitHub Pages, Netlify,
+   Cloudflare Pages, your own server).
+2. Publish a feed beside it: a JSON array of listings, the same shape as the
+   store listing below. One feed can hold all your games.
+3. Check that the feed URL answers `200` with that JSON directly, with no
+   redirect. Cubby doesn't follow redirects for feeds.
+4. Give the user the feed URL. Keep it short (for example
+   `https://my-games.example/feed.json`), because they type it on the handheld.
+5. On the Cubby: select your player, open the gear, pass the adult check, open
+   **Game feeds**, press **+**, give the feed a name and type the URL. The game
+   appears in the Store; install it and play.
+
+Cubby re-reads every enabled feed when the Store loads, so a new game added to
+the same feed, or a new release behind an existing manifest URL, shows up
+without adding the feed again. Each player profile has its own feed list. Pick
+a game ID that isn't already in the Cubby store; a custom feed can't take over
+a store game's ID. If you also want the game to work in the browser version of
+Cubby, serve the feed, manifest and files with CORS allowed
+(`Access-Control-Allow-Origin: *`).
+
+## Add the game to the public store
+
+To list the game for every Cubby, not just your own, ask the maintainer of
+Cubby's trusted developer registry (the `/catalog` JSON array) to add a listing
+with this shape; there is no public submission API:
 
 ```json
 {
@@ -224,6 +250,7 @@ Test a fresh offline install, keyboard/controller input, pause/resume, return to
 library, save/restart and an update from a prior version. Verify all payload URLs
 use direct HTTPS (no redirects), and that uploaded byte sizes/hashes match.
 Physical controller and target-device performance need real hardware testing.
+Finish by giving the user the feed URL and the **Game feeds** steps above.
 
 ## Cover and trailer shape
 
