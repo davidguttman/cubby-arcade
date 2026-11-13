@@ -25,7 +25,9 @@ Game-specific phone/parent companion apps belong to the game's repository and
 release, not Cubby's code, catalog, or hosting routes. Declare the optional
 [`companion` manifest metadata](game-release-manifest.md#game-owned-phone-companions)
 so Cubby's generic phone dashboard can discover the app from installed games,
-including games installed through custom feeds. The game owns its companion's
+including games installed through custom feeds. The parent pairs once; game pages
+run inside its app using the [embedded SDK](companion-app.md#embedded-game-sdk),
+not a separate game pairing. The game owns its companion's
 UI, assets, offline behavior, and interaction model.
 
 ## Controls, lifecycle and saves

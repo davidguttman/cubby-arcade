@@ -179,11 +179,12 @@ Adding, removing, or changing companion metadata requires a new game version;
 changing it under an already-installed version is an immutable-release conflict.
 Manifests without this optional field continue to install and play normally.
 
-Opening a companion follows its game-owned URL without passing pairing secrets,
-players, device IDs, or inventing a same-origin pairing relationship. A standalone
-app can use its own code-word or other game-owned interaction. An older page
-that depends on Cubby's same-origin localStorage pairing cannot simply be moved
-to another origin; its game must migrate that integration explicitly.
+Opening a companion embeds its game-owned HTTPS URL inside the parent app.
+Use the [embedded companion SDK](companion-app.md#embedded-game-sdk) so the game
+uses the parent's existing pairing through a game-and-device-scoped bridge.
+Do not add a separate game pairing or transport. Raw pairing secrets are never
+passed to the game. Publisher pages must permit framing and use a distinct origin
+from the Cubby parent app so they cannot access Cubby's pairing storage.
 
 `--base-url` is optional and defaults to `./`: generated file references then
 point beside the hosted manifest. Supply a relative version directory when

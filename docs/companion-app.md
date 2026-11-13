@@ -14,13 +14,61 @@ a per-game Cubby route, source change, or hosting rewrite. Updates and removal
 follow the installed game manifest; when a Cubby is unreachable, the phone shows
 its last successfully synced list.
 
-Companion links go directly to the game's own public URL. They do not export
-Cubby pairing credentials or automatically share Cubby's browser storage. Each
-game owns its phone app's connection model and offline cache. Existing games
-without companion metadata remain playable, but must publish a new game release
-declaring their companion before appearing here. Legacy `/parents/<game>/`
-same-origin pages/bookmarks are not migrated by guessing a URL or adding a
-game-specific fallback; games relying on that pairing model must migrate it.
+Pair Cubby once. Tapping a game opens its game-owned page **inside this parent
+app**, not a separate browser or another pairing flow. The parent's live connection
+stays open and a generic bridge scopes messages to that game and selected Cubby.
+The game receives public player/device state and game-derived keys, never raw
+pairing codes, pairing management, other games' channels or other Cubbies.
+
+Publishers vendor `runtime/core/companion.js` with their game companion and load
+it instead of the standalone `link.js` transport. See [the embedded SDK](#embedded-game-sdk).
+Companions must be hosted on a publisher HTTPS origin different from the parent
+app, and must permit framing (no blocking `X-Frame-Options` or `frame-ancestors`).
+The iframe sandbox permits scripts, publisher storage, forms and game confirmation
+dialogs, but not popups or top-level navigation. This preserves game-local state
+without granting access to Cubby's pairing storage.
+
+Existing releases without companion metadata remain playable but need a new
+release to appear here. Existing standalone companions must migrate to the SDK;
+Cubby never falls back to asking a parent for another game-specific pairing.
+
+## Embedded game SDK
+
+The vendored SDK sets `window.CubbyLink` and a message-size constant in
+`window.CubbyLinkAPI.MAX_MESSAGE`. It does not start a transport, consume QR codes
+or read pairing credentials. `await CubbyLink.ready` returns a scoped facade or
+`null` when opened outside Cubby or when the parent cannot connect.
+
+```js
+const link = await CubbyLink.ready;
+if (!link) { /* Tell the adult to open this game in Cubby. */ }
+else {
+  const line = link.channel('my-game');
+  line.onMessage(message => { /* message.from, message.player, message.body */ });
+  for (const cubby of link.pairings()) {
+    await line.send({t: 'ask'}, {to: cubby.id});
+    const key = await line.key(cubby.id, 'my-game-label');
+  }
+  link.onChange(() => { /* Public connected/player state changed. */ });
+}
+```
+
+`link.pairings()` contains only the selected Cubby. `link.onChange(fn)` and
+`line.onMessage(fn)` return unsubscribe functions. `line.send(body, {to?, player?})`
+is **asynchronous**: await it and handle errors. It defaults to the selected Cubby;
+other peers and unknown players are rejected. `line.key(peer, label)` derives a
+key for this game's channel only. `line.waiting()` returns the latest queued
+message count for this game/Cubby; the shared connection delivers queued edits.
+No accept/remove/rename pairing operations are exposed. `channel()` cannot select
+another game. Back/All games closes the capability. Removing the game or pairing,
+or replacing the companion URL, revokes it. Connection changes push state without
+reloading the iframe or discarding edits. Game pages own their own UI/state/cache;
+the Cubby shell does not promise offline caching of publisher pages.
+
+The handshake validates both publisher origin and iframe window, then uses a
+single private `MessagePort`. Old frames/ports are closed when leaving/reloading.
+Requests and pending responses are bounded; a missing SDK or blocked page leaves
+an in-app retry/back path rather than navigating away.
 
 ## Install
 

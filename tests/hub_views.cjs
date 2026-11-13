@@ -45,6 +45,7 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   getAttribute(k){return this.attributes[k]??null;}
   removeAttribute(k){delete this.attributes[k];}
   addEventListener(k,f){(this.listeners[k]??=[]).push(f);}
+  removeEventListener(k,f){this.listeners[k]=(this.listeners[k]||[]).filter(fn=>fn!==f);}
   matches(selector){return selector.split(',').some(s=>{s=s.trim();const data=s.match(/\[data-game-id="([^"]+)"\]/);if(data)return this.dataset.gameId===data[1];const cls=s.match(/\.([\w-]+)/);return (!cls||this.classList.contains(cls[1]))&&(!s.startsWith('dialog')||this.tagName==='dialog')&&(!s.startsWith('button')||this.tagName==='button')&&(!s.startsWith('video')||this.tagName==='video')&&(!s.startsWith('img')||this.tagName==='img')&&(!s.includes(':not(:disabled)')||!this.disabled);});}
   querySelectorAll(selector){if(selector==='.hero-rest img')return this.querySelector('.hero-rest')?.querySelectorAll('img')||[];return this.children.flatMap(e=>[...(e.matches(selector)?[e]:[]),...e.querySelectorAll(selector)]);}
   querySelector(s){return this.querySelectorAll(s)[0]||null;}
@@ -186,6 +187,32 @@ test('discarding a started preview releases its source when switching views and 
  const video=host.querySelector('video');hub.show('options');assert.equal(video.src,undefined);assert.equal(video.loadCount,1);
  hub.show('library');const next=host.querySelector('video');assert.equal(next.src,'one.webm');hub.dispose();assert.equal(next.src,undefined);assert.equal(next.loadCount,1);
  next.dispatchEvent({type:'ended'});assert.equal(next.playCount,1,'detached video events cannot restart playback');
+});
+test('scrolling beneath a stationary pointer cannot replace the controller selection',async()=>{
+ const {host,hub}=mountedHub(games);await settle();
+ const one=host.querySelector('[data-game-id="one"]'),two=host.querySelector('[data-game-id="two"]');
+ two.focus();one.dispatchEvent({type:'pointerenter',pointerType:'mouse'});
+ assert.equal(hub.state.detail.id,'two','layout-induced pointer entry is not a game selection');
+ one.dispatchEvent({type:'pointermove',pointerType:'touch'});assert.equal(hub.state.detail.id,'two');
+ one.dispatchEvent({type:'pointermove',pointerType:'mouse'});assert.equal(hub.state.detail.id,'one','actual mouse movement still previews a game');
+});
+for(const device of [false,true])test('retired videos release their decoder and cannot restart or reveal on delayed events; device='+device,async()=>{
+ const frames=[],cancelled=[],clock=device?devicePreviewClock():null;
+ const {host,hub}=mountedHub(games.map(game=>({...game,attract:game.id+'.webm'})),[],{},{},clock?.window||{},{requestVideoFrameCallback:fn=>(frames.push(fn),frames.length),cancelVideoFrameCallback:id=>cancelled.push(id)});await settle();clock?.run();
+ const old=host.querySelector('video');old.readyState=2;old.dispatchEvent({type:'playing'});
+ const lateFrame=frames[0],plays=old.playCount;
+ host.querySelector('[data-game-id="two"]').focus();
+ assert.equal(old.loadCount,1,'retiring must reset the media resource, not only pause');
+ assert.deepEqual(cancelled,[1]);
+ old.dispatchEvent({type:'ended'});old.dispatchEvent({type:'playing'});lateFrame();
+ assert.equal(old.playCount,plays,'a queued end event must never restart a retired trailer');
+ assert.equal(old.style.opacity,'0','a queued frame must never reveal a retired trailer');
+ assert.equal(host.querySelector('.preview-poster').src,'two.svg');
+ if(device){assert.equal(host.querySelector('video').src,undefined);clock.run();}
+ assert.equal(host.querySelector('video').src,'two.webm');
+ const current=host.querySelector('video');hub.show('options');
+ assert.equal(current.loadCount,1,'leaving the library releases its decoder too');
+ hub.dispose();
 });
 test('empty Library remains an empty pictorial state',async()=>{
  const {host,hub}=mountedHub([]);await settle();hub.show('library');

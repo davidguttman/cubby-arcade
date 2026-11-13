@@ -300,3 +300,11 @@ test('game-page install scopes the ready link as used by existing external compa
   assert.throws(()=>invalid.channel('good-bribes-only').send('wrong'),/Unknown paired device/);
   await scoped.stop();await invalid.stop();
 });
+
+test('queued-message counts may be scoped to one Cubby without revealing another Cubby queue', async () => {
+  const net=world(), first=await pair(net), second=device(net,'cubby');await second.link.start();
+  const code=await second.link.beginPairing(), room=await first.parent.link.acceptPairing(code);await settle();
+  first.cubby.transport.offline();second.transport.offline();await settle();
+  const line=first.parent.link.channel('queue-scope');line.send({t:'one'},{to:first.room});line.send({t:'two'},{to:room});
+  assert.equal(line.waiting(),2);assert.equal(line.waiting(first.room),1);assert.equal(line.waiting(room),1);assert.equal(line.waiting('other-room'),0);
+});
