@@ -51,21 +51,41 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual([e['id'] for e in beta], ['line-cutter'])
             self.assertEqual(beta[0], {
                 'id': 'line-cutter', 'title': 'Line Cutter',
-                'manifest_url': 'https://linecutter.david.app/store/line-cutter/manifest.json',
-                'artwork': 'https://linecutter.david.app/store/line-cutter/0.4.0/files/cover.png',
-                'attract': 'https://linecutter.david.app/store/line-cutter/0.4.0/files/trailer-handheld.webm',
+                'manifest_url': 'https://linecutter.cubbyarcade.com/store/line-cutter/manifest.json',
+                'moved_from': ['https://linecutter.david.app/store/line-cutter/manifest.json'],
+                'artwork': 'https://linecutter.cubbyarcade.com/store/line-cutter/0.4.0/files/cover.png',
+                'attract': 'https://linecutter.cubbyarcade.com/store/line-cutter/0.4.0/files/trailer-handheld.webm',
             })
             trail = next(e for e in json.loads((site / 'catalog').read_text()) if e['id'] == 'trail-mix')
-            self.assertEqual(trail['manifest_url'], 'https://trailmix.david.app/arcade/manifest.json')
-            self.assertEqual(trail['artwork'], 'https://trailmix.david.app/discovery/cover.png')
-            self.assertEqual(trail['attract'], 'https://trailmix.david.app/discovery/trailer.webm')
+            self.assertEqual(trail['manifest_url'], 'https://trailmix.cubbyarcade.com/arcade/manifest.json')
+            self.assertEqual(trail['moved_from'], ['https://trailmix.david.app/arcade/manifest.json'])
+            self.assertEqual(trail['artwork'], 'https://trailmix.cubbyarcade.com/discovery/cover.png')
+            self.assertEqual(trail['attract'], 'https://trailmix.cubbyarcade.com/discovery/trailer.webm')
             fox = next(e for e in json.loads((site / 'catalog').read_text()) if e['id'] == 'fox-barrister')
             self.assertEqual(fox['title'], 'Fox Barrister')
-            self.assertEqual(fox['manifest_url'], 'https://foxbarrister.david.app/arcade/manifest.json')
-            self.assertEqual(fox['artwork'], 'https://foxbarrister.david.app/discovery/cover.png')
-            self.assertEqual(fox['attract'], 'https://foxbarrister.david.app/discovery/trailer.webm')
+            self.assertEqual(fox['manifest_url'], 'https://foxbarrister.cubbyarcade.com/arcade/manifest.json')
+            self.assertEqual(fox['artwork'], 'https://foxbarrister.cubbyarcade.com/discovery/cover.png')
+            self.assertEqual(fox['attract'], 'https://foxbarrister.cubbyarcade.com/discovery/trailer.webm')
+            # Games that moved from david.app hosts say where their installs came from.
+            moved = {'line-cutter', 'trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle'}
+            for item in json.loads((site / 'catalog').read_text()) + beta:
+                if item['id'] not in moved:
+                    continue
+                with self.subTest(game=item['id']):
+                    self.assertRegex(item['manifest_url'], r'^https://[a-z]+\.cubbyarcade\.com/')
+                    self.assertEqual(item['moved_from'], [item['manifest_url'].replace('.cubbyarcade.com/', '.david.app/', 1)])
             self.assertFalse((site / 'games').exists())
             self.assertFalse((site / 'store').exists())
+
+    def test_every_embed_starter_is_offered_by_a_built_in_feed(self):
+        # A starter with no offer can only fail; it must be listed by Cubby's own
+        # stable or beta catalog, which the shared core searches for starters.
+        import re
+        source = Path('runtime/core/browser-bootstrap.js').read_text()
+        starters = set(re.findall(r"get\('starter'\)==='([a-z0-9-]+)'", source))
+        self.assertEqual(starters, {'line-cutter'})
+        offered = {e['id'] for e in web.default_registry() + web.default_beta_registry()}
+        self.assertLessEqual(starters, offered)
 
     def test_host_retains_historical_archives_without_listing_or_preinstalling_them(self):
         with tempfile.TemporaryDirectory() as tmp:

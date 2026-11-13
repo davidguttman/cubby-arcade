@@ -1,9 +1,11 @@
 # Store discovery pointers in display order; game installation remains explicit.
 - id: trail-mix
   title: Trail Mix
-  manifest_url: https://trailmix.david.app/arcade/manifest.json
-  artwork: https://trailmix.david.app/discovery/cover.png
-  attract: https://trailmix.david.app/discovery/trailer.webm
+  manifest_url: https://trailmix.cubbyarcade.com/arcade/manifest.json
+  moved_from:
+    - https://trailmix.david.app/arcade/manifest.json
+  artwork: https://trailmix.cubbyarcade.com/discovery/cover.png
+  attract: https://trailmix.cubbyarcade.com/discovery/trailer.webm
   media:
     thumbnail:
       url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-trail-mix-artwork-f699bb50bc6d.jpg
@@ -22,9 +24,11 @@
       source_sha256: 8ff0eeca17f64e727716ab8152fb44f4bf6130f690f7555a86403523d3349f3b
 - id: fox-barrister
   title: Fox Barrister
-  manifest_url: https://foxbarrister.david.app/arcade/manifest.json
-  artwork: https://foxbarrister.david.app/discovery/cover.png
-  attract: https://foxbarrister.david.app/discovery/trailer.webm
+  manifest_url: https://foxbarrister.cubbyarcade.com/arcade/manifest.json
+  moved_from:
+    - https://foxbarrister.david.app/arcade/manifest.json
+  artwork: https://foxbarrister.cubbyarcade.com/discovery/cover.png
+  attract: https://foxbarrister.cubbyarcade.com/discovery/trailer.webm
   media:
     thumbnail:
       url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-fox-barrister-artwork-c6e0845ca178.jpg
@@ -43,9 +47,11 @@
       source_sha256: ea612d9b1dc86f20825b5a447822615b2c8807e0096395aa4303cac7b6e038b1
 - id: small-change
   title: Small Change
-  manifest_url: https://smallchange.david.app/arcade/manifest.json
-  artwork: https://smallchange.david.app/discovery/cover.png
-  attract: https://smallchange.david.app/discovery/trailer.webm
+  manifest_url: https://smallchange.cubbyarcade.com/arcade/manifest.json
+  moved_from:
+    - https://smallchange.david.app/arcade/manifest.json
+  artwork: https://smallchange.cubbyarcade.com/discovery/cover.png
+  attract: https://smallchange.cubbyarcade.com/discovery/trailer.webm
   media:
     thumbnail:
       url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-small-change-artwork-4db134e1302a.jpg
@@ -64,9 +70,11 @@
       source_sha256: 18a71863d8db6d62fe407abb3d591cba5a7ff9b1ef483cd5a48dee6c502da42b
 - id: owl-the-way-home
   title: Owl the Way Home
-  manifest_url: https://owlthewayhome.david.app/arcade/manifest.json
-  artwork: https://owlthewayhome.david.app/discovery/cover.png
-  attract: https://owlthewayhome.david.app/discovery/trailer.webm
+  manifest_url: https://owlthewayhome.cubbyarcade.com/arcade/manifest.json
+  moved_from:
+    - https://owlthewayhome.david.app/arcade/manifest.json
+  artwork: https://owlthewayhome.cubbyarcade.com/discovery/cover.png
+  attract: https://owlthewayhome.cubbyarcade.com/discovery/trailer.webm
   media:
     thumbnail:
       url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-owl-the-way-home-artwork-76d100ca703e.jpg
@@ -85,9 +93,11 @@
       source_sha256: 14e8a5b998642f42330557f0bacd7a858a9340b1ac09037a35e1238c34d01c8e
 - id: good-bribes-only
   title: Good Bribes Only
-  manifest_url: https://goodbribesonly.david.app/arcade/manifest.json
-  artwork: https://goodbribesonly.david.app/discovery/cover.png
-  attract: https://goodbribesonly.david.app/discovery/trailer.webm
+  manifest_url: https://goodbribesonly.cubbyarcade.com/arcade/manifest.json
+  moved_from:
+    - https://goodbribesonly.david.app/arcade/manifest.json
+  artwork: https://goodbribesonly.cubbyarcade.com/discovery/cover.png
+  attract: https://goodbribesonly.cubbyarcade.com/discovery/trailer.webm
   media:
     thumbnail:
       url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-good-bribes-only-artwork-767cf040236f-W.jpg
@@ -106,9 +116,11 @@
       source_sha256: fe68e098e6ba593551c06dccb967f8feebbe2ee71c0b14056b391b7bdcee28e5
 - id: spell-castle
   title: Spell Castle
-  manifest_url: https://spellcastle.david.app/arcade/manifest.json
-  artwork: https://spellcastle.david.app/discovery/cover.png
-  attract: https://spellcastle.david.app/discovery/trailer.webm
+  manifest_url: https://spellcastle.cubbyarcade.com/arcade/manifest.json
+  moved_from:
+    - https://spellcastle.david.app/arcade/manifest.json
+  artwork: https://spellcastle.cubbyarcade.com/discovery/cover.png
+  attract: https://spellcastle.cubbyarcade.com/discovery/trailer.webm
   media:
     thumbnail:
       url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-spell-castle-artwork-e15a8509b775.jpg

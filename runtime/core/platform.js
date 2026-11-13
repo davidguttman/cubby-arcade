@@ -48,7 +48,7 @@
       await migrate();
       const visible=new Set(await feeds.visible(entries.map(game=>game.id),player));
       const config=await feeds.config(player),enabled=new Set(config.feeds.filter(feed=>feed.enabled).map(feed=>feed.url));
-      currentEpoch(epoch);return entries.filter(game=>visible.has(game.id)&&(!installingSources.has(game.id)||enabled.has(installingSources.get(game.id).feed_url)));
+      currentEpoch(epoch);return entries.filter(game=>visible.has(game.id)&&(!installingSources.has(game.id)||installingSources.get(game.id).starter||enabled.has(installingSources.get(game.id).feed_url)));
     }
     // Only the library that predates this platform's managed installs is legacy.
     // A native install may expose bytes before its source pin is durable.
@@ -74,22 +74,28 @@
       if(!response.ok)throw Error('Catalog unavailable');
       const entries=await response.json();if(!Array.isArray(entries))throw Error('Invalid catalog');return entries;
     }
-    async function install(id,requestOptions={}) {
+    // {starter:true} is a host's configured starter game: its offer comes from
+    // the feeds themselves, so it never depends on what the player browses.
+    async function install(id,{starter=false,...requestOptions}={}) {
       if(!feeds)return native.install(id,requestOptions);
       requestOptions.signal?.throwIfAborted();
       const epoch=profileEpoch,player=profile;
-      if(!offers.length)await catalog(requestOptions);
-      await migrate();
-      currentEpoch(epoch);
-      const allowed=await feeds.config(player);
-      const offer=offers.find(entry=>entry.id===id);if(!offer||!allowed.feeds.some(feed=>feed.enabled&&feed.url===offer._source.feed_url))throw Error('Game not offered');
+      let offer;
+      if(starter){offer=await feeds.starterOffer(id,player);await migrate();currentEpoch(epoch);}
+      else{
+        if(!offers.length)await catalog(requestOptions);
+        await migrate();
+        currentEpoch(epoch);
+        const allowed=await feeds.config(player);
+        offer=offers.find(entry=>entry.id===id);if(!offer||!allowed.feeds.some(feed=>feed.enabled&&feed.url===offer._source.feed_url))throw Error('Game not offered');
+      }
       currentEpoch(epoch);
       const pin=await feeds.source(id),selected=Feeds.sourceOf(offer);
-      if(pin&&(pin.feed_url!==selected.feed_url||pin.manifest_url!==selected.manifest_url))throw Error('Game already belongs to another source');
+      if(pin&&!Feeds.sameGame(pin,offer))throw Error('Game already belongs to another source');
       if(!pin&&(await rawLibrary()).some(game=>game.id===id))throw Error('Installed game source unavailable');
       await retireLegacy(id);currentEpoch(epoch);
       if(installJobs.has(id))return installJobs.get(id);
-      installingSources.set(id,selected);
+      installingSources.set(id,starter?{...selected,starter:true}:selected);
       const job=(async()=>{
         let pinned=false;
         try{

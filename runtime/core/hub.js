@@ -57,7 +57,7 @@ async function prepareStarter(platform,{id,storage}={}){
  if(storage.getItem(key)==='1')return 'done';
  const present=(await platform.library()).some(game=>game.id===id);
  if(!present){
-  await platform.install(id);
+  await platform.install(id,{starter:true});
   if(!(await platform.library()).some(game=>game.id===id))throw Error('Starter not installed');
  }
  storage.setItem(key,'1');return present?'present':'installed';

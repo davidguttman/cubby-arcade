@@ -1,6 +1,8 @@
 # Opt-in early-release discovery pointers. Keep unfinished games out of catalog.yaml.
 - id: line-cutter
   title: Line Cutter
-  manifest_url: https://linecutter.david.app/store/line-cutter/manifest.json
-  artwork: https://linecutter.david.app/store/line-cutter/0.4.0/files/cover.png
-  attract: https://linecutter.david.app/store/line-cutter/0.4.0/files/trailer-handheld.webm
+  manifest_url: https://linecutter.cubbyarcade.com/store/line-cutter/manifest.json
+  moved_from:
+    - https://linecutter.david.app/store/line-cutter/manifest.json
+  artwork: https://linecutter.cubbyarcade.com/store/line-cutter/0.4.0/files/cover.png
+  attract: https://linecutter.cubbyarcade.com/store/line-cutter/0.4.0/files/trailer-handheld.webm

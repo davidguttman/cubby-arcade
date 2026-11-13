@@ -50,12 +50,27 @@
         }
       }
       if(entry.screenshots!==undefined){if(!Array.isArray(entry.screenshots)||entry.screenshots.length>12)throw Error('Invalid Store screenshots');for(const url of entry.screenshots)feedURL(url);}
+      // A feed that moves a game's manifest lists where it was, so installs it
+      // already owns keep updating from the new address.
+      if(entry.moved_from!==undefined){if(!Array.isArray(entry.moved_from)||entry.moved_from.length>8)throw Error('Invalid moved manifests');for(const url of entry.moved_from)feedURL(url);}
     }
     return copy(entries);
   }
+  // A starter source was seeded by its host, not chosen while browsing: it stays
+  // visible and updating from its own feed even while that feed is not enabled.
   function source(value){
     if(!object(value))throw Error('Invalid game source');
-    return {feed_url:feedURL(value.feed_url),manifest_url:feedURL(value.manifest_url)};
+    return {feed_url:feedURL(value.feed_url),manifest_url:feedURL(value.manifest_url),...(value.starter===true?{starter:true}:{})};
+  }
+  // Whether a feed entry continues an install pinned to that feed: same manifest,
+  // or the feed says the manifest moved from the pinned address.
+  function continues(entry,pin){
+    const url=feedURL(pin.manifest_url);
+    return feedURL(entry.manifest_url)===url||(Array.isArray(entry.moved_from)&&entry.moved_from.some(old=>feedURL(old)===url));
+  }
+  function sameGame(pin,offer){
+    const selected=sourceOf(offer);
+    return source(pin).feed_url===selected.feed_url&&continues(offer,pin);
   }
   function sourced(entry,url){return {...copy(entry),_source:{feed_url:url,manifest_url:feedURL(entry.manifest_url)}};}
   function sourceOf(offer){
@@ -73,9 +88,9 @@
   }
   function updateOffer(id,pin,config,cache){
     if(!gameId(id)||!pin)return null;
-    const selected=source(pin),enabled=validateConfig(config).feeds.some(feed=>feed.enabled&&feed.url===selected.feed_url);
+    const selected=source(pin),enabled=selected.starter||validateConfig(config).feeds.some(feed=>feed.enabled&&feed.url===selected.feed_url);
     if(!enabled)return null;
-    const entry=(cache[selected.feed_url]||[]).find(entry=>entry.id===id&&feedURL(entry.manifest_url)===selected.manifest_url);
+    const entry=(cache[selected.feed_url]||[]).find(entry=>entry.id===id&&continues(entry,selected));
     return entry?sourced(entry,selected.feed_url):null;
   }
   // Old installs only ever came from the built-in catalog. Do not let a newly
@@ -102,7 +117,7 @@
     // Weak keys keep provenance alive exactly as long as a host retains an
     // issued offer, without retaining an ever-growing history of old catalogs.
     const issued=new WeakMap(),outcomes=new Map();
-    function issue(offer){if(offer)issued.set(offer,{id:offer.id,...sourceOf(offer)});return offer;}
+    function issue(offer,{starter=false}={}){if(offer)issued.set(offer,{id:offer.id,...sourceOf(offer),moved:(offer.moved_from||[]).map(feedURL),starter});return offer;}
     const validate=entries=>validateEntries(options.validateCatalog?options.validateCatalog(entries):entries);
     async function load(){
       if(!loading)loading=(async()=>{
@@ -160,10 +175,12 @@
         if(!refreshing.has(profile)){
           const pending=(async()=>{
             await load();await queue;
-            const feeds=selected(state,profile).feeds.filter(feed=>feed.enabled);
-            const results=await Promise.all(feeds.map(async feed=>{
-              try{return {url:feed.url,entries:validate(await options.fetchCatalog(feed.url,{}))};}
-              catch(error){return {url:feed.url,error:typeof error?.message==='string'?error.message.slice(0,200):'Catalog request failed'};}
+            // Starter games keep their own feed fresh for updates; it still
+            // contributes nothing to browsing unless it is enabled.
+            const urls=new Set([...selected(state,profile).feeds.filter(feed=>feed.enabled).map(feed=>feed.url),...Object.values(state.sources).filter(pin=>pin.starter).map(pin=>pin.feed_url)]);
+            const results=await Promise.all([...urls].map(async url=>{
+              try{return {url,entries:validate(await options.fetchCatalog(url,{}))};}
+              catch(error){return {url,error:typeof error?.message==='string'?error.message.slice(0,200):'Catalog request failed'};}
             }));
             const valid=results.filter(result=>result.entries!==undefined);
             if(valid.length)await change(next=>{for(const result of valid)next.cache[result.url]=result.entries;});
@@ -176,7 +193,7 @@
           pending.then(clear,clear);
         }
         await waitFor(refreshing.get(profile),signal);await waitFor(queue,signal);signal?.throwIfAborted();
-        return mergeCatalog(selected(state,profile),state.cache).map(issue);
+        return mergeCatalog(selected(state,profile),state.cache).map(offer=>issue(offer));
       },
       async pin(id,offer){
         if(!gameId(id)||offer?.id!==id)throw Error('Invalid game source identity');
@@ -185,10 +202,10 @@
         if(!offered||offered.id!==id||offered.feed_url!==pin.feed_url||offered.manifest_url!==pin.manifest_url)throw Error('Game source was not offered');
         await change(next=>{
           const previous=Object.hasOwn(next.sources,id)?next.sources[id]:null;
-          if(previous&&(previous.feed_url!==pin.feed_url||previous.manifest_url!==pin.manifest_url))throw Error('Game already belongs to another source');
+          if(previous&&(previous.feed_url!==pin.feed_url||(previous.manifest_url!==pin.manifest_url&&!offered.moved.includes(previous.manifest_url))))throw Error('Game already belongs to another source');
           // Catalog changes/removal during install cannot erase the provenance
           // reserved for its bytes. The issued record was checked above.
-          next.sources[id]=pin;
+          next.sources[id]=offered.starter||previous?.starter?{...pin,starter:true}:pin;
         });
       },
       async forget(id){if(!gameId(id))throw Error('Invalid game id');await change(next=>{delete next.sources[id];});},
@@ -202,11 +219,27 @@
         }});
       },
       async updateOffer(id,profile=FIRST){await load();await queue;return issue(updateOffer(id,Object.hasOwn(state.sources,id)?state.sources[id]:null,selected(state,profile),state.cache));},
-      async visible(ids,profile=FIRST){await load();await queue;const enabled=new Set(selected(state,profile).feeds.filter(feed=>feed.enabled).map(feed=>feed.url));return ids.filter(id=>!Object.hasOwn(state.sources,id)||enabled.has(state.sources[id].feed_url));},
+      async visible(ids,profile=FIRST){await load();await queue;const enabled=new Set(selected(state,profile).feeds.filter(feed=>feed.enabled).map(feed=>feed.url));return ids.filter(id=>!Object.hasOwn(state.sources,id)||state.sources[id].starter||enabled.has(state.sources[id].feed_url));},
+      // A host's starter game needs no adult to enable a feed. Its offer comes
+      // from the player's feeds, enabled ones first, then Cubby's own feeds,
+      // fetched fresh so the installer sees the same offer it would browse.
+      async starterOffer(id,profile=FIRST){
+        if(!gameId(id))throw Error('Invalid game id');
+        await load();await queue;
+        const feeds=selected(state,profile).feeds,urls=[...new Set([...feeds.filter(feed=>feed.enabled).map(feed=>feed.url),...feeds.map(feed=>feed.url),DEFAULT_URL,BETA_URL])];
+        for(const url of urls){
+          let entries;
+          try{entries=validate(await options.fetchCatalog(url,{}));await change(next=>{next.cache[url]=entries;});}
+          catch{entries=state.cache[url]||[];}
+          const entry=entries.find(entry=>entry.id===id);
+          if(entry)return issue(sourced(entry,url),{starter:true});
+        }
+        throw Error('Starter game not offered');
+      },
       async removeProfile(profile){profileId(profile);await change(next=>{delete next.profiles[profile];if(profile===FIRST)next.config=defaultConfig();});},
       async source(id){await load();await queue;return Object.hasOwn(state.sources,id)?copy(state.sources[id]):null;}
     };
     return manager;
   }
-  return {DEFAULT_URL,BETA_URL,MAX_FEEDS,feedURL,defaultConfig,validateConfig,validateEntries,sourceOf,mergeCatalog,updateOffer,legacySource,createManager};
+  return {DEFAULT_URL,BETA_URL,MAX_FEEDS,feedURL,defaultConfig,validateConfig,validateEntries,sourceOf,sameGame,mergeCatalog,updateOffer,legacySource,createManager};
 });

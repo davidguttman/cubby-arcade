@@ -149,6 +149,12 @@ def validate_registry(document, developer=False):
             raise ValueError('Invalid screenshots')
         for url in screenshots:
             check_url(url, developer)
+        # Earlier manifest addresses, so installs pinned to them keep updating.
+        moved = entry.get('moved_from', [])
+        if not isinstance(moved, list) or len(moved) > 8:
+            raise ValueError('Invalid moved manifests')
+        for url in moved:
+            check_url(url, developer)
     return document
 
 

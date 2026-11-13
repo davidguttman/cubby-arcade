@@ -163,3 +163,51 @@ test('many-file releases download several files at once, capped, and a failure s
  await assert.rejects(bridge.install('test-game'),/offline/);assert.equal(live,0,'a fetch outlived the failed install');
  assert.equal((await bridge.library())[0].version,'1.0');assert.equal((await caches.keys()).length,kept,'staging cache left behind');
 });
+// The handheld embed's starter is the browser host's real installer, not a stub.
+// Its game may live only in the Cubby Beta feed, which stays off for browsing.
+async function feedSetup(feeds){
+ const {manifest,bytes}=await fixture(),metadata=memoryMetadata(),caches=memoryCaches(),requests=[];
+ const manifests={};
+ const fetch=async url=>{requests.push(url);if(Object.hasOwn(feeds,url))return Response.json(feeds[url]);if(Object.hasOwn(manifests,url)||url===manifestURL)return Response.json(manifest);const name=new URL(url).pathname.split('/').pop();return new Response(bytes[name],{status:bytes[name]===undefined?404:200});};
+ const options={origin,fetch,metadata,caches,crypto:webcrypto};
+ return {options,manifest,bytes,requests,manifests,platform:()=>browserPlatform(options),bump:async version=>{manifest.version=version;for(const name of Object.keys(manifest.files)){bytes[name]+=' '+version;manifest.files[name]={url:'../releases/'+version+'/'+name,size:Buffer.byteLength(bytes[name]),sha256:await hash(bytes[name])};}}};
+}
+function memoryStorage(){const values=new Map();return {getItem:k=>values.has(k)?values.get(k):null,setItem:(k,v)=>values.set(k,String(v))};}
+const entry=(url=manifestURL,extra={})=>({id:'test-game',title:'Test game',manifest_url:url,artwork:'https://games.test/cover.png',...extra});
+test('a starter game offered only by the disabled beta feed installs, stays listed and keeps updating',async()=>{
+ const {BETA_URL}=require('../runtime/core/game-feeds.js'),{prepareStarter}=require('../runtime/core/hub.js');
+ const s=await feedSetup({[DEFAULT_URL]:[],[BETA_URL]:[entry()]}),platform=s.platform(),storage=memoryStorage();
+ assert.equal(await prepareStarter(platform,{id:'test-game',storage}),'installed');
+ assert.equal(storage.getItem('cubby:starter:v1:test-game'),'1');
+ assert.deepEqual((await platform.library()).map(game=>[game.id,game.version]),[['test-game','1.0']]);
+ // Browsing is unchanged: the beta feed is still off and the Store does not list it.
+ assert.equal((await platform.feedConfig()).feeds.find(feed=>feed.url===BETA_URL).enabled,false);
+ assert.deepEqual((await platform.catalog()).map(game=>game.id),[]);
+ const restarted=s.platform();assert.deepEqual((await restarted.library()).map(game=>game.id),['test-game']);
+ await s.bump('1.1');await checkUpdates(restarted);
+ assert.deepEqual((await restarted.library()).map(game=>game.version),['1.1']);
+ assert.equal(await prepareStarter(restarted,{id:'test-game',storage}),'done');
+});
+test('a starter the player can already browse installs from that feed; one nobody offers fails without a marker',async()=>{
+ const {prepareStarter}=require('../runtime/core/hub.js');
+ const s=await feedSetup({[DEFAULT_URL]:[entry()]}),platform=s.platform(),storage=memoryStorage();
+ assert.equal(await prepareStarter(platform,{id:'test-game',storage}),'installed');
+ assert.equal((await platform.catalog())[0].id,'test-game');
+ const none=await feedSetup({[DEFAULT_URL]:[]}),empty=memoryStorage();
+ await assert.rejects(prepareStarter(none.platform(),{id:'test-game',storage:empty}),/not offered/);
+ assert.equal(empty.getItem('cubby:starter:v1:test-game'),null);
+});
+test('a feed that moves a game manifest keeps existing installs updating from the new address',async()=>{
+ const moved='https://games.cubby.test/arcade/manifest.json',feeds={[DEFAULT_URL]:[entry()]};
+ const s=await feedSetup(feeds);s.manifests[moved]=true;const platform=s.platform();
+ await platform.catalog();await platform.install('test-game');
+ // Without saying where it moved from, a new manifest address is another game.
+ feeds[DEFAULT_URL]=[entry(moved)];await s.bump('1.1');await checkUpdates(s.platform());
+ assert.deepEqual((await s.platform().library()).map(game=>game.version),['1.0']);
+ feeds[DEFAULT_URL]=[entry(moved,{moved_from:[manifestURL]})];s.requests.length=0;
+ const later=s.platform();await checkUpdates(later);
+ assert.deepEqual((await later.library()).map(game=>game.version),['1.1']);
+ assert.ok(s.requests.includes(moved));assert.equal(s.requests.includes(manifestURL),false);
+ await s.bump('1.2');await checkUpdates(s.platform());
+ assert.deepEqual((await s.platform().library()).map(game=>game.version),['1.2']);
+});

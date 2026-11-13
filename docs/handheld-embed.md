@@ -21,6 +21,13 @@ Library entry. Ordinary `/play` (even with `starter` alone), desktop and native
 hosts keep their existing empty-library/Store behavior. A host may also configure
 `HandheldPlatformOptions.starterGame` to opt the same shared hub policy in.
 
+The starter does not depend on what the player browses. The shared feed policy
+finds its offer in the player's enabled feeds first, then in their other feeds and
+Cubby's own stable and beta catalogs, fetched fresh, so a beta-only starter installs
+while Cubby Beta stays off. Its source pin is marked as a starter: the game stays in
+the Library and keeps updating from that feed without listing the feed's other
+games in the Store. A starter that no built-in catalog lists fails the test suite.
+
 An embedding page should warm its iframe only after its own first full
 interactive frame, using an idle callback (with a bounded fallback). Until the
 player picks up the handheld, the iframe remains hidden

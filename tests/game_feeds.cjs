@@ -191,3 +191,23 @@ test('transient feed status distinguishes successful loads, cached failures, fir
  await manager.setConfig(config([feed(A,'Off',false)]));assert.deepEqual(await manager.status(),{[A]:{state:'disabled',count:1}});
  assert.equal(disk.value().status,undefined);
 });
+test('a moved manifest continues only installs pinned to the feed that moved it',async()=>{
+ const original=game('x'),moved={...game('x','new.example'),moved_from:[original.manifest_url]},source={feed_url:A,manifest_url:original.manifest_url},settings=config([feed(A),feed(B)]);
+ assert.throws(()=>Feeds.validateEntries([{...moved,moved_from:['http://old.example/m.json']}]));assert.throws(()=>Feeds.validateEntries([{...moved,moved_from:'x'}]));
+ assert.equal(Feeds.updateOffer('x',source,settings,cache([A,[moved]])).manifest_url,moved.manifest_url);
+ // Another feed cannot claim an install by saying it moved the same manifest.
+ assert.equal(Feeds.updateOffer('x',source,settings,cache([A,[]],[B,[moved]])),null);
+ let listed=[original];const disk=memory(),manager=Feeds.createManager({...disk,fetchCatalog:async url=>url===A?listed:[moved]});
+ await manager.setConfig(settings);const [first]=await manager.catalog();await manager.pin('x',first);
+ await manager.setConfig(config([feed(B),feed(A)]));const [other]=await manager.catalog();await assert.rejects(manager.pin('x',other),/another source/);
+ listed=[moved];await manager.catalog();const offer=await manager.updateOffer('x');await manager.pin('x',offer);
+ assert.deepEqual(await manager.source('x'),{feed_url:A,manifest_url:moved.manifest_url});
+});
+test('a starter pin stays visible and updatable while its feed is off for browsing',async()=>{
+ const disk=memory(),fetched=[],manager=Feeds.createManager({...disk,fetchCatalog:async url=>{fetched.push(url);return url===Feeds.BETA_URL?[game('s')]:[game('stable')];}});
+ const offer=await manager.starterOffer('s');assert.equal(offer._source.feed_url,Feeds.BETA_URL);await manager.pin('s',offer);
+ assert.deepEqual(disk.value().sources.s,{feed_url:Feeds.BETA_URL,manifest_url:game('s').manifest_url,starter:true});
+ assert.deepEqual((await manager.catalog()).map(e=>e.id),['stable']);assert.deepEqual(await manager.visible(['s']),['s']);
+ fetched.length=0;await manager.catalog();assert.ok(fetched.includes(Feeds.BETA_URL));assert.equal((await manager.updateOffer('s')).id,'s');
+ await manager.forget('s');assert.equal(await manager.source('s'),null);await assert.rejects(manager.starterOffer('missing'),/not offered/);
+});

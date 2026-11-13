@@ -164,6 +164,14 @@ holds the stable manifest URL and discovery media. Your game owns its release
 manifest and payload files. Subsequent releases update that stable manifest,
 not Cubby's registry or executable. Browsing does not fetch the install manifest.
 
+Installs are pinned to their feed and manifest URL. To move a game's manifest to
+a new address, list the earlier addresses in `moved_from` (for example
+`moved_from: [https://old-host.example/arcade/manifest.json]`); installs pinned to
+them then update from, and re-pin to, the new `manifest_url`. Without it, a new
+manifest URL is treated as a different source and existing installs stop updating.
+Cubby releases older than 0.52.0 ignore `moved_from`: their moved games keep
+working but update only after Cubby itself updates.
+
 ### Release to beta first
 
 Cubby has two independent discovery lists: `hosting/catalog.yaml` publishes to
