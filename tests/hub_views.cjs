@@ -70,6 +70,34 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 const games=[{id:'one',artwork:'one.svg',entrypoint:'/one'},{id:'two',artwork:'two.svg',entrypoint:'/two'}];
+test('device uses small artwork and deferred trailer, falling back only once',async()=>{
+ const clock=devicePreviewClock(),game={id:'small',entrypoint:'/small',artwork:'original.png',attract:'original.webm',media:{thumbnail:{url:'thumb.jpg'},artwork:{url:'hero.jpg'},attract:{url:'clip.mp4'}}};
+ const {host}=mountedHub([game],[],{}, {},clock.window);await settle();
+ const card=host.querySelector('.game-card img'),poster=host.querySelector('.preview-poster'),video=host.querySelector('video');
+ assert.equal(host.querySelector('.game-card').querySelector('img').src,'thumb.jpg');
+ assert.equal(poster.src,'hero.jpg');assert.equal(video.poster,'hero.jpg');assert.equal(video.src,undefined);
+ clock.run();assert.equal(video.src,'clip.mp4');
+ poster.dispatchEvent({type:'error'});assert.equal(poster.src,'original.png');
+ poster.dispatchEvent({type:'error'});assert.equal(poster.src,'original.png');
+ video.dispatchEvent({type:'error'});assert.equal(video.src,'original.webm');
+ video.dispatchEvent({type:'error'});assert.equal(host.querySelector('video'),null);
+});
+test('desktop keeps original artwork and trailers when device derivatives exist',async()=>{
+ const game={id:'small',entrypoint:'/small',artwork:'original.png',attract:'original.webm',media:{thumbnail:{url:'thumb.jpg'},artwork:{url:'hero.jpg'},attract:{url:'clip.mp4'}}};
+ const {host}=mountedHub([game]);await settle();
+ assert.equal(host.querySelector('.game-card').querySelector('img').src,'original.png');
+ assert.equal(host.querySelector('video').src,'original.webm');
+});
+test('new catalog media upgrades Library pictures without replacing its playing trailer or focus',async()=>{
+ const clock=devicePreviewClock(),original={...games[0],attract:'original.webm'};
+ let current=[original],offers=[];
+ const {host,hub}=mountedHub(current,[],{}, {library:async()=>current,catalog:async()=>offers},clock.window);await settle();clock.run();
+ const video=host.querySelector('video'),card=host.querySelector('.game-card');card.focus();
+ current=[{...original,media:{thumbnail:{url:'thumb.jpg'},artwork:{url:'hero.jpg'},attract:{url:'clip.mp4'}}}];offers=current;
+ await hub.refreshCatalog();
+ assert.equal(host.querySelector('video'),video);assert.equal(video.src,'original.webm');assert.equal(video.playCount,1);
+ assert.equal(host.ownerDocument.activeElement,card);assert.equal(card.querySelector('img').src,'thumb.jpg');assert.equal(host.querySelector('.preview-poster').src,'hero.jpg');
+});
 test('nonempty Library selects and previews a game on load and return',async()=>{
  const {host,hub}=mountedHub(games);await settle();
  assert.equal(hub.state.detail?.id,'one');assert.equal(host.querySelector('.detail').hidden,false);

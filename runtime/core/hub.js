@@ -625,8 +625,20 @@ function mount(host){
  function setBadge(badge,id){badge.innerHTML=badgeFor(id);badge.dataset.kind=ownedInStore(id)?'installed':state.isFavorite(id)?'favorite':'';}
  // A Store game already in the Library is only a picture: checked, dimmed, and skipped by every control.
  function setOwned(card){const id=card.dataset.gameId,owned=ownedInStore(id);card.disabled=owned;card.classList.toggle('is-owned',owned);card.setAttribute('aria-label',owned?'In library':'Preview game');const badge=card.querySelector('.card-badge');if(badge)setBadge(badge,id);}
+ function mediaURL(game,kind){return device&&typeof game?.media?.[kind]?.url==='string'?game.media[kind].url:game?.[kind==='attract'?'attract':'artwork']||'';}
+ function fallbackImage(image){const fallback=image.dataset.mediaFallback;if(fallback){delete image.dataset.mediaFallback;image.src=fallback;}}
+ function artwork(image,game,kind='artwork'){
+  const url=mediaURL(game,kind),original=game?.artwork||'';
+  if(image.dataset.mediaSource===url)return;
+  image.dataset.mediaSource=url;delete image.dataset.mediaFallback;
+  if(url&&url!==original)image.dataset.mediaFallback=original;
+  if(!image.dataset.mediaListener){image.addEventListener('error',()=>fallbackImage(image));image.dataset.mediaListener='1';}
+  if(url)image.src=url;else image.removeAttribute('src');
+ }
+ // Circular shelf copies are recreated from markup, not DOM listeners.
+ shelf.addEventListener('error',event=>{if(event.target.tagName==='IMG')fallbackImage(event.target);},true);
  // The hero always shows a game: the open preview, or a resting cover that invites a pick below.
- function feature(game){featured=game||null;const art=game?.artwork||'';if(restArt.getAttribute('src')!==art){if(art)restArt.src=art;else restArt.removeAttribute('src');}backdrop.style.backgroundImage=art?'url("'+art.replace(/["\\]/g,'\\$&')+'")':'';markSelection();}
+ function feature(game){featured=game||null;const art=mediaURL(game,'artwork');artwork(restArt,game);backdrop.style.backgroundImage=art?'url("'+art.replace(/["\\]/g,'\\$&')+'")':'';markSelection();}
  // Visual copies make native touch/trackpad scrolling circular. Only the middle
  // row contains buttons, so each game still has exactly one accessible control.
  let shelfCycle=0,hoverPreview=false;
@@ -690,7 +702,7 @@ function mount(host){
  }
  feature(null);return;}
  for(const game of store?[...catalog].sort((a,b)=>ownedInStore(a.id)-ownedInStore(b.id)):entries()){
- const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');image.src=game.artwork;image.alt='';
+ const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');artwork(image,game,'thumbnail');image.alt='';
  element(card,'span','card-badge');setOwned(card);
  // Scrolling can move cards under a stationary cursor and fire pointerenter.
  // Only actual pointer movement may override the keyboard/gamepad selection.
@@ -712,9 +724,10 @@ function mount(host){
  if(game.attract){
   // Native video posters can disappear before the decoder presents a frame.
   // Keep a real image underneath instead, including while a trailer reloads.
-  const poster=element(stage,'img','preview-poster');poster.src=game.artwork;poster.alt='';
-  media.classList.add('preview-video');media.poster=game.artwork;media.autoplay=!device;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
-  let generation=0,active=true,frame=null;
+  const poster=element(stage,'img','preview-poster');artwork(poster,game);poster.alt='';
+  media.classList.add('preview-video');media.poster=mediaURL(game,'artwork');media.autoplay=!device;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
+  poster.addEventListener('error',()=>{media.poster=poster.src;});
+  let generation=0,active=true,frame=null,trailer=mediaURL(game,'attract');
   const cancelFrame=()=>{if(frame!==null){if(media.requestVideoFrameCallback)media.cancelVideoFrameCallback?.(frame);else win.cancelAnimationFrame?.(frame);frame=null;}};
   const cover=()=>{generation++;cancelFrame();media.style.opacity='0';};
   const play=()=>{if(active&&!disposed&&!detail.hidden&&detail.querySelector('video')===media)media.play().catch(()=>{if(active)cover();});};
@@ -726,7 +739,7 @@ function mount(host){
    else reveal();
   };
   const ended=()=>{if(active){cover();media.load();play();}};
-  const error=()=>{release();media.remove();};
+  const error=()=>{if(!active)return;if(trailer!==game.attract){trailer=game.attract;cover();media.src=trailer;play();}else{release();media.remove();}};
   const release=()=>{
    if(!active)return;active=false;cover();
    for(const [name,listener] of [['loadstart',cover],['playing',playing],['ended',ended],['error',error]])media.removeEventListener(name,listener);
@@ -738,9 +751,9 @@ function mount(host){
   stage.appendChild(media);
   // Paint the cover and controls immediately. Rapid device browsing never opens
   // trailers that will be discarded on the next controller repeat.
-  startPreview=()=>{if(!active||detail.querySelector('video')!==media)return;if(!media.getAttribute('src'))media.src=game.attract;play();};
+  startPreview=()=>{if(!active||detail.querySelector('video')!==media)return;if(!media.getAttribute('src')){trailer=mediaURL(state.detail?.id===game.id?state.detail:game,'attract');media.src=trailer;}play();};
   queuePreview();
- }else{media.src=game.artwork;media.alt='';stage.appendChild(media);}
+ }else{artwork(media,game);media.alt='';stage.appendChild(media);}
  const actions=element(detail,'div','detail-actions');
  const star=button(actions,'star','Favorite',()=>{state.favorite(game.id);star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));const badge=shelf.querySelector('.game-card[data-game-id="'+game.id+'"] .card-badge');if(badge)setBadge(badge,game.id);syncShelfCopies();},'favorite');star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));
  feature(game);
@@ -771,13 +784,21 @@ function mount(host){
  // Owned games can't stay selected in the Store. A download the child just finished
  // hands off to its Library card; otherwise the selection moves to the next offer.
  function settleStore(){if(!state.detail||!ownedInStore(state.detail.id))return;if(requested===state.detail.id){requested=null;activateView('library');}else{const active=doc.activeElement,restore=active?.classList.contains('game-card')||!!active?.closest('.detail');hideDetail();renderGrid();if(restore)(selectedCard()||tabs.store).focus();}}
- async function refreshLibrary(){const generation=profileLoad;try{const entries=await platform.library();if(disposed||generation!==profileLoad)return;const changed=JSON.stringify(entries)!==JSON.stringify(library);library=entries;settleStore();if(changed&&state.view==='library'){const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)(selectedCard()||tabs.library).focus();}refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
+ async function refreshLibrary(){const generation=profileLoad;try{const entries=await platform.library();if(disposed||generation!==profileLoad)return;const changed=JSON.stringify(entries)!==JSON.stringify(library),withoutMedia=items=>JSON.stringify(items.map(({media,...game})=>game)),mediaOnly=withoutMedia(entries)===withoutMedia(library);library=entries;settleStore();if(changed&&state.view==='library'){
+  if(mediaOnly){
+   // A refreshed feed can supply derivatives for an already installed release.
+   // Upgrade pictures in place; never reset focus or restart a playing trailer.
+   for(const card of shelf.querySelectorAll('.game-card')){const game=library.find(game=>game.id===card.dataset.gameId);if(game)artwork(card.querySelector('img'),game,'thumbnail');}
+   const game=library.find(game=>game.id===state.detail?.id);if(game){state.detail=game;const poster=detail.querySelector('.preview-poster');if(poster)artwork(poster,game);const video=detail.querySelector('video');if(video)video.poster=mediaURL(game,'artwork');feature(game);}syncShelfCopies();
+  }else{const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)(selectedCard()||tabs.library).focus();}
+ }refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
  function reloadPlayerGames(){
   const generation=++profileLoad;library=[];catalog=[];starterPending=false;requested=null;returningGame=null;hideDetail();initialViewPending=false;loading.library=loading.store=true;failed.library=failed.store=false;catalogChecking=null;if(state.view!=='options')renderGrid();
   for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{
    if(disposed||generation!==profileLoad)return;
    if(view==='library')library=entries;else catalog=entries;
    loading[view]=false;if(state.view===view)renderGrid();refreshOwnership();
+   if(device&&!loading.library&&!loading.store&&catalog.some(game=>game.media))refreshLibrary();
   }).catch(()=>{if(disposed||generation!==profileLoad)return;loading[view]=false;failed[view]=true;if(state.view===view)renderGrid();});
  }
  let catalogChecking=null;
@@ -789,6 +810,7 @@ function mount(host){
    try{
     const entries=await platform.catalog(options);if(disposed||generation!==profileLoad||options.signal?.aborted)return;
     const changed=failed.store||JSON.stringify(entries)!==JSON.stringify(catalog);catalog=entries;failed.store=false;
+    if(changed&&device&&catalog.some(game=>game.media))await refreshLibrary();
     if(!changed||state.view!=='store')return;
     const active=doc.activeElement,focusedId=active?.classList.contains('game-card')?active.dataset.gameId:null;
     const removed=state.detail&&!catalog.some(game=>game.id===state.detail.id);
@@ -887,7 +909,7 @@ function mount(host){
  if(starterGame)loadStarterLibrary();
  // Only initial discovery may choose Store; explicit navigation always wins.
  const initialProfileLoad=profileLoad;
- for(const [view,request] of [...(!starterGame?[['library',platform.library()]]:[]),['store',platform.catalog()]])request.then(entries=>{if(disposed||initialProfileLoad!==profileLoad)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length){const stayed=doc.activeElement===tabs.library;show('store');if(stayed){tabs.store.focus();focusView();if(loading.store)pendingTabFocus='store';}}else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed||initialProfileLoad!==profileLoad)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
+ for(const [view,request] of [...(!starterGame?[['library',platform.library()]]:[]),['store',platform.catalog()]])request.then(entries=>{if(disposed||initialProfileLoad!==profileLoad)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(device&&!loading.library&&!loading.store&&catalog.some(game=>game.media))refreshLibrary();if(view==='library'&&initialViewPending&&!entries.length){const stayed=doc.activeElement===tabs.library;show('store');if(stayed){tabs.store.focus();focusView();if(loading.store)pendingTabFocus='store';}}else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed||initialProfileLoad!==profileLoad)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
  // Adult pages return here so Back lands where the adult left, not on the library.
  function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;if(picking)hidePicker();initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
  settingsUnlocked=returningToSettings();activateView(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);

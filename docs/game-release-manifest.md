@@ -78,6 +78,40 @@ The registry's artwork/trailer/screenshots are discovery URLs, separate from
 installed relative asset paths. Browsing does not follow the release manifest.
 An adult metadata title is allowed; this does not change the wordless child UI.
 
+### Right-sized discovery media
+
+Registry entries may add an optional `media` object with `thumbnail`, `artwork`,
+and/or `attract` derivatives. Each value is `{ "url": "https://…", "size": 1234,
+"sha256": "<64 lowercase hex>", "source_sha256": "<original asset digest>" }`.
+Only those three keys are supported. Sizes are positive integers bounded to
+64 KiB for thumbnails, 512 KiB for artwork, and 8 MiB for trailers. URLs must be
+absolute HTTPS. The required top-level `artwork` and optional top-level `attract`
+remain original, backwards-compatible fallbacks. This metadata is **not** part
+of a release manifest or game inventory and does not change installed game bytes.
+
+The shared hub uses these variants on the RG353V: 192×144-bounded shelf images,
+640×480-bounded hero images, and 320×240 VP9 WebM trailers. Desktop/browser hosts
+keep original-size media. A failed derivative falls back once to its original;
+rapid browsing still delays opening trailers until the selection settles.
+
+The device host attaches catalog derivatives to an installed Library entry only
+when `source_sha256` matches that entry's original artwork/trailer inventory
+hash. It serves those derivatives through a separate content-addressed media
+cache under the device state directory, outside immutable game releases. Cache
+downloads are lazy, exact-size/hash verified, and range-served for video seeking.
+Cached derivatives work offline; uncached failures keep the original local
+artwork/trailer available. The disposable cache has a 64 MiB shared byte budget
+and evicts oldest derivatives only. A feed refresh upgrades Library pictures
+without moving focus or restarting a playing trailer; a future selection uses
+the new trailer. Other hosts' installed Libraries continue using their existing
+offline package assets.
+
+Prepare derivatives from the **exact discovery originals**, not a different
+marketing edit, and record both original and derivative hashes. Current registry
+variants use Publitio URL transformations. Prewarm a new video transformation
+and inspect its decoded content before recording its hash: Publitio can initially
+return an HTTP-200 “processing” placeholder instead of the requested game video.
+
 ## Native installation and transition
 
 The desktop installer accepts both the existing schema-1 ZIP release and the

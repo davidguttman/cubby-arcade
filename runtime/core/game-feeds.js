@@ -40,6 +40,15 @@
       if(!object(entry)||!gameId(entry.id)||seen.has(entry.id)||typeof entry.title!=='string'||!entry.title||entry.title.length>120)throw Error('Invalid Store entry');
       seen.add(entry.id);
       for(const field of ['manifest_url','artwork',...(entry.attract!==undefined?['attract']:[])])feedURL(entry[field]);
+      if(entry.media!==undefined){
+        const limits={thumbnail:64*1024,artwork:512*1024,attract:8*1024*1024};
+        if(!object(entry.media))throw Error('Invalid media variants');
+        for(const [name,item] of Object.entries(entry.media)){
+          if(!Object.hasOwn(limits,name)||!object(item)||Object.keys(item).sort().join(',')!=='sha256,size,source_sha256,url'||!Number.isSafeInteger(item.size)||item.size<=0||item.size>limits[name])throw Error('Invalid media descriptor');
+          feedURL(item.url);
+          for(const key of ['sha256','source_sha256'])if(typeof item[key]!=='string'||!/^[a-f0-9]{64}$/.test(item[key]))throw Error('Invalid media checksum');
+        }
+      }
       if(entry.screenshots!==undefined){if(!Array.isArray(entry.screenshots)||entry.screenshots.length>12)throw Error('Invalid Store screenshots');for(const url of entry.screenshots)feedURL(url);}
     }
     return copy(entries);
