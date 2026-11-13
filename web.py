@@ -61,7 +61,7 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
             (site / name.lstrip('/')).read_bytes() for name in browser_paths
             if name not in ('/play', '/play/'))).hexdigest()
         (site / 'cubby-worker.js').write_text(
-            "importScripts('/runtime/core/browser-store.js');\n" +
+            "importScripts('/runtime/core/link.js','/runtime/core/browser-store.js');\n" +
             'HandheldBrowserStore.attachWorker(self,' + json.dumps({
                 'shellVersion': browser_hash, 'shellPaths': browser_paths}) + ');\n')
 

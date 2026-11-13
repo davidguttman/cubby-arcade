@@ -24,7 +24,6 @@
   manifest_url: https://goodbribesonly.david.app/arcade/manifest.json
   artwork: https://goodbribesonly.david.app/discovery/cover.png
   attract: https://goodbribesonly.david.app/discovery/trailer.webm
-  parents: https://goodbribesonly.david.app/parent/
 - id: spell-castle
   title: Spell Castle
   manifest_url: https://spellcastle.david.app/arcade/manifest.json

@@ -48,6 +48,18 @@ test('same version cannot change inventory, but download locations are not ident
  s.manifest.files['game.js'].sha256='0'.repeat(64);await assert.rejects(s.bridge.install('test-game'),/Immutable release conflict/);
  assert.equal((await s.bridge.library())[0].version,'1.0');
 });
+test('companion-only updates follow installed manifest versions, survive restart and reject same-version rewrites',async()=>{
+ const s=await setup();await s.bridge.install('test-game');
+ s.manifest.companion={url:'../phone/?mode=adult',title:'Test controls',artwork:'../phone/icon.png'};
+ await assert.rejects(s.bridge.install('test-game'),/Immutable release conflict/);
+ assert.equal((await s.bridge.library())[0].companion,undefined);
+ s.manifest.version='1.1';await checkUpdates(s.bridge);
+ const expected={url:'https://games.test/phone/?mode=adult',title:'Test controls',artwork:'https://games.test/phone/icon.png'};
+ assert.deepEqual((await s.bridge.library())[0].companion,expected);
+ assert.deepEqual((await browserPlatform(s.options).library())[0].companion,expected);
+ s.manifest.version='1.2';delete s.manifest.companion;await checkUpdates(s.bridge);
+ assert.equal((await s.bridge.library())[0].companion,undefined);
+});
 test('retained historical versions cannot be rewritten after an update',async()=>{
  const s=await setup();await s.bridge.catalog();await s.bridge.install('test-game');
  s.manifest.version='1.1';await s.bridge.install('test-game');const before=await s.bridge.library();
@@ -57,6 +69,14 @@ test('retained historical versions cannot be rewritten after an update',async()=
  assert.deepEqual(await s.bridge.library(),before);
  s.bytes['game.js']='window.game=true;';s.manifest.files['game.js'].size=Buffer.byteLength(s.bytes['game.js']);s.manifest.files['game.js'].sha256=await hash(s.bytes['game.js']);
  await s.bridge.install('test-game');assert.equal((await s.bridge.library())[0].version,'1.0');
+});
+test('pre-companion saved historical identities remain reinstallable after upgrade',async()=>{
+ const s=await setup();await s.bridge.install('test-game');
+ const old=s.manifest,legacy=JSON.stringify([old.id,old.version,old.runtime,old.entrypoint,old.artwork,null,[],Object.entries(old.files).map(([path,file])=>[path,file.size,file.sha256]).sort(([a],[b])=>a.localeCompare(b))]);
+ s.manifest.version='1.1';await s.bridge.install('test-game');
+ await s.metadata.change('test-game',undefined,record=>({...record,identities:{...record.identities,'1.0':legacy}}));
+ s.manifest.version='1.0';await s.bridge.install('test-game');
+ assert.equal((await s.bridge.library())[0].version,'1.0');
 });
 test('bad bytes and quota failure cannot replace an active release',async()=>{
  const s=await setup();await s.bridge.catalog();await s.bridge.install('test-game');const before=await s.bridge.library();s.manifest.version='1.1';s.breakDownloads();await assert.rejects(s.bridge.install('test-game'),/checksum|size/);assert.deepEqual(await s.bridge.library(),before);

@@ -9,6 +9,7 @@
   else root.HandheldBrowserStore=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(Feeds){
   'use strict';
+  const Companions=typeof module==='object'&&module.exports?require('./link.js'):globalThis.CubbyLinkAPI;
   const PREFIX='/__cubby_games__/',DB_NAME='cubby-browser-games-v1',CACHE_PREFIX='cubby-game-';
   const CATALOG_CACHE='cubby-discovery-v1',MAX_BYTES=128*1024*1024,MAX_MANIFEST=256*1024;
   const ID=/^[a-z0-9][a-z0-9-]{0,79}$/,VERSION=/^[a-z0-9][a-z0-9.-]{0,79}$/;
@@ -50,7 +51,7 @@
     for(const key of ['entrypoint','artwork',...(value.attract!==undefined?['attract']:[])])if(!Object.hasOwn(files,safePath(value[key])))throw Error('Missing game asset');
     if(value.screenshots!==undefined&&(!Array.isArray(value.screenshots)||value.screenshots.length>12))throw Error('Invalid screenshots');
     for(const name of value.screenshots||[])if(!Object.hasOwn(files,safePath(name)))throw Error('Missing screenshot');
-    return {...value,files};
+    return {...value,files,...(Object.hasOwn(value,'companion')?{companion:Companions.validateCompanion(value.companion,url=>downloadURL(url,manifestURL))}:{})};
   }
   function validateCatalog(entries){return Feeds.validateEntries(entries);}
   function emptyRecord(id){return {id,generation:0,active:null,releases:[]};}
@@ -117,7 +118,7 @@
   const releaseBase=(id,token)=>PREFIX+id+'/'+token+'/';
   function libraryEntry(record){
     const {manifest,token}=record.active,base=releaseBase(record.id,token),asset=name=>base+name.split('/').map(encodeURIComponent).join('/');
-    return {id:record.id,title:record.title||record.id,version:manifest.version,runtime:'web',entrypoint:asset(manifest.entrypoint),artwork:asset(manifest.artwork),...(manifest.attract?{attract:asset(manifest.attract)}:{})};
+    return {id:record.id,title:record.title||record.id,version:manifest.version,runtime:'web',entrypoint:asset(manifest.entrypoint),artwork:asset(manifest.artwork),...(manifest.attract?{attract:asset(manifest.attract)}:{}),...(manifest.companion?{companion:manifest.companion}:{})};
   }
   function createBridge(options={}){
     const ctx=context(options),listeners=new Set(),jobs=new Map(),states={};
@@ -190,7 +191,8 @@
       const raw=await readBytes(await ctx.fetch(url,{redirect:'error',cache:'no-store',signal}),MAX_MANIFEST);
       signal.throwIfAborted();
       const manifest=validateRelease(JSON.parse(new TextDecoder().decode(raw)),id,url);
-      const identity=m=>JSON.stringify([m.id,m.version,m.runtime,m.entrypoint,m.artwork,m.attract??null,m.screenshots??[],Object.entries(m.files).map(([path,file])=>[path,file.size,file.sha256]).sort(([a],[b])=>a.localeCompare(b))]);
+      // Preserve the saved pre-companion identity format for releases without it.
+      const identity=m=>JSON.stringify([m.id,m.version,m.runtime,m.entrypoint,m.artwork,m.attract??null,m.screenshots??[],Object.entries(m.files).map(([path,file])=>[path,file.size,file.sha256]).sort(([a],[b])=>a.localeCompare(b)),...(m.companion?[Companions.validateCompanion(m.companion)]:[])]);
       // All retained releases remain immutable, not just the active version.
       const identities={...before.identities};
       if(before.active)identities[before.active.manifest.version]=identity(before.active.manifest);

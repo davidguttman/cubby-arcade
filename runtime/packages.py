@@ -7,6 +7,10 @@ from pathlib import Path, PurePosixPath
 import re
 import tempfile
 import zipfile
+if __package__:
+    from .file_manifest import validate_companion
+else:  # Legacy device CLI executes packages.py directly.
+    from file_manifest import validate_companion
 
 GAMES = Path('/var/lib/handheld/games')
 MAX_BYTES = 128 * 1024 * 1024
@@ -40,6 +44,8 @@ def validate_manifest(manifest):
         if key in manifest or key != 'attract':
             if safe_path(manifest.get(key)) not in files:
                 raise ValueError('Missing ' + key)
+    if 'companion' in manifest:
+        validate_companion(manifest['companion'])
     return manifest
 
 
@@ -111,6 +117,7 @@ def library(root=GAMES):
             result.append({k: manifest[k] for k in ('id', 'version', 'runtime')} | {
                 'entrypoint': base + manifest['entrypoint'],
                 'artwork': base + manifest['artwork'],
+                **({'companion': manifest['companion']} if 'companion' in manifest else {}),
                 **({'attract': base + manifest['attract']} if 'attract' in manifest else {})})
         except (ValueError, OSError, KeyError, TypeError):
             continue

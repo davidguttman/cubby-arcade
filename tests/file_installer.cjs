@@ -27,6 +27,19 @@ test('file release installs without ZIP; normalized inventory survives restart a
  assert.equal(fs.readFileSync(path.join(f.root,'save.json'),'utf8'),'keep');assert(fs.existsSync(path.join(f.lib.games,'demo/releases/1/index.html')));
  assert.equal(new GameLibrary(f.lib.site,f.lib.games).entries()[0].version,'2');
 });
+test('companion-only manifest updates preserve public metadata across install and restart, immutable within a version',async t=>{
+ const f=fixture(t);offer(f);await f.installer.install('demo');
+ const m=offer(f);m.companion={url:'./phone/',title:'Demo controls',artwork:'./phone/icon.png'};
+ f.docs.set('https://game.test/manifest.json',JSON.stringify(m));
+ await assert.rejects(f.installer.install('demo'),/Immutable release conflict/);
+ assert.equal(f.lib.entries()[0].companion,undefined);
+ m.version='2';f.docs.set('https://game.test/manifest.json',JSON.stringify(m));await sweep(f);
+ const expected={url:'https://game.test/phone/',title:'Demo controls',artwork:'https://game.test/phone/icon.png'};
+ assert.deepEqual(f.lib.entries()[0].companion,expected);
+ assert.deepEqual(new GameLibrary(f.lib.site,f.lib.games).entries()[0].companion,expected);
+ m.version='3';delete m.companion;f.docs.set('https://game.test/manifest.json',JSON.stringify(m));await sweep(f);
+ assert.equal(f.lib.entries()[0].companion,undefined);
+});
 test('corrupt local bytes are not reused; partial/bad downloads and offline preserve active version; idle activation',async t=>{
  const f=fixture(t);offer(f);await f.installer.install('demo');
  const art=path.join(f.lib.release('demo').directory,'art.svg');fs.chmodSync(art,0o644);fs.writeFileSync(art,'broken');

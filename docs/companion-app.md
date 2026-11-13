@@ -3,6 +3,25 @@
 The phone companion lives at `https://cubbyarcade.com/parents/`. It is a separate
 installable web app, not the wordless player at `/play/`.
 
+## Ownership and discovery
+
+This is only Cubby's generic pairing/device dashboard. Each **game** owns its
+actual grown-up companion app and declares `companion: {url, title?, artwork?}`
+in its package/release manifest; see [the game manifest contract](game-release-manifest.md#game-owned-phone-companions).
+The paired Cubby announces companions from its installed versions, including
+custom-feed games. The dashboard does not fetch a fixed public catalog or need
+a per-game Cubby route, source change, or hosting rewrite. Updates and removal
+follow the installed game manifest; when a Cubby is unreachable, the phone shows
+its last successfully synced list.
+
+Companion links go directly to the game's own public URL. They do not export
+Cubby pairing credentials or automatically share Cubby's browser storage. Each
+game owns its phone app's connection model and offline cache. Existing games
+without companion metadata remain playable, but must publish a new game release
+declaring their companion before appearing here. Legacy `/parents/<game>/`
+same-origin pages/bookmarks are not migrated by guessing a URL or adding a
+game-specific fallback; games relying on that pairing model must migrate it.
+
 ## Install
 
 - Android/Chrome and desktop Chrome/Edge: open the page and choose **Install Cubby**
@@ -36,8 +55,8 @@ notice explains this. Reconnect to use those features. Clearing browser/app data
 also removes pairings and the offline shell.
 
 The worker is scoped to `/parents/`, handles only an explicit shell whitelist,
-and never substitutes its home screen for `/parents/<game>/`. Those game pages
-remain network-owned even though they lie within the worker scope. Online shell
+and never substitutes its home screen for legacy `/parents/<game>/` pages.
+Game-owned companion pages remain outside this shell cache. Online shell
 requests prefer the network; failed requests fall back to cached shell files.
 A new worker waits until the previous app is closed before activating, preserving
 an open pairing/settings session. Bump `CACHE` in `parents/worker.js` when changing

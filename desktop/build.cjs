@@ -17,6 +17,7 @@ const {execFileSync}=require('node:child_process');
     await fs.mkdir(path.join(stage,'runtime','core'),{recursive:true});
     await fs.copyFile(path.join(root,'runtime','core','profiles.js'),path.join(stage,'runtime','core','profiles.js'));
     await fs.copyFile(path.join(root,'runtime','core','game-feeds.js'),path.join(stage,'runtime','core','game-feeds.js'));
+    await fs.copyFile(path.join(root,'runtime','core','link.js'),path.join(stage,'runtime','core','link.js'));
     // Copy the exact production dependency closure, not dev tools or arbitrary repo files.
     const copied=new Set();
     async function dependency(name,from=root){

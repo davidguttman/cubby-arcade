@@ -13,7 +13,7 @@ ol{padding-left:22px;margin:12px 0 0}li{margin:6px 0}
 .players{list-style:none;display:flex;flex-wrap:wrap;gap:8px;padding:0;margin:0}.players li{margin:0;display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;background:#3b2f58;font-weight:700}.face{font-size:20px;line-height:1}
 .hint{font-size:14px;color:var(--soft);margin-top:12px!important}
 .games{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.game{display:block;color:inherit;text-decoration:none;border-radius:16px;overflow:hidden;background:#3b2f58;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.game{display:block;min-height:44px;color:inherit;text-decoration:none;border-radius:16px;overflow:hidden;background:#3b2f58;box-shadow:0 6px 16px rgba(0,0,0,.35)}
 .game img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover}.game span{display:block;padding:8px 12px;font-weight:700;font-size:15px}
 button{font:inherit;min-height:44px;padding:8px 16px;border-radius:14px;border:0;background:var(--honey);color:#3a2410;font-weight:700}
 button.quiet{display:block;width:100%;margin-top:8px;background:transparent;color:var(--soft);border:1px solid var(--line);font-weight:500}

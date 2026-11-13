@@ -62,6 +62,25 @@ def resolve_url(value, manifest_url=None, developer=False, allow_relative=False)
     raise ValueError('Relative download URL requires the manifest URL')
 
 
+def validate_companion(value, manifest_url=None, allow_relative=False):
+    """Game-owned phone app metadata, never device-local paths or credentials."""
+    if not isinstance(value, dict) or not value or set(value) - {'url', 'title', 'artwork'}:
+        raise ValueError('Invalid companion metadata')
+    result = {}
+    for key in ('url', 'artwork'):
+        if key == 'url' or key in value:
+            url = value.get(key)
+            if not isinstance(url, str) or len(url) > 2048:
+                raise ValueError('Invalid companion URL')
+            result[key] = resolve_url(url, manifest_url, allow_relative=allow_relative)
+    if 'title' in value:
+        title = value['title']
+        if not isinstance(title, str) or not title.strip() or len(title) > 120 or re.search(r'[\x00-\x1f\x7f]', title):
+            raise ValueError('Invalid companion title')
+        result['title'] = title
+    return result
+
+
 def validate(document, game_id, developer=False, manifest_url=None, allow_relative=False):
     if (not isinstance(document, dict) or type(document.get('schema_version')) is not int
             or document['schema_version'] != 2 or document.get('runtime') != 'web'
@@ -98,11 +117,12 @@ def validate(document, game_id, developer=False, manifest_url=None, allow_relati
     for name in screenshots:
         if safe_path(name) not in files:
             raise ValueError('Missing screenshot')
+    companion = validate_companion(document['companion'], manifest_url, allow_relative) if 'companion' in document else None
     if len(encode(document)) > MAX_MANIFEST:
         raise ValueError('Manifest too large')
     if manifest_url is not None:
-        return dict(document, files={name: dict(item, url=resolve_url(item['url'], manifest_url, developer))
-                                     for name, item in files.items()})
+        return dict(document, **({'companion': companion} if companion is not None else {}),
+                    files={name: dict(item, url=resolve_url(item['url'], manifest_url, developer)) for name, item in files.items()})
     return document
 
 
@@ -111,7 +131,7 @@ def encode(document):
 
 
 def inventory(document):
-    return {**{key: document[key] for key in ('id', 'version', 'runtime', 'entrypoint', 'artwork', 'attract', 'screenshots') if key in document},
+    return {**{key: document[key] for key in ('id', 'version', 'runtime', 'entrypoint', 'artwork', 'attract', 'screenshots', 'companion') if key in document},
             'schema_version': 1, 'files': {name: item['sha256'] for name, item in document['files'].items()}}
 
 
@@ -126,7 +146,7 @@ def no_symlinks(root, target):
             raise ValueError('Symlinked file path')
 
 
-def generate(build, game_id, version, entrypoint, artwork, base_url='./', attract=None, screenshots=None):
+def generate(build, game_id, version, entrypoint, artwork, base_url='./', attract=None, screenshots=None, companion=None):
     build = Path(build).absolute()
     no_symlinks(Path(build.anchor), build)
     if not build.is_dir():
@@ -162,6 +182,8 @@ def generate(build, game_id, version, entrypoint, artwork, base_url='./', attrac
         result['attract'] = attract
     if screenshots is not None:
         result['screenshots'] = screenshots
+    if companion is not None:
+        result['companion'] = companion
     return validate(result, game_id, allow_relative=True)
 
 
@@ -173,13 +195,21 @@ def main():
     parser.add_argument('--base-url', default='./', help='Download directory relative to the hosted manifest (default: ./), or an absolute HTTPS URL')
     parser.add_argument('--attract')
     parser.add_argument('--screenshot', action='append', default=None)
+    parser.add_argument('--companion', help='Game-owned phone app URL, relative to this manifest or absolute HTTPS')
+    parser.add_argument('--companion-title', help='Optional grown-up app title')
+    parser.add_argument('--companion-artwork', help='Optional public artwork URL, relative to this manifest or absolute HTTPS')
     parser.add_argument('--output', type=Path, required=True, help='Manifest destination outside the build directory')
     args = parser.parse_args()
     try:
         output = args.output.absolute()
         if output.resolve().is_relative_to(args.build.resolve()):
             raise ValueError('Output manifest must be outside the payload build directory')
-        document = generate(args.build, args.id, args.version, args.entrypoint, args.artwork, args.base_url, args.attract, args.screenshot)
+        if not args.companion and (args.companion_title is not None or args.companion_artwork is not None):
+            raise ValueError('Companion title/artwork requires --companion')
+        companion = None if args.companion is None else dict(url=args.companion,
+            **({'title': args.companion_title} if args.companion_title is not None else {}),
+            **({'artwork': args.companion_artwork} if args.companion_artwork is not None else {}))
+        document = generate(args.build, args.id, args.version, args.entrypoint, args.artwork, args.base_url, args.attract, args.screenshot, companion)
         output.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as temporary:
             temporary.write(encode(document))

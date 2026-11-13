@@ -23,7 +23,7 @@
   // Set when the relay has a permanent address. Hosts and tests pass their own.
   const DEFAULT_RELAY = 'https://gbo-link-relay.onrender.com';
   // Where a phone lands after scanning: Cubby's grown-ups app (parents/), which loads this same file.
-  // Games' own grown-up pages open inside it, on the same site, so one pairing serves them all.
+  // The dashboard discovers game-owned companion URLs from the paired Cubby's installed manifests.
   const DEFAULT_COMPANION = 'https://cubbyarcade.com/parents/';
   const MAX_MESSAGE = 180000, MAX_HELD = 200, SEEN_IDS = 300;
   const PENDING_PAIRING_MS = 10 * 60 * 1000, NEGOTIATION_MS = 15000;
@@ -67,6 +67,39 @@
 
   function validCode(code) { try { return typeof code === 'string' && fromBase64Url(code).length === 16; } catch (_) { return false; } }
 
+  // The manifest owns the phone app. Hosts may resolve relative references at
+  // install; announcements and the dashboard accept only public absolute URLs.
+  function validateCompanion(value, resolve = value => {
+    if (typeof value !== 'string' || !/^https:\/\/[^/]/i.test(value) || /[\\\x00-\x20\x7f#]/.test(value) || /%(?![0-9a-f]{2})|%(?:0[0-9a-f]|1[0-9a-f]|7f|5c)/i.test(value)) throw Error('Invalid companion URL');
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.hash || /^https:\/\/[^/?]*@/i.test(value)) throw Error('Invalid companion URL');
+    return url.href;
+  }) {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !['url', 'title', 'artwork'].includes(key))) throw Error('Invalid companion metadata');
+    const result = {};
+    for (const key of ['url', 'artwork']) if (key === 'url' || Object.hasOwn(value, key)) {
+      if (typeof value[key] !== 'string' || value[key].length > 2048) throw Error('Invalid companion URL');
+      if (/^https:\/\/[^/?]*@/i.test(value[key])) throw Error('Invalid companion URL');
+      result[key] = resolve(value[key]);
+    }
+    if (Object.hasOwn(value, 'title')) {
+      if (typeof value.title !== 'string' || !value.title.trim() || value.title.length > 120 || /[\x00-\x1f\x7f]/.test(value.title)) throw Error('Invalid companion title');
+      result.title = value.title;
+    }
+    return result;
+  }
+  function companionGames(entries, installed) {
+    const seen = new Set(), allowed = new Set(installed);
+    return entries.slice(0, 1000).flatMap(game => {
+      if (!game || !GAME_ID.test(game.id) || !allowed.has(game.id) || seen.has(game.id)) return [];
+      try {
+        const companion = validateCompanion(game.companion);
+        seen.add(game.id);
+        return [{id: game.id, companion}];
+      } catch (_) { return []; }
+    });
+  }
+
   /* The link itself. `role` is what this device is: 'cubby' or 'parent'. */
   function createLink(options) {
     const role = options.role === 'parent' ? 'parent' : 'cubby';
@@ -97,7 +130,7 @@
     function pairing(room) { return load().pairings.find(item => item.room === room); }
     function status(room) { let value = live.get(room); if (!value) live.set(room, value = {open: false, present: false, offering: 0, tries: 0}); return value; }
     // `label` is what this device's owner calls the other one; `name` is what it calls itself.
-    function publicPairing(item) { return {id: item.room, role: item.role, name: item.label || item.name || null, ownName: item.name || null, confirmed: !!item.confirmed, connected: !!live.get(item.room)?.open, players: item.players || [], games: Array.isArray(item.games) ? [...item.games] : null, since: item.created}; }
+    function publicPairing(item) { return {id: item.room, role: item.role, name: item.label || item.name || null, ownName: item.name || null, confirmed: !!item.confirmed, connected: !!live.get(item.room)?.open, players: item.players || [], games: Array.isArray(item.games) ? [...item.games] : null, companions: Array.isArray(item.companions) ? companionGames(item.companions, item.games || []) : null, since: item.created}; }
     // One thing at a time: events from the transport and calls from the page share state.
     function queue(job) { const run = work.then(job, job); work = run.catch(() => {}); return run; }
 
@@ -172,7 +205,12 @@
         if (message.role !== item.role) return;
         Object.assign(item, {peer: String(message.id || ''), name: String(message.name || '').slice(0, 40) || item.name, confirmed: true,
           players: Array.isArray(message.players) ? message.players.slice(0, 16).map(p => ({id: String(p.id), name: String(p.name || '').slice(0, 20), avatar: String(p.avatar || '')})) : item.players});
-        if (Array.isArray(message.games)) item.games = [...new Set(message.games.filter(id => typeof id === 'string' && GAME_ID.test(id)))].slice(0, 1000);
+        if (Array.isArray(message.games)) {
+          item.games = [...new Set(message.games.filter(id => typeof id === 'string' && GAME_ID.test(id)))].slice(0, 1000);
+          // Older senders know only IDs. Never retain stale companion metadata
+          // after a downgrade or an explicit empty/removal announcement.
+          item.companions = Array.isArray(message.companions) ? companionGames(message.companions, item.games) : null;
+        }
         save();
       } else if (message.t === 'msg' && GAME_ID.test(message.game) && typeof message.id === 'string') {
         if (remember(message.id)) {
@@ -194,7 +232,10 @@
       const value = {t: 'hello', id: state.id, role, ...describe()};
       if (role === 'cubby' && gamesProvider) try {
         const games = await gamesProvider();
-        if (Array.isArray(games)) value.games = [...new Set(games.map(game => typeof game === 'string' ? game : game.id).filter(id => typeof id === 'string' && GAME_ID.test(id)))].slice(0, 1000);
+        if (Array.isArray(games)) {
+          value.games = [...new Set(games.map(game => typeof game === 'string' ? game : game?.id).filter(id => typeof id === 'string' && GAME_ID.test(id)))].slice(0, 1000);
+          value.companions = companionGames(games, value.games);
+        }
       } catch (_) { /* Unknown is not an empty library. Keep the phone's last known inventory. */ }
       return value;
     }
@@ -512,5 +553,5 @@
     };
   }
 
-  return {createLink, createBrowserTransport, createHostTransport, createCrypto, install, validCode, storagePrefix: prefix, DEFAULT_RELAY, MAX_MESSAGE};
+  return {createLink, createBrowserTransport, createHostTransport, createCrypto, install, validCode, validateCompanion, storagePrefix: prefix, DEFAULT_RELAY, MAX_MESSAGE};
 });

@@ -242,16 +242,22 @@ test('the handheld transport reports where things stand without waiting on the c
 
 test('each Cubby announces its installed games, updates them and keeps last inventory offline', async () => {
   const net = world(), parent = device(net, 'parent');
-  let games = [{id:'good-bribes-only'}, {id:'spell-castle'}];
+  let games = [{id:'good-bribes-only', companion:{url:'https://publisher.example/phone/',title:'Phone controls'}}, {id:'spell-castle'}];
   const cubby = Link.createLink({role:'cubby', storage:memoryStorage(), transport:net.transport(), games:() => games, setTimeout:() => {}, setInterval:() => null});
   await cubby.start(); await parent.link.start();
   await parent.link.acceptPairing(await cubby.beginPairing()); await settle();
   assert.deepEqual(parent.link.pairings()[0].games, ['good-bribes-only','spell-castle']);
+  assert.deepEqual(parent.link.pairings()[0].companions,[{id:'good-bribes-only',companion:{url:'https://publisher.example/phone/',title:'Phone controls'}}]);
+  games[0].companion={url:'https://publisher.example/updated/'}; await cubby.announce(); await settle();
+  assert.equal(parent.link.pairings()[0].companions[0].companion.url,'https://publisher.example/updated/');
   await cubby.setGamesProvider(() => { throw Error('inventory unavailable'); }); await settle();
   assert.deepEqual(parent.link.pairings()[0].games, ['good-bribes-only','spell-castle'], 'failed inventory never becomes an empty library');
   await cubby.setGamesProvider(() => games);
+  games[0].companion={url:'javascript:alert(1)'}; await cubby.announce(); await settle();
+  assert.deepEqual(parent.link.pairings()[0].companions, [], 'unsafe game metadata never becomes a phone link');
   games = []; await cubby.announce(); await settle();
   assert.deepEqual(parent.link.pairings()[0].games, []);
+  assert.deepEqual(parent.link.pairings()[0].companions, []);
   await cubby.stop(); await settle();
   assert.deepEqual(parent.link.pairings()[0].games, []);
 });
