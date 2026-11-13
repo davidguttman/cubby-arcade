@@ -697,7 +697,26 @@ function mount(host){
  function preview(game){if(state.detail?.id===game.id&&!detail.hidden)return;pausePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
  const stage=element(detail,'div','stage');
  button(stage,'back','Return to games',()=>returnToGames(),'detail-close');
- const media=doc.createElement(game.attract?'video':'img');media.className='preview-media';if(game.attract)media.poster=game.artwork;media.src=game.attract||game.artwork;if(game.attract){media.autoplay=true;media.muted=true;media.addEventListener('ended',()=>{media.load();media.play().catch(()=>{});});media.playsInline=true;media.setAttribute('playsinline','');media.addEventListener('error',()=>{const image=doc.createElement('img');image.className='preview-media';image.src=game.artwork;image.alt='';media.replaceWith(image);});}else media.alt='';stage.appendChild(media);if(game.attract)media.play().catch(()=>{});
+ const media=doc.createElement(game.attract?'video':'img');media.className='preview-media';
+ if(game.attract){
+  // Native video posters can disappear before the decoder presents a frame.
+  // Keep a real image underneath instead, including while a trailer reloads.
+  const poster=element(stage,'img','preview-poster');poster.src=game.artwork;poster.alt='';
+  media.classList.add('preview-video');media.poster=game.artwork;media.autoplay=true;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
+  let generation=0;
+  const cover=()=>{generation++;media.style.opacity='0';};
+  const play=()=>media.play().catch(cover);
+  cover();media.addEventListener('loadstart',cover);
+  media.addEventListener('playing',()=>{
+   const current=generation,reveal=()=>{if(current===generation&&media.readyState>=2)media.style.opacity='1';};
+   if(media.requestVideoFrameCallback)media.requestVideoFrameCallback(reveal);
+   else if(win.requestAnimationFrame)win.requestAnimationFrame(reveal);
+   else reveal();
+  });
+  media.addEventListener('ended',()=>{cover();media.load();play();});
+  media.addEventListener('error',()=>{cover();media.remove();});
+  media.src=game.attract;stage.appendChild(media);play();
+ }else{media.src=game.artwork;media.alt='';stage.appendChild(media);}
  const actions=element(detail,'div','detail-actions');
  const star=button(actions,'star','Favorite',()=>{state.favorite(game.id);star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));const badge=shelf.querySelector('.game-card[data-game-id="'+game.id+'"] .card-badge');if(badge)setBadge(badge,game.id);syncShelfCopies();},'favorite');star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));
  feature(game);

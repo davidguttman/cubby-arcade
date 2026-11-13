@@ -31,10 +31,10 @@ test('options contain adult setup but no manual touch controls',()=>{
 });
 
 // Small DOM adapter for exercising the mounted hub without a browser dependency.
-function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverrides={}){
+function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverrides={},mediaOverrides={}){
  let onInstall,onAction,revision=0;
  class Element{
-  constructor(tag='div'){this.tagName=tag;this.children=[];this.attributes={};this.dataset={};this.hidden=false;this.listeners={};this.style={setProperty(){},removeProperty(){}};this.className='';this.ownerDocument=doc;this.classList={contains:n=>this.className.split(' ').includes(n),add:n=>{if(!this.classList.contains(n))this.className+=' '+n;},remove:n=>{this.className=this.className.split(' ').filter(x=>x!==n).join(' ');},toggle:(n,on)=>{on??=!this.classList.contains(n);this.classList[on?'add':'remove'](n);}};}
+  constructor(tag='div'){if(tag==='video')Object.assign(this,mediaOverrides);this.tagName=tag;this.children=[];this.attributes={};this.dataset={};this.hidden=false;this.listeners={};this.style={setProperty(){},removeProperty(){}};this.className='';this.ownerDocument=doc;this.classList={contains:n=>this.className.split(' ').includes(n),add:n=>{if(!this.classList.contains(n))this.className+=' '+n;},remove:n=>{this.className=this.className.split(' ').filter(x=>x!==n).join(' ');},toggle:(n,on)=>{on??=!this.classList.contains(n);this.classList[on?'add':'remove'](n);}};}
   appendChild(e){this.children.push(e);e.parent=this;return e;}
   replaceChildren(...nodes){this.children=[];nodes.forEach(n=>this.appendChild(n));}
   set innerHTML(value){this._html=value;this.replaceChildren();if(value.includes('class="topbar"'))for(const cls of ['brand','view-nav','view-body','hero-backdrop','hero-rest','shelf','detail','options-panel','adult-setup','hud']){const e=this.appendChild(new Element(cls==='adult-setup'?'dialog':'div'));e.className=cls;if(cls==='detail')e.hidden=true;if(cls==='hero-rest')e.appendChild(new Element('img'));}}
@@ -113,6 +113,31 @@ test('uninstalled Store selection keeps its download action after Back',async()=
   action(control);assert.equal(hub.state.view,'store');assert.equal(hub.state.detail?.id,'two');
   assert.equal(host.querySelector('.detail').hidden,false);assert.equal(host.querySelector('.download-game'),download);
  }
+});
+test('preview video overlays the in-flow poster inside the stage',()=>{
+ const css=require('node:fs').readFileSync('runtime/core/hub.css','utf8');
+ assert.match(css,/\.stage \.preview-video\{position:absolute;inset:0\}/);
+});
+test('video previews keep selected artwork visible until a presented frame, including restarts',async()=>{
+ const frames=[];
+ const {host}=mountedHub(games.map(game=>({...game,attract:game.id+'.webm'})),[],{},{},{},{requestVideoFrameCallback:fn=>frames.push(fn)});await settle();
+ const video=host.querySelector('video'),poster=host.querySelector('.preview-poster');
+ assert.ok(poster,'a separate image must cover native video startup');assert.equal(poster.src,'one.svg');assert.equal(video.style.opacity,'0');
+ video.readyState=2;video.dispatchEvent({type:'loadeddata'});assert.equal(video.style.opacity,'0','decoded data is not a presented frame');
+ video.dispatchEvent({type:'playing'});assert.equal(video.style.opacity,'0');frames.shift()();assert.equal(video.style.opacity,'1');
+ video.dispatchEvent({type:'ended'});assert.equal(video.style.opacity,'0');
+ video.dispatchEvent({type:'playing'});const stale=frames.shift();video.dispatchEvent({type:'loadstart'});stale();assert.equal(video.style.opacity,'0','obsolete frame callbacks must not uncover a reset video');
+ host.querySelector('[data-game-id="two"]').focus();assert.equal(host.querySelector('.preview-poster').src,'two.svg');assert.equal(host.querySelector('video').style.opacity,'0');
+});
+test('older video engines reveal only on playback and retain artwork on failure',async()=>{
+ const frames=[];const {host}=mountedHub([{...games[0],attract:'one.webm'}],[],{},{},{requestAnimationFrame:fn=>frames.push(fn)});await settle();
+ const video=host.querySelector('video'),poster=host.querySelector('.preview-poster');assert.ok(poster);assert.equal(video.style.opacity,'0');
+ video.readyState=2;video.dispatchEvent({type:'playing'});assert.equal(video.style.opacity,'0');frames.shift()();assert.equal(video.style.opacity,'1');
+ video.dispatchEvent({type:'error'});assert.equal(host.querySelector('video'),null);assert.equal(host.querySelector('.preview-poster'),poster);
+});
+test('rejected preview playback leaves the artwork visible',async()=>{
+ const {host}=mountedHub([{...games[0],attract:'one.webm'}],[],{},{},{},{play(){return Promise.reject(new Error('blocked'));}});await settle();
+ assert.equal(host.querySelector('.preview-poster')?.src,'one.svg');assert.equal(host.querySelector('video').style.opacity,'0');
 });
 test('empty Library remains an empty pictorial state',async()=>{
  const {host,hub}=mountedHub([]);await settle();hub.show('library');
