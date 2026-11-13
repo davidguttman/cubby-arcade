@@ -14,7 +14,37 @@
     add(card, 'h2', 'Pair with a Cubby');
     add(card, 'p', note || 'This phone isn’t paired with a Cubby yet.');
     if (!note) { const steps = add(card, 'ol'); for (const step of ['On the Cubby, open the gear tab and answer the question.', 'Choose Phones, then Add a phone.', 'Point this phone’s camera at the code.']) add(steps, 'li', step); }
+    pairingAction(card);
   }
+  // The same action adds a first or another Cubby without hiding known devices.
+  function pairingAction(parent) {
+    const paste = add(parent, 'button', 'Paste pairing link', 'paste-pairing'); paste.type = 'button';
+    add(parent, 'p', 'For the installed app: show a fresh Cubby code, then copy the link from the camera’s QR preview before opening it. Paste it here, not from the browser’s address bar.', 'hint');
+    const error = add(parent, 'p', '', 'hint'); error.hidden = true; error.setAttribute('role', 'status');
+    paste.addEventListener('click', async () => {
+      const text = win.prompt('Paste the fresh Cubby link copied from the camera’s QR preview before opening it');
+      if (!text) return;
+      error.hidden = true;
+      try {
+        const parsed = win.CubbyParsePairingLink(text);
+        let relay = null; try { relay = win.localStorage.getItem('cubby:parent-link:relay'); } catch (_) {}
+        if (parsed.relay && parsed.relay !== relay) {
+          // The transport reads its relay at startup. Restart only this app;
+          // pairing.js consumes and clears the transient fragment immediately.
+          win.history.replaceState(null, '', win.location.pathname + '#pair=' + parsed.code + '&relay=' + encodeURIComponent(parsed.relay));
+          win.location.reload();
+          return;
+        }
+        const link = await win.CubbyLink.ready;
+        if (!link) throw Error('Pairing unavailable');
+        await link.acceptPairing(parsed.code); render(link);
+      } catch (_) {
+        error.textContent = 'That link couldn’t be used. Show a fresh Cubby code and copy its camera preview link before opening it. Your existing pairings are unchanged.';
+        error.hidden = false;
+      }
+    });
+  }
+
   function render(link) {
     const cubbies = link.pairings();
     if (!cubbies.length) return unpaired();
@@ -40,6 +70,9 @@
         add(a, 'span', game.title);
       }
     }
+    const pairingCard = add(app, 'section', '', 'card');
+    add(pairingCard, 'h2', 'Add another Cubby');
+    pairingAction(pairingCard);
     // What this phone calls itself on the Cubby's Phones page; the Cubby hears it next time they connect.
     const me = add(app, 'button', '', 'quiet self'); me.type = 'button';
     add(me, 'span', 'This phone: ' + (win.CubbyLinkOptions.name || 'Phone')); add(me, 'span', '✎', 'pen');

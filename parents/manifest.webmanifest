@@ -1,0 +1,17 @@
+{
+  "id": "/parents/",
+  "name": "Cubby for grown-ups",
+  "short_name": "Cubby",
+  "description": "Your Cubby Arcade companion: pair with Cubbies and manage their games.",
+  "lang": "en",
+  "start_url": "/parents/",
+  "scope": "/parents/",
+  "display": "standalone",
+  "background_color": "#1f1633",
+  "theme_color": "#1f1633",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

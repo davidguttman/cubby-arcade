@@ -29,6 +29,9 @@ class StaticHosting(unittest.TestCase):
              patch.object(hosting_build, 'legacy_manifests', return_value={}):
             root = hosting_build.build(temporary / 'site')
             self.assertEqual((root / 'index.html').read_bytes(), (root / 'site/index.html').read_bytes())
+            self.assertEqual((root / 'parents/manifest.webmanifest').read_bytes(), (web.HERE / 'parents/manifest.webmanifest').read_bytes())
+            self.assertTrue((root / 'parents/worker.js').is_file())
+            self.assertTrue((root / 'parents/icons/maskable-512.png').is_file())
             native = (root / 'native/index.html').read_bytes()
             self.assertNotEqual((root / 'index.html').read_bytes(), native)
             manifest = json.loads((root / 'hub-manifest.json').read_bytes())

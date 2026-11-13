@@ -1,4 +1,19 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#1f1633"><title>Cubby for grown-ups</title>
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f1633"><meta name="description" content="Your Cubby Arcade companion for grown-ups.">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Cubby"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Cubby for grown-ups</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icons/favicon.svg" type="image/svg+xml"><link rel="icon" href="icons/icon-192.png" type="image/png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="parents.css"></head>
-<body><main id="app" aria-live="polite"></main>
-<script src="pairing.js"></script><script src="../runtime/core/link.js"></script><script src="parents.js"></script></body></html>
+<body><main>
+<div id="app" aria-live="polite"></div>
+<p id="offline-note" class="card hint" role="status" hidden>You’re offline. Your pairings stay on this device. Reconnect to reach your Cubby and open game settings.</p>
+<section id="install-card" class="card" aria-labelledby="install-title" hidden>
+<h2 id="install-title">Keep Cubby handy</h2>
+<p>Add Cubby to your home screen for its own icon and app window.</p>
+<button id="install-button" type="button" hidden>Install Cubby</button>
+<p id="install-help" class="hint" hidden></p>
+<p class="hint">Install first, then pair in the installed app. Some phones keep the app’s pairing separate from the browser.</p>
+</section>
+</main>
+<script src="pairing.js"></script><script src="../runtime/core/link.js"></script><script src="parents.js"></script><script src="install.js"></script></body></html>

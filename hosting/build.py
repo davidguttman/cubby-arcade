@@ -66,7 +66,7 @@ def build(output=None):
     shutil.copyfile(result / 'site/favicon.ico', result / 'favicon.ico')
     # The grown-ups' app a phone opens by scanning the Cubby's code. A game's own grown-ups page
     # (catalog `parents`) is served under /parents/<id>/ by a rewrite on the host, so it shares the pairing.
-    shutil.copytree(ROOT / 'parents', result / 'parents', dirs_exist_ok=True)
+    # web.build already includes the companion and all install assets.
     return result
 
 

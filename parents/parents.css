@@ -20,3 +20,9 @@ button.quiet{display:block;width:100%;margin-top:8px;background:transparent;colo
 .name{background:none;border:0;padding:0;min-height:0;color:inherit;font-weight:800;font-size:18px;display:inline-flex;align-items:center;gap:8px;text-align:left}
 .pen{font-size:14px;color:var(--soft);font-weight:400}
 button.self{display:flex;justify-content:center;gap:8px}
+[hidden]{display:none!important}
+#install-button{margin-top:14px;width:100%}
+button:focus-visible,a:focus-visible{outline:3px solid var(--honey);outline-offset:4px}
+main{padding-bottom:max(40px,env(safe-area-inset-bottom))}
+
+.paste-pairing{margin-top:16px;width:100%}

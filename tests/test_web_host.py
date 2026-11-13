@@ -11,6 +11,15 @@ import zipfile
 import web
 
 class WebHostTests(unittest.TestCase):
+    def test_companion_install_shell_is_exported_outside_native_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = web.build(Path(tmp) / 'site', registry=[])
+            for path in (web.HERE / 'parents').rglob('*'):
+                if path.is_file():
+                    self.assertEqual((output / 'parents' / path.relative_to(web.HERE / 'parents')).read_bytes(), path.read_bytes())
+            inventory = json.loads((output / 'hub-manifest.json').read_text())['files']
+            self.assertFalse(any(path.startswith('/parents/') for path in inventory))
+
     def test_beta_catalog_is_separate_and_cached_by_browser_without_breaking_native_inventory(self):
         beta = [{'id': 'early', 'title': 'Early Game',
                  'manifest_url': 'https://early.example/beta/manifest.json',

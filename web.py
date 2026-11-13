@@ -36,6 +36,8 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
         if not archives:
             (site / 'catalog').write_text('[]\n')
         public_site.build(site)
+        # The phone companion has its own narrowly scoped install/offline shell.
+        shutil.copytree(HERE / 'parents', site / 'parents')
         # A catalog can discover a game whose publisher owns its live release
         # pointer. Installed game bytes remain pinned, validated and offline.
         urls = manifest_urls if manifest_urls is not None else default_manifest_urls()
