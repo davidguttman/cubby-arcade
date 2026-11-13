@@ -125,6 +125,7 @@ function mount(host){
  host.innerHTML='<header class="topbar"><div class="brand">'+brand+'</div><nav class="view-nav" aria-label="Views"><span class="nav-pill" aria-hidden="true"></span></nav><div class="hud"></div></header>'+
   '<section class="view-body"><div class="hero"><div class="hero-backdrop" aria-hidden="true"></div><aside class="detail" hidden></aside><div class="hero-rest" aria-hidden="true"><div class="stage"><img class="rest-media" alt=""></div><div class="rest-hint">'+icon('pick')+'</div><div class="rest-done">'+icon('check')+icon('library')+'</div></div></div><div class="shelf-rail"><div class="shelf"></div></div></section>'+
   '<section class="options-panel" hidden></section><dialog class="adult-setup" aria-label="Adult keyboard setup"></dialog>';
+ const device=win.CubbyDeviceProfile==='rg353v';host.classList.toggle('device-hub',device);
  const nav=host.querySelector('.view-nav'),body=host.querySelector('.view-body'),backdrop=host.querySelector('.hero-backdrop'),restArt=host.querySelector('.hero-rest img'),shelf=host.querySelector('.shelf'),detail=host.querySelector('.detail'),options=host.querySelector('.options-panel'),dialog=host.querySelector('dialog.adult-setup');
  function button(parent,name,label,fn,cls){const b=doc.createElement('button');b.type='button';b.className=cls||'';b.setAttribute('aria-label',label);b.innerHTML=icon(name);b.addEventListener('click',fn);parent.appendChild(b);return b;}
  function element(parent,tag,cls){const e=doc.createElement(tag);if(cls)e.className=cls;parent.appendChild(e);return e;}
@@ -202,7 +203,7 @@ function mount(host){
  quitDialog.addEventListener('cancel',e=>{e.preventDefault();closeQuit();});
  const uninstallDialog=element(host,'dialog','uninstall-confirm');uninstallDialog.setAttribute('aria-label','Uninstall game? Saves are kept');
  let uninstallTarget=null,uninstallBusy=false,uninstallPreview=null;
- function closeUninstall(){if(uninstallBusy)return;uninstallDialog.close();uninstallTarget=null;refreshOwnership();detail.querySelector('.uninstall-game')?.focus();if(uninstallPreview?.isConnected&&!detail.hidden)uninstallPreview.play().catch(()=>{});uninstallPreview=null;}
+ function closeUninstall(){if(uninstallBusy)return;uninstallDialog.close();uninstallTarget=null;refreshOwnership();detail.querySelector('.uninstall-game')?.focus();if(!detail.hidden&&(startPreview||uninstallPreview?.isConnected))queuePreview();uninstallPreview=null;}
  function openUninstall(game){
   if(!platform.capabilities?.uninstall||uninstallBusy||launchBusy||!library.some(x=>x.id===game.id))return;
   uninstallTarget={...game};const video=detail.querySelector('video');uninstallPreview=video&&!video.paused?video:null;pausePreview();uninstallDialog.replaceChildren();
@@ -602,14 +603,23 @@ function mount(host){
  function returningToSettings(){try{const marked=win.sessionStorage.getItem(settingsReturn)==='1';win.sessionStorage.removeItem(settingsReturn);return marked&&win.location?.hash==='#options';}catch{return false;}}
 
  const views=['library','store','options'],tabs={};let pendingTabFocus=null;for(const name of views)tabs[name]=button(nav,name,name,()=>activateView(name),'view-tab');
- function show(view,initial=false){if(adult)return;if(view!=='options')settingsUnlocked=false;pendingTabFocus=null;if(!initial)initialViewPending=false;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
+ function show(view,initial=false){if(adult)return;if(view!=='options')settingsUnlocked=false;pendingTabFocus=null;if(!initial)initialViewPending=false;releasePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
  // Activating a tab enters its content; merely navigating across tabs does not.
  function selectedCard(){const cards=Array.from(shelf.querySelectorAll('.game-card')).filter(card=>!card.disabled);return cards.find(card=>card.dataset.gameId===state.detail?.id)||cards[0];}
  function focusView(){(state.view==='options'?options.querySelector('button:not(:disabled)'):selectedCard()||shelf.querySelector('.retry-starter'))?.focus();}
  function activateView(view,initial=false){if(adult)return;show(view,initial);tabs[view].focus();focusView();if(loading[view])pendingTabFocus=view;}
  function finishTabFocus(view){if(pendingTabFocus!==view)return;pendingTabFocus=null;if(state.view===view&&doc.activeElement===tabs[view])focusView();}
  function primaryAction(){return detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')||detail.querySelector('.favorite');}
- function pausePreview(){detail.querySelector('video')?.pause();}
+ let previewTimer=null,startPreview=null;
+ function pausePreview(){win.clearTimeout(previewTimer);previewTimer=null;detail.querySelector('video')?.pause();}
+ // A detached, paused video can still retain its decoder and network request.
+ function releasePreview(){pausePreview();startPreview=null;const video=detail.querySelector('video');if(video){video.removeAttribute('src');video.load();}}
+ function queuePreview(){
+  win.clearTimeout(previewTimer);
+  // Leave room beyond the 180ms gamepad repeat plus its next animation frame.
+  if(device)previewTimer=win.setTimeout(()=>{previewTimer=null;if(!disposed&&!detail.hidden)startPreview?.();},280);
+  else startPreview?.();
+ }
  function entries(){return state.view==='store'?catalog:library;}
  function ownedInStore(id){return state.view==='store'&&library.some(x=>x.id===id);}
  function badgeFor(id){return ownedInStore(id)?icon('check'):state.isFavorite(id)?icon('star'):'';}
@@ -683,7 +693,7 @@ function mount(host){
  for(const game of store?[...catalog].sort((a,b)=>ownedInStore(a.id)-ownedInStore(b.id)):entries()){
  const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');image.src=game.artwork;image.alt='';
  element(card,'span','card-badge');setOwned(card);
- card.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')previewHovered(game);});card.addEventListener('focus',()=>{preview(game);revealCard(card);});
+ card.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')previewHovered(game);});card.addEventListener('focus',()=>{if(state.detail?.id===game.id&&!detail.hidden)revealCard(card);else preview(game);});
  }
  if(state.view==='library'&&starterFailed)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  layoutShelf();
@@ -694,7 +704,7 @@ function mount(host){
  if(store&&!state.detail){if(offer)preview(keep&&!ownedInStore(keep.id)?keep:offer);else{hideDetail();feature(entries()[0]);}return;}
  feature(keep||entries()[0]);}
  function previewHovered(game){hoverPreview=true;try{preview(game);}finally{hoverPreview=false;}}
- function preview(game){if(state.detail?.id===game.id&&!detail.hidden)return;pausePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
+ function preview(game){if(state.detail?.id===game.id&&!detail.hidden)return;releasePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
  const stage=element(detail,'div','stage');
  button(stage,'back','Return to games',()=>returnToGames(),'detail-close');
  const media=doc.createElement(game.attract?'video':'img');media.className='preview-media';
@@ -702,10 +712,10 @@ function mount(host){
   // Native video posters can disappear before the decoder presents a frame.
   // Keep a real image underneath instead, including while a trailer reloads.
   const poster=element(stage,'img','preview-poster');poster.src=game.artwork;poster.alt='';
-  media.classList.add('preview-video');media.poster=game.artwork;media.autoplay=true;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
+  media.classList.add('preview-video');media.poster=game.artwork;media.autoplay=!device;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
   let generation=0;
   const cover=()=>{generation++;media.style.opacity='0';};
-  const play=()=>media.play().catch(cover);
+  const play=()=>{if(!disposed&&!detail.hidden&&detail.querySelector('video')===media)media.play().catch(cover);};
   cover();media.addEventListener('loadstart',cover);
   media.addEventListener('playing',()=>{
    const current=generation,reveal=()=>{if(current===generation&&media.readyState>=2)media.style.opacity='1';};
@@ -715,17 +725,21 @@ function mount(host){
   });
   media.addEventListener('ended',()=>{cover();media.load();play();});
   media.addEventListener('error',()=>{cover();media.remove();});
-  media.src=game.attract;stage.appendChild(media);play();
+  stage.appendChild(media);
+  // Paint the cover and controls immediately. Rapid device browsing never opens
+  // trailers that will be discarded on the next controller repeat.
+  startPreview=()=>{if(detail.querySelector('video')!==media)return;if(!media.getAttribute('src'))media.src=game.attract;play();};
+  queuePreview();
  }else{media.src=game.artwork;media.alt='';stage.appendChild(media);}
  const actions=element(detail,'div','detail-actions');
  const star=button(actions,'star','Favorite',()=>{state.favorite(game.id);star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));const badge=shelf.querySelector('.game-card[data-game-id="'+game.id+'"] .card-badge');if(badge)setBadge(badge,game.id);syncShelfCopies();},'favorite');star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));
  feature(game);
- refreshOwnership();
+ refreshOwnership(false);
  }
  // Update ownership in place: asynchronous Library discovery must not restart the
  // Store trailer or steal focus from its favorite/back controls.
- function refreshOwnership(){
- for(const card of shelf.querySelectorAll('.game-card'))setOwned(card);syncShelfCopies();
+ function refreshOwnership(shelfChanged=true){
+ if(shelfChanged){for(const card of shelf.querySelectorAll('.game-card'))setOwned(card);syncShelfCopies();}
  if(detail.hidden||!state.detail)return;
  const actions=detail.querySelector('.detail-actions'),installed=library.find(x=>x.id===state.detail.id);if(!actions)return;
  if(installed){if(platform.capabilities?.uninstall&&!actions.querySelector('.uninstall-game'))button(actions,'trash','Uninstall game',()=>openUninstall(installed),'uninstall-game');const remove=actions.querySelector('.uninstall-game'),phase=installStates[installed.id]?.phase;if(remove)remove.disabled=launchBusy||uninstallBusy||['checking','downloading','verifying','pending','uninstalling'].includes(phase);const previous=actions.querySelector('.download-game'),focused=previous===doc.activeElement;actions.querySelector('.not-installed')?.remove();previous?.remove();actions.querySelector('.install-progress')?.remove();if(!actions.querySelector('.play-game'))button(actions,'play','Play game',()=>launch(installed.id),'play-game');if(focused)actions.querySelector('.play-game')?.focus();const play=actions.querySelector('.play-game');if(platform.capabilities?.tokens){play.disabled=launchBusy||!account?.available||account.balance<1;play.setAttribute('aria-label',account?.balance===0?'No tokens; adult refill needed':account?.launchFailed?'Retry game launch for one token':'Play game for one token');play.innerHTML=icon(account?.launchFailed?'retry':'play')+icon('token');let failure=actions.querySelector('.launch-error');if(account?.launchFailed&&!failure){failure=element(actions,'span','launch-error');failure.setAttribute('aria-label','Launch failed; no token spent');failure.innerHTML=icon('alert');}else if(!account?.launchFailed)failure?.remove();}}
@@ -781,7 +795,7 @@ function mount(host){
  const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(starterPending&&state.view==='library')renderGrid();if(installedChanged&&!starterPending)refreshLibrary();});
  platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
  const gameUpdates=startGameUpdates(win,platform);
- function hideDetail(){pausePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
+ function hideDetail(){releasePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
  // Back changes focus, not selection: a populated shelf always has usable actions.
  function returnToGames(toTab=false){const card=shelf.querySelector('[data-game-id="'+state.detail?.id+'"]');(toTab?tabs[state.view]:card||tabs[state.view]).focus();}
  function renderOptions(){options.replaceChildren();gateSubmit=null;
@@ -842,8 +856,8 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
- function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
+ function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);releasePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)queuePreview();}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
  async function loadStarterLibrary(){

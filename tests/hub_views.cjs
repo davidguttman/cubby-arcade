@@ -39,6 +39,8 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   replaceChildren(...nodes){this.children=[];nodes.forEach(n=>this.appendChild(n));}
   set innerHTML(value){this._html=value;this.replaceChildren();if(value.includes('class="topbar"'))for(const cls of ['brand','view-nav','view-body','hero-backdrop','hero-rest','shelf','detail','options-panel','adult-setup','hud']){const e=this.appendChild(new Element(cls==='adult-setup'?'dialog':'div'));e.className=cls;if(cls==='detail')e.hidden=true;if(cls==='hero-rest')e.appendChild(new Element('img'));}}
   get innerHTML(){return this._html||'';}
+  set src(value){this.setAttribute('src',value);}
+  get src(){return this.attributes.src;}
   setAttribute(k,v){this.attributes[k]=String(v);}
   getAttribute(k){return this.attributes[k]??null;}
   removeAttribute(k){delete this.attributes[k];}
@@ -54,14 +56,14 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   dispatchEvent(event){for(const fn of this.listeners[event.type]||[])fn(event);return true;}
   insertAdjacentHTML(){}
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
-  play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){}
+  play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){this.loadCount=(this.loadCount||0)+1;}
  }
  const doc={createElement:tag=>new Element(tag),activeElement:null};
  const platform={capabilities,library:async()=>games,catalog:async()=>catalog,install:async()=>{},onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({}),...overrides};
  const windowListeners=new Map();
  doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:options=>(onAction=options.onAction,{dispose(){}})},
  addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
- removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{},setTimeout:()=>0,clearTimeout(){},...windowOverrides};
+ removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},fire(type){for(const fn of windowListeners.get(type)||[])fn();},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{},setTimeout:()=>0,clearTimeout(){},...windowOverrides};
  const host=new Element(),hub=Hub.mount(host);
  return {host,hub,action:(action,source)=>onAction({action,source}),refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
 }
@@ -138,6 +140,52 @@ test('older video engines reveal only on playback and retain artwork on failure'
 test('rejected preview playback leaves the artwork visible',async()=>{
  const {host}=mountedHub([{...games[0],attract:'one.webm'}],[],{},{},{},{play(){return Promise.reject(new Error('blocked'));}});await settle();
  assert.equal(host.querySelector('.preview-poster')?.src,'one.svg');assert.equal(host.querySelector('video').style.opacity,'0');
+});
+function devicePreviewClock(){
+ let next=0,now=0;const jobs=new Map();
+ function advance(ms){const until=now+ms;for(;;){const due=[...jobs].filter(([,job])=>job.at<=until).sort((a,b)=>a[1].at-b[1].at)[0];if(!due)break;const [id,job]=due;jobs.delete(id);now=job.at;job.fn();}now=until;}
+ return {jobs,advance,window:{CubbyDeviceProfile:'rg353v',AbortController,fetch:()=>new Promise(()=>{}),setTimeout(fn,delay){const id=++next;jobs.set(id,{fn,delay,at:now+delay});return id;},clearTimeout(id){jobs.delete(id);}},run(){advance(280);}};
+}
+for(const view of ['library','store'])test('device '+view+' selects immediately but starts only the settled trailer',async()=>{
+ const clock=devicePreviewClock(),offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
+ const {host,hub}=mountedHub(view==='library'?offers:[],offers,{install:true}, {},clock.window);await settle();
+ const first=host.querySelector('video');assert.equal(first.src,undefined);assert.equal(first.playCount,undefined);
+ assert.ok(host.querySelector(view==='library'?'.play-game':'.download-game'));assert.ok(!host.querySelector(view==='library'?'.play-game':'.download-game').disabled);
+ host.querySelector('[data-game-id="two"]').focus();
+ assert.equal(hub.state.detail.id,'two');assert.equal(host.querySelector('.preview-poster').src,'two.svg');
+ const second=host.querySelector('video');assert.equal(second.src,undefined);clock.run();
+ assert.equal(first.playCount,undefined);assert.equal(first.src,undefined);assert.equal(first.loadCount,1);assert.equal(second.src,'two.webm');assert.equal(second.playCount,1);hub.dispose();
+});
+for(const view of ['library','store'])for(const repeat of [190,200])test('held device '+view+' navigation at '+repeat+'ms defers trailers until settled',async()=>{
+ const clock=devicePreviewClock(),offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
+ const {host,hub}=mountedHub(view==='library'?offers:[],offers,{install:true},{},clock.window);await settle();
+ const seen=[host.querySelector('video')];
+ for(let i=0;i<6;i++){
+  clock.advance(repeat);
+  assert.ok(seen.every(video=>!video.playCount),'controller repeats must not open intermediate trailers');
+  host.querySelector('[data-game-id="'+games[(i+1)%2].id+'"]').focus();seen.push(host.querySelector('video'));
+ }
+ clock.advance(279);assert.ok(seen.every(video=>!video.playCount));
+ clock.advance(1);assert.equal(seen.at(-1).playCount,1);assert.ok(seen.slice(0,-1).every(video=>!video.playCount));hub.dispose();
+});
+test('device pending trailer is canceled by leaving, blur and disposal and restarts on focus',async()=>{
+ const clock=devicePreviewClock(),{host,hub}=mountedHub([{...games[0],attract:'one.webm'}],[],{}, {},clock.window);await settle();
+ const win=host.ownerDocument.defaultView,video=host.querySelector('video');
+ // Exercise the same lifecycle callbacks a real window dispatches.
+ win.fire('blur');clock.run();assert.equal(video.src,undefined);
+ win.fire('focus');clock.run();assert.equal(video.src,'one.webm');
+ hub.show('store');hub.show('library');const next=host.querySelector('video');hub.dispose();clock.run();assert.equal(next.src,undefined);
+});
+test('leaving device discovery cancels an unloaded trailer and desktop remains immediate',async()=>{
+ const clock=devicePreviewClock(),{host,hub}=mountedHub([{...games[0],attract:'one.webm'}],[],{}, {},clock.window);await settle();
+ const video=host.querySelector('video');hub.show('options');clock.run();assert.equal(video.src,undefined);assert.equal(video.playCount,undefined);assert.equal(video.loadCount,1);hub.dispose();
+ const desktop=mountedHub([{...games[0],attract:'one.webm'}]);await settle();assert.equal(desktop.host.querySelector('video').src,'one.webm');assert.equal(desktop.host.querySelector('video').playCount,1);desktop.hub.dispose();
+});
+test('discarding a started preview releases its source when switching views and disposing',async()=>{
+ const {host,hub}=mountedHub([{...games[0],attract:'one.webm'}]);await settle();
+ const video=host.querySelector('video');hub.show('options');assert.equal(video.src,undefined);assert.equal(video.loadCount,1);
+ hub.show('library');const next=host.querySelector('video');assert.equal(next.src,'one.webm');hub.dispose();assert.equal(next.src,undefined);assert.equal(next.loadCount,1);
+ next.dispatchEvent({type:'ended'});assert.equal(next.playCount,1,'detached video events cannot restart playback');
 });
 test('empty Library remains an empty pictorial state',async()=>{
  const {host,hub}=mountedHub([]);await settle();hub.show('library');
