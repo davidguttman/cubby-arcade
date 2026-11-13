@@ -277,7 +277,9 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
    perpetual decoration or repainting interpolated shadows on every card. */
 .device-hub .hero-backdrop{display:none}
 .hub .device-hub button{transition:transform .09s ease-out,opacity .09s linear}
-.hub .device-hub :is(.game-card,.shelf-copy){transition:transform .1s ease-out}
+.hub .device-hub :is(.game-card,.shelf-copy){transition:transform .1s ease-out;box-shadow:none}
+/* Keep selection clear without the blurred shadows that stall handheld painting. */
+.hub .device-hub :is(.game-card,.shelf-copy):is(.is-selected,.is-copy-selected,:focus,:focus-visible){box-shadow:0 0 0 4px #ffc94d}
 .device-hub :is(.game-card,.shelf-copy) img{transition:none}
 .device-hub .nav-pill{transition:transform .12s ease-out}
 .device-hub .detail .stage,.device-hub .detail-actions{animation:none}
