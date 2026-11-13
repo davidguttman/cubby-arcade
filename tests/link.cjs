@@ -239,3 +239,58 @@ test('the handheld transport reports where things stand without waiting on the c
   await link.start();
   assert.match(await Promise.race([link.beginPairing(), new Promise(done => setTimeout(() => done('stalled'), 500))]), /^[A-Za-z0-9_-]{22}$/);
 });
+
+test('each Cubby announces its installed games, updates them and keeps last inventory offline', async () => {
+  const net = world(), parent = device(net, 'parent');
+  let games = [{id:'good-bribes-only'}, {id:'spell-castle'}];
+  const cubby = Link.createLink({role:'cubby', storage:memoryStorage(), transport:net.transport(), games:() => games, setTimeout:() => {}, setInterval:() => null});
+  await cubby.start(); await parent.link.start();
+  await parent.link.acceptPairing(await cubby.beginPairing()); await settle();
+  assert.deepEqual(parent.link.pairings()[0].games, ['good-bribes-only','spell-castle']);
+  await cubby.setGamesProvider(() => { throw Error('inventory unavailable'); }); await settle();
+  assert.deepEqual(parent.link.pairings()[0].games, ['good-bribes-only','spell-castle'], 'failed inventory never becomes an empty library');
+  await cubby.setGamesProvider(() => games);
+  games = []; await cubby.announce(); await settle();
+  assert.deepEqual(parent.link.pairings()[0].games, []);
+  await cubby.stop(); await settle();
+  assert.deepEqual(parent.link.pairings()[0].games, []);
+});
+
+test('a scoped parent page sees and sends to only its selected Cubby, never falls back', async () => {
+  const net = world(), {cubby,parent,room} = await pair(net);
+  const second = device(net,'cubby'); await second.link.start();
+  const otherRoom = await parent.link.acceptPairing(await second.link.beginPairing()); await settle();
+  const scoped = Link.createLink({role:'parent',storage:parent.storage,transport:net.transport(),peer:room,setTimeout:() => {},setInterval:() => null});
+  await scoped.start();
+  assert.deepEqual(scoped.pairings().map(p=>p.id),[room]);
+  const channel=scoped.channel('good-bribes-only');
+  assert.throws(()=>channel.send('wrong',{to:otherRoom}),/selected Cubby/);
+  await assert.rejects(channel.key(otherRoom,'coin:p_first'),/selected Cubby/);
+  channel.send('right');
+  const held=JSON.parse(parent.storage.getItem('cubby:parent-link:outbox:v1'));
+  assert.equal(held.at(-1).to,room);
+  cubby.link.channel('good-bribes-only').send('from selected');
+  second.link.channel('good-bribes-only').send('from other');
+  await settle();
+  const seen=[]; channel.onMessage(message=>seen.push(message.body)); await settle();
+  assert.deepEqual(seen,['from selected']);
+  assert.ok(JSON.parse(parent.storage.getItem('cubby:parent-link:inbox:v1:good-bribes-only')).some(message=>message.body==='from other'), 'another Cubby’s updates stay available for its own page');
+  await scoped.removePairing(room);
+  assert.deepEqual(scoped.pairings(),[]);
+  assert.throws(()=>channel.send('stale'),/Unknown paired device/);
+});
+
+
+test('game-page install scopes the ready link as used by existing external companions', async () => {
+  const net=world(), {parent,room}=await pair(net);
+  const second=device(net,'cubby');await second.link.start();
+  await parent.link.acceptPairing(await second.link.beginPairing());await settle();
+  const page = search => ({document:{},location:{pathname:'/parents/good-bribes-only/',search,protocol:'https:'},localStorage:parent.storage,crypto:globalThis.crypto,CubbyLinkOptions:{role:'parent',transport:{on() {},async setRooms() {},async dispose() {}}},navigator:{userAgent:'Phone'}});
+  const scoped=await Link.install(page('?cubby='+room)).ready;
+  assert.deepEqual(scoped.pairings().map(p=>p.id),[room]);
+  assert.deepEqual(scoped.channel('good-bribes-only').peers().map(p=>p.id),[room]);
+  const invalid=await Link.install(page('?cubby=')).ready;
+  assert.deepEqual(invalid.pairings(),[]);
+  assert.throws(()=>invalid.channel('good-bribes-only').send('wrong'),/Unknown paired device/);
+  await scoped.stop();await invalid.stop();
+});

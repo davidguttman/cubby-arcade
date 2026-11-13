@@ -77,13 +77,13 @@ test('installed app can consume a pasted trusted pairing link, rejecting arbitra
   assert.equal(parse('https://preview.example/parents/#pair='+code+'&relay=https%3A%2F%2Frelay.example').relay,'https://relay.example');
   for (const link of ['https://evil.example/parents/#pair='+code,'https://cubbyarcade.com/parents/game/#pair='+code,'https://cubbyarcade.com/parents/#pair=bad','https://cubbyarcade.com/parents/#pair='+code+'&relay=javascript%3Aalert(1)']) assert.throws(() => parse(link));
 });
-async function companionPage(pairings = []) {
+async function companionPage(pairings = [], catalog = []) {
   function node(tag) { return {tag,children:[],textContent:'',listeners:{},appendChild(child) { this.children.push(child); },replaceChildren() { this.children=[]; },setAttribute() {},addEventListener(type,fn) { this.listeners[type]=fn; }}; }
   const app=node('div'), accepted=[], answers=[];
   const link={pairings:() => pairings,onChange() {},async acceptPairing(code) { accepted.push(code); pairings.push({id:'second',name:'Second Cubby',confirmed:false,players:[]}); }};
   const window={document:{getElementById:() => app,createElement:node},location:{origin:'https://preview.example',pathname:'/parents/',hash:'',search:''},localStorage:{getItem() { return null; }},CubbyLinkAPI:require('../runtime/core/link.js'),CubbyLink:{ready:Promise.resolve(link)},prompt:() => answers.shift()};
   vm.runInNewContext(read('parents/pairing.js').toString(),{window,URL,URLSearchParams,navigator:{userAgent:'iPhone'}});
-  vm.runInNewContext(read('parents/parents.js').toString(),{window,fetch:async () => ({ok:true,json:async () => []})});
+  vm.runInNewContext(read('parents/parents.js').toString(),{window,fetch:async () => ({ok:true,json:async () => catalog})});
   await new Promise(resolve => setImmediate(resolve));
   const all = (parent=app) => [parent,...parent.children.flatMap(child => all(child))];
   return {app,all,accepted,answers,pairings,paste:() => all().find(n => n.tag==='button' && n.textContent==='Paste pairing link')};
@@ -107,4 +107,22 @@ test('unpaired paste control explains copying fresh camera preview before openin
   assert.ok(p.all().some(n => /camera.*before opening/i.test(n.textContent)));
   p.answers.push('https://cubbyarcade.com/parents/#pair='+'a'.repeat(22)); await p.paste().listeners.click();
   assert.deepEqual(p.accepted,['a'.repeat(22)]);
+});
+
+
+test('installed game controls live inside their own Cubby card and carry that pairing', async () => {
+  const p = await companionPage([
+    {id:'lex-room',name:'Lex',confirmed:true,connected:true,players:[],games:['good-bribes-only']},
+    {id:'fox-room',name:'Fox',confirmed:true,connected:false,players:[],games:[]},
+    {id:'old-room',name:'Older Cubby',confirmed:true,connected:true,players:[]}
+  ], [{id:'good-bribes-only',title:'Good Bribes Only',artwork:'coin.png',parents:'https://game.example/parent/'},
+      {id:'uninstalled',title:'Uninstalled',artwork:'other.png',parents:'https://game.example/parent/'}]);
+  const cards=p.app.children.filter(n=>n.className==='card');
+  const anchors = card => p.all(card).filter(n=>n.tag==='a');
+  assert.deepEqual(anchors(cards[0]).map(n=>n.href),['good-bribes-only/?cubby=lex-room']);
+  assert.equal(anchors(cards[1]).length,0);
+  assert.ok(p.all(cards[1]).some(n=>n.textContent==='No installed games with grown-up controls.'));
+  assert.equal(anchors(cards[2]).length,0);
+  assert.ok(p.all(cards[2]).some(n=>n.textContent.includes('update Cubby')));
+  assert.ok(!p.all().some(n=>n.textContent==='Uninstalled'));
 });

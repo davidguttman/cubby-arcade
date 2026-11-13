@@ -200,6 +200,8 @@
         tokens:typeof native.account==='function'&&typeof native.launch==='function', quit:typeof native.quit === 'function', power:typeof native.power === 'function', install:typeof native.install === 'function', uninstall:typeof native.uninstall === 'function', volume:typeof native.setVolume === 'function', sleep:typeof native.sleep === 'function'}),
       saves,
       library,
+      // Physical inventory, before per-player feed visibility. Used by the paired companion.
+      installedGames: rawLibrary,
       catalog,
       feedConfig: feeds ? ()=>feeds.config(profile) : undefined,
       feedStatus: feeds ? ()=>feeds.status(profile) : undefined,

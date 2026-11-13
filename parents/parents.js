@@ -59,15 +59,22 @@
       const players = add(card, 'ul', '', 'players');
       for (const player of cubby.players) { const li = add(players, 'li'); add(li, 'span', FACES[player.avatar] || '🙂', 'face'); add(li, 'span', player.name); }
       if (!cubby.connected) add(card, 'p', 'Changes are kept on this phone and reach the Cubby when both are on at home.', 'hint');
-    }
-    if (cubbies.some(cubby => cubby.confirmed) && games.length) {
-      const card = add(app, 'section', '', 'card');
       add(card, 'h2', 'Games');
-      const grid = add(card, 'div', '', 'games');
-      for (const game of games) {
-        const a = add(grid, 'a', '', 'game'); a.href = game.id + '/';
-        const img = add(a, 'img'); img.src = game.artwork; img.alt = ''; img.loading = 'lazy';
-        add(a, 'span', game.title);
+      if (!Array.isArray(cubby.games)) {
+        add(card, 'p', 'Open the Cubby launcher to sync its installed games. If no list appears, update Cubby first.', 'hint');
+      } else {
+        const installed = games.filter(game => cubby.games.includes(game.id));
+        if (!games.length && cubby.games.length) add(card, 'p', 'Game controls could not be loaded. Reconnect and reopen this app.', 'hint');
+        else if (!installed.length) add(card, 'p', 'No installed games with grown-up controls.', 'hint');
+        else {
+          if (!cubby.connected) add(card, 'p', 'Last synced games', 'hint');
+          const grid = add(card, 'div', '', 'games');
+          for (const game of installed) {
+            const a = add(grid, 'a', '', 'game'); a.href = game.id + '/?cubby=' + encodeURIComponent(cubby.id);
+            const img = add(a, 'img'); img.src = game.artwork; img.alt = ''; img.loading = 'lazy';
+            add(a, 'span', game.title);
+          }
+        }
       }
     }
     const pairingCard = add(app, 'section', '', 'card');

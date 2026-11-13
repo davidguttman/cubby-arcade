@@ -73,6 +73,8 @@
     const storage = options.storage, transport = options.transport, crypto = createCrypto(options.crypto || globalThis.crypto);
     const now = options.now || (() => Date.now()), later = options.setTimeout || ((fn, ms) => setTimeout(fn, ms));
     const describe = options.describe || (() => ({})), currentPlayer = options.player || (() => null);
+    let gamesProvider = options.games;
+    const selectedPeer = role === 'parent' ? options.peer : null;
     const listeners = new Set(), handlers = new Map(), live = new Map();
     let state = null, raw = null, started = false, stopped = false, work = Promise.resolve(), counter = 0;
     const STATE_KEY = prefix(role) + 'v1', OUTBOX_KEY = prefix(role) + 'outbox:v1', INBOX_KEY = prefix(role) + 'inbox:v1:', SEEN_KEY = prefix(role) + 'seen:v1';
@@ -95,7 +97,7 @@
     function pairing(room) { return load().pairings.find(item => item.room === room); }
     function status(room) { let value = live.get(room); if (!value) live.set(room, value = {open: false, present: false, offering: 0, tries: 0}); return value; }
     // `label` is what this device's owner calls the other one; `name` is what it calls itself.
-    function publicPairing(item) { return {id: item.room, role: item.role, name: item.label || item.name || null, ownName: item.name || null, confirmed: !!item.confirmed, connected: !!live.get(item.room)?.open, players: item.players || [], since: item.created}; }
+    function publicPairing(item) { return {id: item.room, role: item.role, name: item.label || item.name || null, ownName: item.name || null, confirmed: !!item.confirmed, connected: !!live.get(item.room)?.open, players: item.players || [], games: Array.isArray(item.games) ? [...item.games] : null, since: item.created}; }
     // One thing at a time: events from the transport and calls from the page share state.
     function queue(job) { const run = work.then(job, job); work = run.catch(() => {}); return run; }
 
@@ -124,6 +126,7 @@
       if (!fns || !fns.size) return;
       const player = currentPlayer(), waiting = inbox(game), keep = [];
       for (const item of waiting) {
+        if (selectedPeer && item.from !== selectedPeer) { keep.push(item); continue; }
         // A message for one player waits until that player is the one playing.
         if (item.player && player && item.player !== player) { keep.push(item); continue; }
         const from = pairing(item.from), message = {id: item.id, from: from ? publicPairing(from) : {id: item.from}, player: item.player || null, body: item.body};
@@ -169,6 +172,7 @@
         if (message.role !== item.role) return;
         Object.assign(item, {peer: String(message.id || ''), name: String(message.name || '').slice(0, 40) || item.name, confirmed: true,
           players: Array.isArray(message.players) ? message.players.slice(0, 16).map(p => ({id: String(p.id), name: String(p.name || '').slice(0, 20), avatar: String(p.avatar || '')})) : item.players});
+        if (Array.isArray(message.games)) item.games = [...new Set(message.games.filter(id => typeof id === 'string' && GAME_ID.test(id)))].slice(0, 1000);
         save();
       } else if (message.t === 'msg' && GAME_ID.test(message.game) && typeof message.id === 'string') {
         if (remember(message.id)) {
@@ -186,13 +190,22 @@
     // Who this device is (its name, and on a Cubby its players). Sent whenever a line opens, and again
     // to every open line the moment it changes, so the other side never shows a stale name or player.
     let told = null, watch = null;
-    function hello() { const value = {t: 'hello', id: state.id, role, ...describe()}; told = JSON.stringify(value); return value; }
+    async function description() {
+      const value = {t: 'hello', id: state.id, role, ...describe()};
+      if (role === 'cubby' && gamesProvider) try {
+        const games = await gamesProvider();
+        if (Array.isArray(games)) value.games = [...new Set(games.map(game => typeof game === 'string' ? game : game.id).filter(id => typeof id === 'string' && GAME_ID.test(id)))].slice(0, 1000);
+      } catch (_) { /* Unknown is not an empty library. Keep the phone's last known inventory. */ }
+      return value;
+    }
+    async function hello() { const value = await description(); told = JSON.stringify(value); return value; }
     function announce() {
       return queue(async () => {
         if (stopped || !started) return;
-        let now; try { now = JSON.stringify({t: 'hello', id: state.id, role, ...describe()}); } catch (_) { return; }
+        let value; try { value = await description(); } catch (_) { return; }
+        const now = JSON.stringify(value);
         if (now === told) return;
-        const value = hello();
+        told = now;
         for (const item of load().pairings) if (live.get(item.room)?.open) await wire(item.room, value).catch(() => {});
       });
     }
@@ -206,7 +219,7 @@
           if (line.present && role === 'parent' && !line.open) await negotiate(event.room);
         } else if (event.type === 'open') {
           Object.assign(line, {open: true, offering: 0, tries: 0});
-          await wire(event.room, hello()).catch(() => {});
+          await wire(event.room, await hello()).catch(() => {});
           await flush(event.room); changed();
         } else if (event.type === 'close') {
           if (!line.open && !line.offering) return;
@@ -231,8 +244,9 @@
       },
       /* Tell every connected device about a change to this one now, rather than on the next look. */
       announce,
+      setGamesProvider(provider) { gamesProvider = provider; return announce(); },
       stop() { stopped = true; if (watch) clearInterval(watch); return transport.dispose(); },
-      pairings() { return load().pairings.map(publicPairing); },
+      pairings() { return load().pairings.filter(item => !selectedPeer || item.room === selectedPeer).map(publicPairing); },
       /* Another page on this device changed what is stored: pick it up and tell listeners. */
       refresh() { return queue(async () => { const before = raw; load(); if (raw !== before) { await rooms(); changed(); } }); },
       /* What the scanned code says: where to go, the code, and the relay when it is not the usual one. */
@@ -280,6 +294,8 @@
           send(body, target = {}) {
             const encoded = JSON.stringify(body);
             if (encoded === undefined || encoded.length > MAX_MESSAGE) throw Error('Message must be JSON under ' + MAX_MESSAGE + ' characters');
+            if (selectedPeer && target.to && target.to !== selectedPeer) throw Error('Not the selected Cubby');
+            if (selectedPeer) target = {...target, to: selectedPeer};
             const to = target.to ? [target.to] : load().pairings.filter(item => item.confirmed && item.role === 'parent').map(item => item.room);
             if (target.to && !pairing(target.to)) throw Error('Unknown paired device');
             if (!target.to && role !== 'cubby') throw Error('Say which Cubby this is for');
@@ -299,9 +315,9 @@
           /* Who is playing, as the link tags messages. A game page's own localStorage is that
            * player's private copy, so games ask here rather than reading profiles themselves. */
           player: () => currentPlayer() || null,
-          waiting: () => held().filter(item => item.game === game).length,
+          waiting: () => held().filter(item => item.game === game && (!selectedPeer || item.to === selectedPeer)).length,
           /* A secret both sides can work out with no connection, for this game and label. */
-          key(peer, label) { const item = pairing(peer); if (!item) return Promise.reject(Error('Unknown paired device')); return crypto.appKey(item.code, game + ':' + String(label)); }
+          key(peer, label) { if (selectedPeer && peer !== selectedPeer) return Promise.reject(Error('Not the selected Cubby')); const item = pairing(peer); if (!item) return Promise.reject(Error('Unknown paired device')); return crypto.appKey(item.code, game + ':' + String(label)); }
         };
       }
     };
@@ -475,7 +491,12 @@
       if (!transport && win.RTCPeerConnection && relay) transport = createBrowserTransport({relay, fetch: win.fetch.bind(win), RTCPeerConnection: win.RTCPeerConnection});
       if (!transport) return null;
       let companion = options.companion || DEFAULT_COMPANION; try { companion = storage.getItem(prefix(role) + 'companion') || companion; } catch (_) {}
-      const link = createLink({role, storage, transport, crypto: win.crypto, describe, player, relay, companion});
+      // A game page opened from a Cubby card is scoped to that exact pairing.
+      // Even an invalid/stale selection stays scoped, never showing the other Cubbies.
+      const parentGame = role === 'parent' && /^\/parents\/[a-z0-9-]+\//.test(win.location.pathname);
+      const query = new URLSearchParams(win.location.search || '');
+      const peer = parentGame && query.has('cubby') ? query.get('cubby') || 'invalid' : null;
+      const link = createLink({role, storage, transport, crypto: win.crypto, describe, player, relay, companion, peer});
       await link.start();
       // Leaving for good closes the line at once, so the other side knows without waiting to time out.
       win.addEventListener?.('pagehide', event => { if (!event.persisted) link.stop(); });

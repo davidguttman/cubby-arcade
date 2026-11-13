@@ -281,7 +281,7 @@ function mount(host){
  // sent between them, is decided in link.js; this is only its settings page.
  const linkDialog=element(host,'dialog','save-management phone-link');linkDialog.setAttribute('aria-label','Phones');
  let link=null,linkWatch=null,linkBusy=false;
- win.CubbyLink?.ready?.then(value=>{if(disposed||!value)return;link=value;if(state.view==='options'&&settingsUnlocked&&!adult)renderOptions();});
+ win.CubbyLink?.ready?.then(value=>{if(disposed||!value)return;link=value;link.setGamesProvider?.(()=>platform.installedGames());if(state.view==='options'&&settingsUnlocked&&!adult)renderOptions();});
  function closeLink(){if(linkBusy)return;linkWatch?.();linkWatch=null;linkDialog.close();adult=false;tabs.options.focus();}
  function linkBack(){if(linkBusy)return;if(linkDialog.querySelector('.cancel-reset,.link-code'))renderPhones();else closeLink();}
  function renderPhones(message=''){
