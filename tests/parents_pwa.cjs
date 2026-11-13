@@ -78,15 +78,16 @@ test('installed app can consume a pasted trusted pairing link, rejecting arbitra
   for (const link of ['https://evil.example/parents/#pair='+code,'https://cubbyarcade.com/parents/game/#pair='+code,'https://cubbyarcade.com/parents/#pair=bad','https://cubbyarcade.com/parents/#pair='+code+'&relay=javascript%3Aalert(1)']) assert.throws(() => parse(link));
 });
 async function companionPage(pairings = [], catalog = []) {
-  function node(tag) { return {tag,children:[],textContent:'',listeners:{},appendChild(child) { this.children.push(child); },replaceChildren() { this.children=[]; },setAttribute() {},addEventListener(type,fn) { this.listeners[type]=fn; }}; }
-  const app=node('div'), accepted=[], answers=[];
-  const link={pairings:() => pairings,onChange() {},async acceptPairing(code) { accepted.push(code); pairings.push({id:'second',name:'Second Cubby',confirmed:false,players:[]}); }};
-  const window={document:{getElementById:() => app,createElement:node},location:{origin:'https://preview.example',pathname:'/parents/',hash:'',search:''},localStorage:{getItem() { return null; }},CubbyLinkAPI:require('../runtime/core/link.js'),CubbyLink:{ready:Promise.resolve(link)},prompt:() => answers.shift()};
+  function node(tag) { return {tag,children:[],textContent:'',remove(){this.removed=true;},listeners:{},appendChild(child) { this.children.push(child); },replaceChildren() { this.children=[]; },setAttribute() {},addEventListener(type,fn) { this.listeners[type]=fn; }}; }
+  const app=node('div'), accepted=[], answers=[], bridges=[], events={}; let changed;
+  const CubbyCompanionHost={connect(win,options){bridges.push(options); return {close(){bridges.push('closed');}};}};
+  const link={pairings:() => pairings,onChange(fn) {changed=fn;},async acceptPairing(code) { accepted.push(code); pairings.push({id:'second',name:'Second Cubby',confirmed:false,players:[]}); }};
+  const window={CubbyCompanionHost,addEventListener(type,fn){events[type]=fn;},document:{getElementById:() => app,createElement:node},location:{origin:'https://preview.example',pathname:'/parents/',hash:'',search:''},localStorage:{getItem() { return null; }},CubbyLinkAPI:require('../runtime/core/link.js'),CubbyLink:{ready:Promise.resolve(link)},prompt:() => answers.shift()};
   vm.runInNewContext(read('parents/pairing.js').toString(),{window,URL,URLSearchParams,navigator:{userAgent:'iPhone'}});
-  vm.runInNewContext(read('parents/parents.js').toString(),{window,fetch:async () => { throw Error('Dashboard must not fetch public catalogs'); }});
+  vm.runInNewContext(read('parents/parents.js').toString(),{window,setTimeout:() => 1,clearTimeout(){},fetch:async () => { throw Error('Dashboard must not fetch public catalogs'); }});
   await new Promise(resolve => setImmediate(resolve));
   const all = (parent=app) => [parent,...parent.children.flatMap(child => all(child))];
-  return {app,all,accepted,answers,pairings,paste:() => all().find(n => n.tag==='button' && n.textContent==='Paste pairing link')};
+  return {app,all,accepted,answers,pairings,bridges,events,change:()=>changed(),paste:() => all().find(n => n.tag==='button' && n.textContent==='Paste pairing link')};
 }
 test('paste action adds a second Cubby and invalid input keeps existing pairings visible', async () => {
   const p=await companionPage([{id:'first',name:'First Cubby',confirmed:true,players:[]}]);
@@ -118,11 +119,25 @@ test('game-owned companions come from installed manifests, without public catalo
   ], [{id:'good-bribes-only',title:'Good Bribes Only',artwork:'coin.png',parents:'https://game.example/parent/'},
       {id:'uninstalled',title:'Uninstalled',artwork:'other.png',parents:'https://game.example/parent/'}]);
   const cards=p.app.children.filter(n=>n.className==='card');
-  const anchors = card => p.all(card).filter(n=>n.tag==='a');
-  assert.deepEqual(anchors(cards[0]).map(n=>n.href),['https://publisher.example/phone/?mode=adult']);
+  const anchors = card => p.all(card).filter(n=>n.tag==='button' && n.className==='game');
+  assert.equal(anchors(cards[0]).length,1);
+  assert.equal(anchors(cards[0])[0].href,undefined,'game controls do not navigate away from the installed app');
   assert.equal(anchors(cards[1]).length,0);
   assert.ok(p.all(cards[1]).some(n=>n.textContent==='No installed games with grown-up controls.'));
   assert.equal(anchors(cards[2]).length,0);
   assert.ok(p.all(cards[2]).some(n=>n.textContent.includes('update Cubby')));
   assert.ok(!p.all().some(n=>n.textContent==='Uninstalled'));
+});
+
+
+test('game controls open within the parent app using its existing link; live changes retain the frame and back restores discovery', async () => {
+  const p=await companionPage([{id:'one',name:'Kitchen',confirmed:true,connected:true,players:[],games:['custom-game'],companions:[{id:'custom-game',companion:{url:'https://publisher.example/controls/',title:'Controls'}}]},
+    {id:'two',name:'Bedroom',confirmed:true,connected:true,players:[],games:['custom-game'],companions:[{id:'custom-game',companion:{url:'https://other.example/controls/'}}]}]);
+  const tile=p.all().find(n=>n.className==='game');tile.listeners.click();
+  const frame=p.all().find(n=>n.tag==='iframe');assert.equal(frame.src,'https://publisher.example/controls/');
+  assert.equal(p.bridges.length,1);assert.equal(p.bridges[0].peer,'one');assert.equal(p.bridges[0].game,'custom-game');
+  p.change();assert.equal(p.all().find(n=>n.tag==='iframe'),frame,'connection announcements must not reset game edits');
+  assert.equal(p.accepted.length,0,'opening controls does not accept a second pairing');
+  p.all().find(n=>n.className==='companion-back').listeners.click();
+  assert.ok(frame.removed);assert.equal(p.bridges[1],'closed');assert.equal(p.all().filter(n=>n.className==='game').length,2);
 });

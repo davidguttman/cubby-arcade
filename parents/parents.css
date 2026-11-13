@@ -26,3 +26,12 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--honey);outline-offs
 main{padding-bottom:max(40px,env(safe-area-inset-bottom))}
 
 .paste-pairing{margin-top:16px;width:100%}
+
+button.game{padding:0;text-align:left;color:inherit;font-weight:inherit}
+#app.with-companion{height:calc(100dvh - max(20px,env(safe-area-inset-top)) - max(20px,env(safe-area-inset-bottom)));min-height:360px}
+main:has(.with-companion){max-width:100%;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.companion-panel{height:100%;display:flex;flex-direction:column}
+.companion-bar{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.companion-back{flex:none}.companion-title{min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.companion-frame{border:0;display:block;width:100%;flex:1;min-height:0;background:#1f1633}
+.companion-status{padding:12px;margin:0!important}.companion-retry{align-self:flex-start;margin:0 12px 12px}

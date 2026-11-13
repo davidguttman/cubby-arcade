@@ -356,7 +356,7 @@
           /* Who is playing, as the link tags messages. A game page's own localStorage is that
            * player's private copy, so games ask here rather than reading profiles themselves. */
           player: () => currentPlayer() || null,
-          waiting: () => held().filter(item => item.game === game && (!selectedPeer || item.to === selectedPeer)).length,
+          waiting: peer => held().filter(item => item.game === game && (!selectedPeer || item.to === selectedPeer) && (!peer || item.to === peer)).length,
           /* A secret both sides can work out with no connection, for this game and label. */
           key(peer, label) { if (selectedPeer && peer !== selectedPeer) return Promise.reject(Error('Not the selected Cubby')); const item = pairing(peer); if (!item) return Promise.reject(Error('Unknown paired device')); return crypto.appKey(item.code, game + ':' + String(label)); }
         };
