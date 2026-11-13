@@ -33,7 +33,7 @@ test('options contain adult setup but no manual touch controls',()=>{
 // Small DOM adapter for exercising the mounted hub without a browser dependency.
 function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverrides={},mediaOverrides={},geometry=null){
  let onInstall,onAction,revision=0;
- const work={queries:0,layout:0,htmlReads:0,copyWrites:0,selectionWrites:0};
+ const work={queries:0,layout:0,htmlReads:0,copyWrites:0,selectionWrites:0,videoCreates:0};
  class Element{
   constructor(tag='div'){if(tag==='video')Object.assign(this,mediaOverrides);this.tagName=tag;this.children=[];this.attributes={};this.dataset={};this.hidden=false;this.listeners={};this.style={setProperty(){},removeProperty(){}};this.className='';this.ownerDocument=doc;this.classList={contains:n=>this.className.split(' ').includes(n),add:n=>{if(!this.classList.contains(n))this.className+=' '+n;},remove:n=>{this.className=this.className.split(' ').filter(x=>x!==n).join(' ');},toggle:(n,on)=>{if(n==='is-selected'||n==='is-copy-selected')work.selectionWrites++;on??=!this.classList.contains(n);this.classList[on?'add':'remove'](n);}};}
   appendChild(e){if(e.tagName==='#fragment'){for(const child of [...e.children])this.appendChild(child);return e;}this.children.push(e);e.parent=this;return e;}
@@ -65,7 +65,7 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
   play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){this.loadCount=(this.loadCount||0)+1;}
  }
- const doc={createElement:tag=>new Element(tag),createDocumentFragment:()=>new Element('#fragment'),activeElement:null};
+ const doc={createElement:tag=>{if(tag==='video')work.videoCreates++;return new Element(tag);},createDocumentFragment:()=>new Element('#fragment'),activeElement:null};
  const platform={capabilities,library:async()=>games,catalog:async()=>catalog,install:async()=>{},onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({}),...overrides};
  const windowListeners=new Map();
  doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:options=>(onAction=options.onAction,{dispose(){}})},
@@ -80,10 +80,10 @@ const games=[{id:'one',artwork:'one.svg',entrypoint:'/one'},{id:'two',artwork:'t
 test('device uses small artwork and deferred trailer, falling back only once',async()=>{
  const clock=devicePreviewClock(),game={id:'small',entrypoint:'/small',artwork:'original.png',attract:'original.webm',media:{thumbnail:{url:'thumb.jpg'},artwork:{url:'hero.jpg'},attract:{url:'clip.mp4'}}};
  const {host}=mountedHub([game],[],{}, {},clock.window);await settle();
- const card=host.querySelector('.game-card img'),poster=host.querySelector('.preview-poster'),video=host.querySelector('video');
+ const card=host.querySelector('.game-card img'),poster=host.querySelector('.preview-poster');
  assert.equal(host.querySelector('.game-card').querySelector('img').src,'thumb.jpg');
- assert.equal(poster.src,'hero.jpg');assert.equal(video.poster,'hero.jpg');assert.equal(video.src,undefined);
- clock.run();assert.equal(video.src,'clip.mp4');
+ assert.equal(poster.src,'hero.jpg');assert.equal(host.querySelector('video'),null);
+ clock.run();const video=host.querySelector('video');assert.equal(video.poster,'hero.jpg');assert.equal(video.src,'clip.mp4');
  poster.dispatchEvent({type:'error'});assert.equal(poster.src,'original.png');
  poster.dispatchEvent({type:'error'});assert.equal(poster.src,'original.png');
  video.dispatchEvent({type:'error'});assert.equal(video.src,'original.webm');
@@ -200,7 +200,7 @@ test('device reuses its poster across video and image selections while retiring 
  host.querySelector('[data-game-id="two"]').focus();assert.equal(host.querySelector('.preview-media'),poster);assert.equal(poster.src,'two.svg');assert.equal(host.querySelector('video'),null);assert.equal(old.src,undefined);assert.equal(old.autoplay,false);
  poster.dispatchEvent({type:'error'});assert.equal(old.poster,'one.svg','a reused poster must not mutate a retired video');
  host.querySelector('[data-game-id="three"]').focus();assert.equal(host.querySelector('.stage'),stage);assert.equal(host.querySelector('.preview-poster'),poster);assert.equal(poster.src,'three.svg');
- const video=host.querySelector('video');assert.notEqual(video,old);assert.equal(video.src,undefined);clock.run();assert.equal(video.src,'three.webm');
+ assert.equal(host.querySelector('video'),null);clock.run();const video=host.querySelector('video');assert.notEqual(video,old);assert.equal(video.src,'three.webm');
 });
 test('Store preview reuses download control and installs only the current offer',async()=>{
  const installed=[],offers=games.map(g=>({...g,manifest_url:'/manifest/'+g.id}));
@@ -214,43 +214,54 @@ test('reused preview clears obsolete download state and never leaks a poster lis
  const {host,hub}=mountedHub([],[first,second],{install:true},{},clock.window);await settle();hub.show('store');
  const poster=host.querySelector('.preview-poster'),count=poster.listeners.error.length;
  host.querySelector('[data-game-id="two"]').focus();assert.equal(poster.listeners.error.length,count);assert.equal(host.querySelector('.download-game'),null);assert.equal(host.querySelector('.install-progress'),null);assert.ok(host.querySelector('.not-installed'));
- const video=host.querySelector('video');poster.dispatchEvent({type:'error'});assert.equal(poster.src,'two.svg');assert.equal(video.poster,'two.svg');
+ poster.dispatchEvent({type:'error'});assert.equal(poster.src,'two.svg');clock.run();const video=host.querySelector('video');assert.equal(video.poster,'two.svg');
  host.querySelector('[data-game-id="one"]').focus();assert.equal(host.querySelector('.not-installed'),null);assert.ok(host.querySelector('.download-game'));assert.equal(poster.listeners.error.length,count);
 });
 for(const view of ['library','store'])test('device '+view+' selects immediately but starts only the settled trailer',async()=>{
  const clock=devicePreviewClock(),offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
- const {host,hub}=mountedHub(view==='library'?offers:[],offers,{install:true}, {},clock.window);await settle();
- const first=host.querySelector('video');assert.equal(first.src,undefined);assert.equal(first.playCount,undefined);
+ const {host,hub,work}=mountedHub(view==='library'?offers:[],offers,{install:true}, {},clock.window);await settle();
+ assert.equal(host.querySelector('video'),null);assert.equal(work.videoCreates,0);
  assert.ok(host.querySelector(view==='library'?'.play-game':'.download-game'));assert.ok(!host.querySelector(view==='library'?'.play-game':'.download-game').disabled);
  host.querySelector('[data-game-id="two"]').focus();
  assert.equal(hub.state.detail.id,'two');assert.equal(host.querySelector('.preview-poster').src,'two.svg');
- const second=host.querySelector('video');assert.equal(second.src,undefined);clock.run();
- assert.equal(first.playCount,undefined);assert.equal(first.src,undefined);assert.equal(first.loadCount,1);assert.equal(second.src,'two.webm');assert.equal(second.playCount,1);hub.dispose();
+ assert.equal(host.querySelector('video'),null);assert.equal(work.videoCreates,0);clock.run();
+ const second=host.querySelector('video');assert.equal(work.videoCreates,1);assert.equal(second.src,'two.webm');assert.equal(second.playCount,1);hub.dispose();
 });
 for(const view of ['library','store'])for(const repeat of [190,200])test('held device '+view+' navigation at '+repeat+'ms defers trailers until settled',async()=>{
  const clock=devicePreviewClock(),offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
- const {host,hub}=mountedHub(view==='library'?offers:[],offers,{install:true},{},clock.window);await settle();
- const seen=[host.querySelector('video')];
+ const {host,hub,work}=mountedHub(view==='library'?offers:[],offers,{install:true},{},clock.window);await settle();
  for(let i=0;i<6;i++){
   clock.advance(repeat);
-  assert.ok(seen.every(video=>!video.playCount),'controller repeats must not open intermediate trailers');
-  host.querySelector('[data-game-id="'+games[(i+1)%2].id+'"]').focus();seen.push(host.querySelector('video'));
+  assert.equal(work.videoCreates,0,'controller repeats must not construct intermediate video elements');
+  host.querySelector('[data-game-id="'+games[(i+1)%2].id+'"]').focus();
  }
- clock.advance(279);assert.ok(seen.every(video=>!video.playCount));
- clock.advance(1);assert.equal(seen.at(-1).playCount,1);assert.ok(seen.slice(0,-1).every(video=>!video.playCount));hub.dispose();
+ clock.advance(279);assert.equal(work.videoCreates,0);assert.equal(host.querySelector('video'),null);
+ clock.advance(1);assert.equal(work.videoCreates,1);assert.equal(host.querySelector('video').playCount,1);hub.dispose();
 });
 test('device pending trailer is canceled by leaving, blur and disposal and restarts on focus',async()=>{
- const clock=devicePreviewClock(),{host,hub}=mountedHub([{...games[0],attract:'one.webm'}],[],{}, {},clock.window);await settle();
- const win=host.ownerDocument.defaultView,video=host.querySelector('video');
+ const clock=devicePreviewClock(),{host,hub,work}=mountedHub([{...games[0],attract:'one.webm'}],[],{}, {},clock.window);await settle();
+ const win=host.ownerDocument.defaultView;
  // Exercise the same lifecycle callbacks a real window dispatches.
- win.fire('blur');clock.run();assert.equal(video.src,undefined);
- win.fire('focus');clock.run();assert.equal(video.src,'one.webm');
- hub.show('store');hub.show('library');const next=host.querySelector('video');hub.dispose();clock.run();assert.equal(next.src,undefined);
+ win.fire('blur');clock.run();assert.equal(host.querySelector('video'),null);assert.equal(work.videoCreates,0);
+ win.fire('focus');clock.run();const video=host.querySelector('video');assert.equal(video.src,'one.webm');
+ win.fire('blur');win.fire('focus');clock.run();assert.equal(host.querySelector('video'),video,'resume must reuse the settled video');assert.equal(video.playCount,2);
+ hub.show('store');hub.show('library');hub.dispose();clock.run();assert.equal(host.querySelector('video'),null);assert.equal(work.videoCreates,1);
 });
 test('leaving device discovery cancels an unloaded trailer and desktop remains immediate',async()=>{
- const clock=devicePreviewClock(),{host,hub}=mountedHub([{...games[0],attract:'one.webm'}],[],{}, {},clock.window);await settle();
- const video=host.querySelector('video');hub.show('options');clock.run();assert.equal(video.src,undefined);assert.equal(video.playCount,undefined);assert.equal(video.loadCount,1);hub.dispose();
+ const clock=devicePreviewClock(),{host,hub,work}=mountedHub([{...games[0],attract:'one.webm'}],[],{}, {},clock.window);await settle();
+ hub.show('options');clock.run();assert.equal(host.querySelector('video'),null);assert.equal(work.videoCreates,0);hub.dispose();
  const desktop=mountedHub([{...games[0],attract:'one.webm'}]);await settle();assert.equal(desktop.host.querySelector('video').src,'one.webm');assert.equal(desktop.host.querySelector('video').playCount,1);desktop.hub.dispose();
+});
+test('launching a device game before settling never constructs its trailer',async()=>{
+ const clock=devicePreviewClock(),{host,hub,work}=mountedHub([{...games[0],attract:'one.webm'}],[],{},{},clock.window);await settle();
+ host.querySelector('.play-game').click();assert.equal(host.ownerDocument.defaultView.location.href,'/one');clock.run();
+ assert.equal(work.videoCreates,0);assert.equal(host.querySelector('video'),null);hub.dispose();
+});
+test('failed token launch resumes the selected device trailer only after settling',async()=>{
+ const clock=devicePreviewClock();let rejectLaunch;
+ const {host,hub,work}=mountedHub([{...games[0],attract:'one.webm'}],[],{tokens:true},{account:async()=>({available:true,balance:2}),launch:()=>new Promise((resolve,reject)=>{rejectLaunch=reject;})},clock.window);await settle();
+ host.querySelector('.play-game').click();clock.run();assert.equal(work.videoCreates,0);
+ rejectLaunch(Error('offline'));await settle();clock.advance(279);assert.equal(work.videoCreates,0);clock.advance(1);assert.equal(work.videoCreates,1);hub.dispose();
 });
 test('discarding a started preview releases its source when switching views and disposing',async()=>{
  const {host,hub}=mountedHub([{...games[0],attract:'one.webm'}]);await settle();
@@ -278,7 +289,7 @@ for(const device of [false,true])test('retired videos release their decoder and 
  assert.equal(old.playCount,plays,'a queued end event must never restart a retired trailer');
  assert.equal(old.style.opacity,'0','a queued frame must never reveal a retired trailer');
  assert.equal(host.querySelector('.preview-poster').src,'two.svg');
- if(device){assert.equal(host.querySelector('video').src,undefined);clock.run();}
+ if(device){assert.equal(host.querySelector('video'),null);clock.run();}
  assert.equal(host.querySelector('video').src,'two.webm');
  const current=host.querySelector('video');hub.show('options');
  assert.equal(current.loadCount,1,'leaving the library releases its decoder too');

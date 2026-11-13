@@ -136,7 +136,7 @@ function mount(host){
   if(account?.available&&account.balance>0){budget.style.setProperty('--coins',account.balance);for(let i=0;i<account.balance;i++){const coin=element(budget,'span','coin');coin.innerHTML=icon('token');}}else{budget.style.removeProperty('--coins');budget.innerHTML=icon(account?.available?'token':'alert');}refreshOwnership();}
  async function readAccount(){try{account=await platform.account();}catch{account={available:false};}if(!disposed)renderAccount();}
  // A game runs as the player chosen here: the host has to agree before it starts.
- async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.capabilities?.tokens){if(profiles){launchBusy=true;try{await profiles.enter(profile);}catch{return;}finally{launchBusy=false;}}win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{if(profiles)await profiles.enter(profile);await platform.launch(id);launched=true;}catch{await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
+ async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;pausePreview();try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.capabilities?.tokens){if(profiles){launchBusy=true;try{await profiles.enter(profile);}catch{queuePreview();return;}finally{launchBusy=false;}}win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{if(profiles)await profiles.enter(profile);await platform.launch(id);launched=true;}catch{await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(!launched&&!detail.hidden&&state.detail?.id===id)queuePreview();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
  const unsubscribeAccount=platform.onAccountState?.(value=>{account=value;if(!disposed)renderAccount();});
  if(platform.capabilities?.tokens)readAccount();
  const controllerDialog=element(host,'dialog','controller-setup');controllerDialog.setAttribute('aria-label','Adult controller setup');controllerDialog.tabIndex=-1;
@@ -755,10 +755,14 @@ function mount(host){
  const {stage,poster,star}=ensurePreviewShell();stage.querySelector('video')?.remove();
  poster.className=game.attract?'preview-poster':'preview-media';artwork(poster,game);
  if(game.attract){
+  // Device browsing only prepares this closure. Even an unloaded video/poster
+  // asks WebKit to set up media resources, so create it only after settling.
+  startPreview=()=>{
+  if(disposed||detail.hidden||state.detail?.id!==game.id)return;
   const media=doc.createElement('video');media.className='preview-media';
   // Native video posters can disappear before the decoder presents a frame.
   // Keep a real image underneath instead, including while a trailer reloads.
-  media.classList.add('preview-video');media.poster=mediaURL(game,'artwork');media.autoplay=!device;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
+  media.classList.add('preview-video');media.poster=poster.src;media.autoplay=!device;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
   let generation=0,active=true,frame=null,trailer=mediaURL(game,'attract');
   const cancelFrame=()=>{if(frame!==null){if(media.requestVideoFrameCallback)media.cancelVideoFrameCallback?.(frame);else win.cancelAnimationFrame?.(frame);frame=null;}};
   const cover=()=>{generation++;cancelFrame();media.style.opacity='0';};
@@ -784,6 +788,8 @@ function mount(host){
   // Paint the cover and controls immediately. Rapid device browsing never opens
   // trailers that will be discarded on the next controller repeat.
   startPreview=()=>{if(!active||detail.querySelector('video')!==media)return;if(!media.getAttribute('src')){trailer=mediaURL(state.detail?.id===game.id?state.detail:game,'attract');media.src=trailer;}play();};
+  startPreview();
+  };
   queuePreview();
  }
  star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));
