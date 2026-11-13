@@ -106,3 +106,37 @@ per-socket timeouts and atomic cache publication. The full-image receipt records
 `hardware_validated: false`: integrity and version checks do **not** certify a
 fresh device boot. Complete the hardware acceptance checklist before calling a
 release customer-ready.
+
+## Cubby Arcade catalogs (maintainers)
+
+Outside game makers use their own feeds ([game authoring guide](game-authoring.md#play-it-on-your-own-cubby)); these lists are for our own games.
+
+### Release to beta first
+
+Cubby has two independent discovery lists: `hosting/catalog.yaml` publishes to
+https://cubby.david.app/catalog (stable), and `hosting/beta-catalog.yaml` publishes
+to https://cubby.david.app/beta/catalog (beta). The beta list starts empty. Add
+an early game to beta using the listing shape in the game authoring guide,
+then build/deploy the static site normally (`uv run python web.py build`). Every
+export includes both catalogs and validates their metadata before replacing the
+previous export; no separate backend is needed.
+
+Publish and verify the game's HTTPS release manifest and payloads before adding
+its listing. For a beta-only game, add it only to `beta-catalog.yaml`; it must not
+also appear in stable. Future beta releases update the manifest URL that beta's
+listing points to. When ready for everyone, add the listing to `catalog.yaml`.
+If stable and beta builds coexist, use separate game IDs: Cubby shares installed
+packages and pins each installed ID to its original feed, so two listings with
+the same ID are not two independently installed channels. Keep the beta listing
+available for existing beta installs until they can intentionally uninstall and
+reinstall from stable; saves remain on the device.
+
+To opt in, select your player, open the gear, pass the adult check, then open
+**Game feeds** and enable **Cubby Beta**. The face/name at the top identifies the
+player being configured. Each profile has its own selection; beta is off by
+default, and enabling it for your player does not enable it for the kids.
+Disabling or removing a feed hides its games in both Store and Library without
+deleting installed packages or saves. Existing profiles preserve the old
+device-wide feed choices when upgraded; newly created profiles start with only
+stable enabled. This is profile visibility, not private distribution or access
+control: the beta catalog is a public URL, and packages are shared on the device.

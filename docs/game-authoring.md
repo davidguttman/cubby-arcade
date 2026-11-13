@@ -150,8 +150,8 @@ game feed and the player's adult adds it once on the device.
 
 1. Publish the game as above, on any static HTTPS host (GitHub Pages, Netlify,
    Cloudflare Pages, your own server).
-2. Publish a feed beside it: a JSON array of listings, the same shape as the
-   store listing below. One feed can hold all your games.
+2. Publish a feed beside it: a JSON array of listings like the one below. One
+   feed can hold all your games.
 3. Check that the feed URL answers `200` with that JSON directly, with no
    redirect. Cubby doesn't follow redirects for feeds.
 4. Give the user the feed URL. Keep it short (for example
@@ -160,35 +160,23 @@ game feed and the player's adult adds it once on the device.
    **Game feeds**, press **+**, give the feed a name and type the URL. The game
    appears in the Store; install it and play.
 
-Cubby re-reads every enabled feed when the Store loads, so a new game added to
-the same feed, or a new release behind an existing manifest URL, shows up
-without adding the feed again. Each player profile has its own feed list. Pick
-a game ID that isn't already in the Cubby store; a custom feed can't take over
-a store game's ID. If you also want the game to work in the browser version of
-Cubby, serve the feed, manifest and files with CORS allowed
-(`Access-Control-Allow-Origin: *`).
-
-## Add the game to the public store
-
-To list the game for every Cubby, not just your own, ask the maintainer of
-Cubby's trusted developer registry (the `/catalog` JSON array) to add a listing
-with this shape; there is no public submission API:
-
 ```json
-{
-  "id": "my-game",
-  "title": "My Game",
-  "manifest_url": "https://my-game.example/arcade/manifest.json",
-  "artwork": "https://my-game.example/discovery/cover.png",
-  "attract": "https://my-game.example/discovery/trailer.webm",
-  "screenshots": []
-}
+[
+  {
+    "id": "my-game",
+    "title": "My Game",
+    "manifest_url": "https://my-games.example/my-game/manifest.json",
+    "artwork": "https://my-games.example/my-game/cover.png",
+    "attract": "https://my-games.example/my-game/trailer.webm",
+    "screenshots": []
+  }
+]
 ```
 
-`attract` (trailer) is optional; discovery media URLs are HTTPS. The registry
-holds the stable manifest URL and discovery media. Your game owns its release
-manifest and payload files. Subsequent releases update that stable manifest,
-not Cubby's registry or executable. Browsing does not fetch the install manifest.
+`attract` (trailer) is optional; every URL is HTTPS. The feed holds the stable
+manifest URL and discovery media; the game owns its release manifest and files.
+Later releases update that stable manifest, not the feed. Browsing does not
+fetch the install manifest.
 
 Installs are pinned to their feed and manifest URL. To move a game's manifest to
 a new address, list the earlier addresses in `moved_from` (for example
@@ -198,35 +186,19 @@ manifest URL is treated as a different source and existing installs stop updatin
 Cubby releases older than 0.52.0 ignore `moved_from`: their moved games keep
 working but update only after Cubby itself updates.
 
-### Release to beta first
+Cubby re-reads every enabled feed when the Store loads, so a new game added to
+the same feed, or a new release behind an existing manifest URL, shows up
+without adding the feed again. Pick a game ID that isn't already in Cubby
+Arcade's own feed; a custom feed can't take over one of its IDs. If you also
+want the game to work in the browser version of Cubby, serve the feed, manifest
+and files with CORS allowed (`Access-Control-Allow-Origin: *`).
 
-Cubby has two independent discovery lists: `hosting/catalog.yaml` publishes to
-https://cubby.david.app/catalog (stable), and `hosting/beta-catalog.yaml` publishes
-to https://cubby.david.app/beta/catalog (beta). The beta list starts empty. Ask
-the maintainer to add an early game to beta using the same listing shape above,
-then build/deploy the static site normally (`uv run python web.py build`). Every
-export includes both catalogs and validates their metadata before replacing the
-previous export; no separate backend is needed.
-
-Publish and verify the game's HTTPS release manifest and payloads before adding
-its listing. For a beta-only game, add it only to `beta-catalog.yaml`; it must not
-also appear in stable. Future beta releases update the manifest URL that beta's
-listing points to. When ready for everyone, add the listing to `catalog.yaml`.
-If stable and beta builds coexist, use separate game IDs: Cubby shares installed
-packages and pins each installed ID to its original feed, so two listings with
-the same ID are not two independently installed channels. Keep the beta listing
-available for existing beta installs until they can intentionally uninstall and
-reinstall from stable; saves remain on the device.
-
-To opt in, select your player, open the gear, pass the adult check, then open
-**Game feeds** and enable **Cubby Beta**. The face/name at the top identifies the
-player being configured. Each profile has its own selection; beta is off by
-default, and enabling it for your player does not enable it for the kids.
-Disabling or removing a feed hides its games in both Store and Library without
-deleting installed packages or saves. Existing profiles preserve the old
-device-wide feed choices when upgraded; newly created profiles start with only
-stable enabled. This is profile visibility, not private distribution or access
-control: the beta catalog is a public URL, and packages are shared on the device.
+Each player profile has its own feed list; the face/name at the top of Game
+feeds shows which player is being configured, and adding a feed for your player
+does not add it for the kids. Disabling or removing a feed hides its games in
+Store and Library without deleting installed packages or saves. This is
+visibility, not private distribution: a feed is a public URL, and installed
+packages are shared on the device.
 
 ## Understand the launcher boundary
 
