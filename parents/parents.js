@@ -4,6 +4,7 @@
 (function (win) {
   'use strict';
   const doc = win.document, app = doc.getElementById('app');
+  let active = null;
   const FACES = {cubby: '🏠', fox: '🦊', frog: '🐸', bear: '🐻', bunny: '🐰', panda: '🐼', owl: '🦉', cat: '🐱', chick: '🐥'};
   function add(parent, tag, text, cls) { const node = doc.createElement(tag); if (text) node.textContent = text; if (cls) node.className = cls; parent.appendChild(node); return node; }
   function head() { const h = add(app, 'header'); h.innerHTML = '<svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><path class="roof" d="M24 3.5 44 18.5V39a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V18.5Z"/><rect class="door" x="11" y="20" width="26" height="18" rx="6"/><g class="face"><circle cx="19" cy="27.5" r="2.4"/><circle cx="29" cy="27.5" r="2.4"/><path d="M19.5 32.5q4.5 3.4 9 0"/></g></svg>'; const t = add(h, 'div'); add(t, 'h1', 'Cubby'); add(t, 'p', 'for grown-ups', 'tagline'); }
@@ -44,7 +45,51 @@
     });
   }
 
+  function openCompanion(link, cubby, game) {
+    if (active) return;
+    app.replaceChildren();
+    const panel = add(app, 'section', '', 'companion-panel');
+    const bar = add(panel, 'div', '', 'companion-bar');
+    const back = add(bar, 'button', '‹ All games', 'companion-back'); back.type = 'button';
+    add(bar, 'span', game.companion.title || game.id, 'companion-title');
+    const status = add(panel, 'p', 'Opening game controls…', 'hint companion-status'); status.setAttribute('role', 'status');
+    const retry = add(panel, 'button', 'Try again', 'companion-retry'); retry.hidden = true;
+    const frame = add(panel, 'iframe', '', 'companion-frame');
+    frame.title = (game.companion.title || game.id) + ' controls for ' + (cubby.name || 'Cubby');
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-modals');
+    frame.referrerPolicy = 'no-referrer';
+    let bridge = null, timer = null, firstLoad = true;
+    function stop() { clearTimeout(timer); bridge?.close(); bridge = null; }
+    function close() {
+      if (!active) return;
+      active = null; stop(); frame.remove(); app.classList?.remove('with-companion'); render(link);
+    }
+    function failed(message) { if (!active) return; clearTimeout(timer); status.textContent = message; status.hidden = false; retry.hidden = false; }
+    function connect() {
+      stop();
+      try {
+        bridge = win.CubbyCompanionHost.connect(win, {frame, link, game: game.id, peer: cubby.id, url: game.companion.url,
+          onReady() { clearTimeout(timer); status.hidden = true; retry.hidden = true; },
+          onClose(reason) { if (active) failed(reason); }});
+        timer = setTimeout(() => { failed('These controls couldn’t connect. Check your connection and try again.'); }, 15000);
+        return true;
+      } catch (_) { failed('These game controls can’t open inside Cubby. The game needs an updated companion.'); return false; }
+    }
+    active = {close}; app.classList?.add('with-companion');
+    back.addEventListener('click', () => { if (win.history?.state?.cubbyCompanion) win.history.back(); else close(); });
+    retry.addEventListener('click', () => { status.textContent = 'Opening game controls…'; retry.hidden = true; firstLoad = true; if (connect()) frame.src = game.companion.url; });
+    frame.addEventListener('load', () => { if (firstLoad) { firstLoad = false; return; } connect(); });
+    frame.addEventListener('error', () => failed('Couldn’t load these game controls. Check your connection and try again.'));
+    if (connect()) frame.src = game.companion.url;
+    win.history?.pushState({cubbyCompanion: true}, '', win.location.pathname);
+    back.focus?.();
+  }
+  win.addEventListener?.('popstate', () => active?.close());
+  win.addEventListener?.('pagehide', () => active?.close());
   function render(link) {
+    // Keep the embedded document and any in-progress edits alive while the
+    // shared connection updates; the bridge pushes state into it separately.
+    if (active) return;
     const cubbies = link.pairings();
     if (!cubbies.length) return unpaired();
     app.replaceChildren(); head();
@@ -73,7 +118,8 @@
           const grid = add(card, 'div', '', 'games');
           for (const game of installed) {
             const companion = game.companion, title = companion.title || game.id.replace(/-/g, ' ');
-            const a = add(grid, 'a', '', 'game'); a.href = companion.url; a.rel = 'noreferrer';
+            const a = add(grid, 'button', '', 'game'); a.type = 'button';
+            a.addEventListener('click', () => openCompanion(link, cubby, game));
             if (companion.artwork) { const img = add(a, 'img'); img.src = companion.artwork; img.alt = ''; img.loading = 'lazy'; }
             add(a, 'span', title);
           }
