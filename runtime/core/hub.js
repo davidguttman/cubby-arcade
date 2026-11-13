@@ -602,7 +602,7 @@ function mount(host){
  function returningToSettings(){try{const marked=win.sessionStorage.getItem(settingsReturn)==='1';win.sessionStorage.removeItem(settingsReturn);return marked&&win.location?.hash==='#options';}catch{return false;}}
 
  const views=['library','store','options'],tabs={};let pendingTabFocus=null;for(const name of views)tabs[name]=button(nav,name,name,()=>activateView(name),'view-tab');
- function show(view,initial=false){if(adult)return;if(view!=='options')settingsUnlocked=false;pendingTabFocus=null;if(!initial)initialViewPending=false;pausePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
+ function show(view,initial=false){if(adult)return;if(view!=='options')settingsUnlocked=false;pendingTabFocus=null;if(!initial)initialViewPending=false;retirePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
  // Activating a tab enters its content; merely navigating across tabs does not.
  function selectedCard(){const cards=Array.from(shelf.querySelectorAll('.game-card')).filter(card=>!card.disabled);return cards.find(card=>card.dataset.gameId===state.detail?.id)||cards[0];}
  function focusView(){(state.view==='options'?options.querySelector('button:not(:disabled)'):selectedCard()||shelf.querySelector('.retry-starter'))?.focus();}
@@ -610,6 +610,8 @@ function mount(host){
  function finishTabFocus(view){if(pendingTabFocus!==view)return;pendingTabFocus=null;if(state.view===view&&doc.activeElement===tabs[view])focusView();}
  function primaryAction(){return detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')||detail.querySelector('.favorite');}
  function pausePreview(){detail.querySelector('video')?.pause();}
+ let releasePreview=null;
+ function retirePreview(){releasePreview?.();releasePreview=null;}
  function entries(){return state.view==='store'?catalog:library;}
  function ownedInStore(id){return state.view==='store'&&library.some(x=>x.id===id);}
  function badgeFor(id){return ownedInStore(id)?icon('check'):state.isFavorite(id)?icon('star'):'';}
@@ -641,7 +643,7 @@ function mount(host){
   function copyOf(card){
    const copy=doc.createElement('div');copy.className='shelf-copy';copy.dataset.gameId=card.dataset.gameId;copy.setAttribute('aria-hidden','true');
    copy.addEventListener('click',()=>{if(!card.disabled){preview(entries().find(g=>g.id===card.dataset.gameId));card.focus({preventScroll:true});revealCard(card);}});
-   copy.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch'&&!card.disabled)previewHovered(entries().find(g=>g.id===card.dataset.gameId));});
+   copy.addEventListener('pointermove',e=>{if(e.pointerType!=='touch'&&!card.disabled)previewHovered(entries().find(g=>g.id===card.dataset.gameId));});
    return copy;
   }
   const before=doc.createDocumentFragment();for(const card of cards)before.appendChild(copyOf(card));shelf.insertBefore(before,first);
@@ -683,7 +685,9 @@ function mount(host){
  for(const game of store?[...catalog].sort((a,b)=>ownedInStore(a.id)-ownedInStore(b.id)):entries()){
  const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');image.src=game.artwork;image.alt='';
  element(card,'span','card-badge');setOwned(card);
- card.addEventListener('pointerenter',e=>{if(e.pointerType!=='touch')previewHovered(game);});card.addEventListener('focus',()=>{preview(game);revealCard(card);});
+ // Scrolling can move cards under a stationary cursor and fire pointerenter.
+ // Only actual pointer movement may override the keyboard/gamepad selection.
+ card.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')previewHovered(game);});card.addEventListener('focus',()=>{preview(game);revealCard(card);});
  }
  if(state.view==='library'&&starterFailed)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  layoutShelf();
@@ -694,7 +698,7 @@ function mount(host){
  if(store&&!state.detail){if(offer)preview(keep&&!ownedInStore(keep.id)?keep:offer);else{hideDetail();feature(entries()[0]);}return;}
  feature(keep||entries()[0]);}
  function previewHovered(game){hoverPreview=true;try{preview(game);}finally{hoverPreview=false;}}
- function preview(game){if(state.detail?.id===game.id&&!detail.hidden)return;pausePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
+ function preview(game){if(!game||state.detail?.id===game.id&&!detail.hidden)return;retirePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
  const stage=element(detail,'div','stage');
  button(stage,'back','Return to games',()=>returnToGames(),'detail-close');
  const media=doc.createElement(game.attract?'video':'img');media.className='preview-media';
@@ -703,18 +707,27 @@ function mount(host){
   // Keep a real image underneath instead, including while a trailer reloads.
   const poster=element(stage,'img','preview-poster');poster.src=game.artwork;poster.alt='';
   media.classList.add('preview-video');media.poster=game.artwork;media.autoplay=true;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
-  let generation=0;
-  const cover=()=>{generation++;media.style.opacity='0';};
-  const play=()=>media.play().catch(cover);
-  cover();media.addEventListener('loadstart',cover);
-  media.addEventListener('playing',()=>{
-   const current=generation,reveal=()=>{if(current===generation&&media.readyState>=2)media.style.opacity='1';};
-   if(media.requestVideoFrameCallback)media.requestVideoFrameCallback(reveal);
-   else if(win.requestAnimationFrame)win.requestAnimationFrame(reveal);
+  let generation=0,active=true,frame=null;
+  const cancelFrame=()=>{if(frame!==null){if(media.requestVideoFrameCallback)media.cancelVideoFrameCallback?.(frame);else win.cancelAnimationFrame?.(frame);frame=null;}};
+  const cover=()=>{generation++;cancelFrame();media.style.opacity='0';};
+  const play=()=>{if(active)media.play().catch(()=>{if(active)cover();});};
+  const playing=()=>{
+   if(!active)return;
+   cancelFrame();const current=generation,reveal=()=>{frame=null;if(active&&current===generation&&media.readyState>=2)media.style.opacity='1';};
+   if(media.requestVideoFrameCallback)frame=media.requestVideoFrameCallback(reveal);
+   else if(win.requestAnimationFrame)frame=win.requestAnimationFrame(reveal);
    else reveal();
-  });
-  media.addEventListener('ended',()=>{cover();media.load();play();});
-  media.addEventListener('error',()=>{cover();media.remove();});
+  };
+  const ended=()=>{if(active){cover();media.load();play();}};
+  const error=()=>{release();media.remove();};
+  const release=()=>{
+   if(!active)return;active=false;cover();
+   for(const [name,listener] of [['loadstart',cover],['playing',playing],['ended',ended],['error',error]])media.removeEventListener(name,listener);
+   // Pause alone retains the media resource; a retired preview must release it.
+   media.autoplay=false;media.pause();media.removeAttribute('src');media.load();
+  };
+  releasePreview=release;
+  cover();for(const [name,listener] of [['loadstart',cover],['playing',playing],['ended',ended],['error',error]])media.addEventListener(name,listener);
   media.src=game.attract;stage.appendChild(media);play();
  }else{media.src=game.artwork;media.alt='';stage.appendChild(media);}
  const actions=element(detail,'div','detail-actions');
@@ -781,7 +794,7 @@ function mount(host){
  const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(starterPending&&state.view==='library')renderGrid();if(installedChanged&&!starterPending)refreshLibrary();});
  platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
  const gameUpdates=startGameUpdates(win,platform);
- function hideDetail(){pausePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
+ function hideDetail(){retirePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
  // Back changes focus, not selection: a populated shelf always has usable actions.
  function returnToGames(toTab=false){const card=shelf.querySelector('[data-game-id="'+state.detail?.id+'"]');(toTab?tabs[state.view]:card||tabs[state.view]).focus();}
  function renderOptions(){options.replaceChildren();gateSubmit=null;
@@ -842,7 +855,7 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);pausePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);retirePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);

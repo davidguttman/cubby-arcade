@@ -54,6 +54,8 @@ async def exercise(cdp, screenshots):
                     original = page.locator(f'.game-card[data-game-id="{game_id}"]')
                     hovered = cards.nth(1)
                     await hovered.dispatch_event('pointerenter', {'pointerType': 'mouse'})
+                    assert await page.locator('.game-card.is-selected').get_attribute('data-game-id') == game_id, 'scrolling beneath a stationary mouse must not override the focused game'
+                    await hovered.dispatch_event('pointermove', {'pointerType': 'mouse'})
                     assert await page.locator('.game-card.is-selected').get_attribute('data-game-id') != game_id
                     assert await original.evaluate('(el)=>el===document.activeElement')
                     await copy.dispatch_event('click')
