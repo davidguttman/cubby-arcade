@@ -1,7 +1,7 @@
 /* Only the grown-ups' shell. Games, catalogs, pairing state and relay traffic
  * remain network-owned. Bump this version when changing the offline shell. */
 'use strict';
-const CACHE = 'cubby-parents-v3';
+const CACHE = 'cubby-parents-v4';
 const SHELL = ['/parents/', '/parents/index.html', '/parents/parents.css', '/parents/pairing.js',
   '/parents/parents.js', '/parents/install.js', '/parents/manifest.webmanifest',
   '/parents/icons/favicon.svg', '/parents/icons/icon-192.png', '/parents/icons/icon-512.png',

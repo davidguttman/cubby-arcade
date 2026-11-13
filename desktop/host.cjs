@@ -2,6 +2,7 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const {FIRST,validId}=require('../runtime/core/profiles.js');
+const {validateCompanion}=require('../runtime/core/link.js');
 const idPattern=/^[a-z0-9][a-z0-9-]{0,79}$/;
 // One portable namespace for installed files and protocol paths. NTFS aliases
 // (devices, alternate streams, trailing dots/spaces) must never bypass inventory.
@@ -136,6 +137,7 @@ class GameLibrary{
       if(name.startsWith('/')||name.includes('\\')||name.includes('\0')||name.split('/').some(p=>!p||p==='.'||p==='..')||!(/^[a-f0-9]{64}$/).test(hash))throw Error('Invalid inventory');
     }
     for(const name of ['entrypoint','artwork','attract'])if((name!=='attract'||m[name]!==undefined)&&!Object.hasOwn(m.files,m[name]))throw Error('Missing game asset');
+    if(Object.hasOwn(m,'companion'))validateCompanion(m.companion);
     return {directory,manifest:m};
   }
   entries(){
@@ -144,7 +146,7 @@ class GameLibrary{
     for(const id of fs.readdirSync(this.games).sort()){
       try{
         const {manifest:m}=this.release(id),base='/games/'+id+'/';
-        result.push({id:m.id,version:m.version,runtime:m.runtime,entrypoint:base+m.entrypoint,artwork:base+m.artwork,...(m.attract?{attract:base+m.attract}:{})});
+        result.push({id:m.id,version:m.version,runtime:m.runtime,entrypoint:base+m.entrypoint,artwork:base+m.artwork,...(m.attract?{attract:base+m.attract}:{}),...(m.companion?{companion:m.companion}:{})});
       }catch{/* Incomplete staging, removed or invalid packages are not discoverable. */}
     }
     return result;

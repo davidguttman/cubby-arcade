@@ -64,9 +64,9 @@ def build(output=None):
     # physical file. Root becomes the adult landing page with no runtime router.
     shutil.copyfile(result / 'site/index.html', result / 'index.html')
     shutil.copyfile(result / 'site/favicon.ico', result / 'favicon.ico')
-    # The grown-ups' app a phone opens by scanning the Cubby's code. A game's own grown-ups page
-    # (catalog `parents`) is served under /parents/<id>/ by a rewrite on the host, so it shares the pairing.
-    # web.build already includes the companion and all install assets.
+    # web.build includes only the generic phone dashboard and install assets.
+    # Game-owned companions come from installed manifests, never per-game rewrites.
+
     return result
 
 

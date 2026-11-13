@@ -144,6 +144,47 @@ manifest must be **outside** the payload directory; `manifest.json` is reserved
 inside a game installation. Existing payload manifests, symlinks, special files,
 unsafe paths, and oversized releases fail before publication.
 
+### Game-owned phone companions
+
+A game may declare its own grown-up phone app in its release manifest:
+
+```json
+"companion": {
+  "url": "../companion/",
+  "title": "My game for grown-ups",
+  "artwork": "../companion/icon.png"
+}
+```
+
+Only `url` is required. `title` is nonempty text up to 120 characters; `artwork`
+is an optional public image URL. Both URLs must be HTTPS or relative to the
+**final release manifest URL**, never to Cubby's catalog or device origin.
+Credentials, fragments, protocol-relative URLs, unsafe schemes, and malformed
+references are rejected. Hosts persist resolved public URLs in the installed
+inventory. For a ZIP release, put absolute companion metadata in the package's
+own `manifest.json`; if the outer release also declares it, the metadata must
+agree with the package before activation.
+
+The standalone generator accepts `--companion ../companion/`, optionally
+`--companion-title "My game for grown-ups"` and
+`--companion-artwork ../companion/icon.png`. Host and release the companion from
+the game's repository/site; its UI, assets, offline behavior and logic are game
+owned. It may also be included in the game's published build output. A URL is a
+discovery link, not an integrity inventory for an independently hosted phone app.
+
+Cubby's generic phone dashboard discovers companions from the **installed
+version's manifest**, advertised by each paired Cubby. This works for custom
+feeds without public-catalog entries, Cubby releases, or per-game hosting routes.
+Adding, removing, or changing companion metadata requires a new game version;
+changing it under an already-installed version is an immutable-release conflict.
+Manifests without this optional field continue to install and play normally.
+
+Opening a companion follows its game-owned URL without passing pairing secrets,
+players, device IDs, or inventing a same-origin pairing relationship. A standalone
+app can use its own code-word or other game-owned interaction. An older page
+that depends on Cubby's same-origin localStorage pairing cannot simply be moved
+to another origin; its game must migrate that integration explicitly.
+
 `--base-url` is optional and defaults to `./`: generated file references then
 point beside the hosted manifest. Supply a relative version directory when
 publishing a stable manifest elsewhere, or a root-relative version directory

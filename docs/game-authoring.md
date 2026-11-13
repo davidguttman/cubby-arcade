@@ -21,6 +21,13 @@ under `/games/<id>/`; it does not navigate to the remote game's website.
 Use a stable lowercase game ID such as `my-game`. Keep saves compatible between
 versions or migrate them. Keep old release files available.
 
+Game-specific phone/parent companion apps belong to the game's repository and
+release, not Cubby's code, catalog, or hosting routes. Declare the optional
+[`companion` manifest metadata](game-release-manifest.md#game-owned-phone-companions)
+so Cubby's generic phone dashboard can discover the app from installed games,
+including games installed through custom feeds. The game owns its companion's
+UI, assets, offline behavior, and interaction model.
+
 ## Controls, lifecycle and saves
 
 The optional shared JavaScript modules live in `runtime/core/` in the

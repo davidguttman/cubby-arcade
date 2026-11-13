@@ -124,7 +124,7 @@ def validate_registry(document, developer=False):
             check_url(entry.get(key), developer)
         if 'attract' in entry:
             check_url(entry['attract'], developer)
-        if 'parents' in entry:   # the game's grown-ups page, opened inside Cubby's at /parents/<id>/
+        if 'parents' in entry:   # Legacy registry field; companion discovery uses installed manifests.
             check_url(entry['parents'], developer)
         screenshots = entry.get('screenshots', [])
         if not isinstance(screenshots, list) or len(screenshots) > 12:
@@ -153,7 +153,8 @@ def validate_release(document, game_id, developer=False, manifest_url=None):
     # Reuse the legacy package transport checks, not its discovery shape.
     resolved = dict(package, url=file_manifest.resolve_url(package.get('url'), manifest_url, developer))
     validate({'schema_version': 1, 'games': [dict(resolved, id=game_id, version=version, title=game_id)]}, developer)
-    return dict(document, package=resolved)
+    return dict(document, package=resolved,
+                **({'companion': file_manifest.validate_companion(document['companion'], manifest_url)} if 'companion' in document else {}))
 
 
 def resolve_entry(entry, developer=False):
@@ -170,7 +171,8 @@ def resolve_entry(entry, developer=False):
     if release['schema_version'] == 2:
         return release
     return dict(release['package'], id=release['id'], version=release['version'],
-                title=entry['title'], runtime=release['runtime'], entrypoint=release['entrypoint'])
+                title=entry['title'], runtime=release['runtime'], entrypoint=release['entrypoint'],
+                **({'companion': release['companion']} if 'companion' in release else {}))
 
 
 def load(url, developer=False):
@@ -200,6 +202,8 @@ def install_entry(entry, root=packages.GAMES, developer=False, update=False):
             raise ValueError('Catalog/package identity mismatch')
         if 'runtime' in entry and (manifest['runtime'], manifest['entrypoint']) != (entry['runtime'], entry['entrypoint']):
             raise ValueError('Release/package runtime or entrypoint mismatch')
+        if 'companion' in entry and manifest.get('companion') != entry['companion']:
+            raise ValueError('Release/package companion mismatch')
         return packages.install(archive, root)
 
 
@@ -216,7 +220,7 @@ def read_inventory(root, directory):
 
 def comparable_inventory(document):
     return {key: document.get(key, [] if key == 'screenshots' else None)
-            for key in ('schema_version', 'id', 'version', 'runtime', 'entrypoint', 'artwork', 'attract', 'screenshots', 'files')}
+            for key in ('schema_version', 'id', 'version', 'runtime', 'entrypoint', 'artwork', 'attract', 'screenshots', 'companion', 'files')}
 
 
 def install_files(release, root, developer=False):

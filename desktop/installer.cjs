@@ -8,6 +8,7 @@ const crypto=require('node:crypto');
 const yauzl=require('yauzl');
 const {validateCatalog}=require('./cloud.cjs');
 const {safePackagePath,validatePackagePaths}=require('./host.cjs');
+const {validateCompanion}=require('../runtime/core/link.js');
 const MAX_BYTES=128*1024*1024,MAX_MANIFEST=256*1024;
 const idPattern=/^[a-z0-9][a-z0-9-]{0,79}$/,versionPattern=/^[a-z0-9][a-z0-9.-]{0,79}$/;
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -35,6 +36,8 @@ function validateRelease(m,id,manifestURL){
  if(!m||Array.isArray(m)||![1,2].includes(m.schema_version)||m.id!==id||!idPattern.test(id)||m.runtime!=='web'||typeof m.version!=='string'||!versionPattern.test(m.version)||m.version.includes('..'))throw Error('Invalid release identity/runtime');
  safePath(id);safePath(m.version);
  safePath(m.entrypoint);
+ const companion=m.companion!==undefined?validateCompanion(m.companion,value=>downloadURL(value,manifestURL)):undefined;
+ if(Object.hasOwn(m,'companion')&&m.companion===undefined)throw Error('Invalid companion metadata');
  if(m.schema_version===1){
   if(Object.hasOwn(m,'files'))throw Error('Ambiguous release manifest');
   const p=m.package;if(!p||!Number.isSafeInteger(p.size)||p.size<=0||p.size>MAX_BYTES||typeof p.sha256!=='string'||!/^[a-f0-9]{64}$/.test(p.sha256))throw Error('Invalid release package');downloadURL(p.url,manifestURL);
@@ -54,6 +57,7 @@ function validateRelease(m,id,manifestURL){
   for(const name of m.screenshots||[])if(!Object.hasOwn(m.files,safePath(name)))throw Error('Missing screenshot');
   if(Buffer.byteLength(JSON.stringify(m))>MAX_MANIFEST)throw Error('Manifest too large');
  }
+ if(companion!==undefined)m={...m,companion};
  if(manifestURL){
   if(m.schema_version===1)return {...m,package:{...m.package,url:downloadURL(m.package.url,manifestURL)}};
   return {...m,files:Object.fromEntries(Object.entries(m.files).map(([name,file])=>[name,{...file,url:downloadURL(file.url,manifestURL)}]))};
@@ -61,9 +65,9 @@ function validateRelease(m,id,manifestURL){
  return m;
 }
 // Disk/host inventory stays schema 1; download locations are not game identity.
-function fileInventory(release){return {schema_version:1,id:release.id,version:release.version,runtime:release.runtime,entrypoint:release.entrypoint,artwork:release.artwork,...(release.attract!==undefined?{attract:release.attract}:{}),...(release.screenshots!==undefined?{screenshots:release.screenshots}:{}),files:Object.fromEntries(Object.entries(release.files).map(([name,file])=>[name,file.sha256]))};}
+function fileInventory(release){return {schema_version:1,id:release.id,version:release.version,runtime:release.runtime,entrypoint:release.entrypoint,artwork:release.artwork,...(release.attract!==undefined?{attract:release.attract}:{}),...(release.screenshots!==undefined?{screenshots:release.screenshots}:{}),...(release.companion!==undefined?{companion:release.companion}:{}),files:Object.fromEntries(Object.entries(release.files).map(([name,file])=>[name,file.sha256]))};}
 function sameInventory(a,b){
- const canonical=m=>JSON.stringify([m.schema_version,m.id,m.version,m.runtime,m.entrypoint,m.artwork,m.attract??null,m.screenshots??[],Object.entries(m.files||{}).sort(([a],[b])=>a.localeCompare(b))]);
+ const canonical=m=>JSON.stringify([m.schema_version,m.id,m.version,m.runtime,m.entrypoint,m.artwork,m.attract??null,m.screenshots??[],m.companion===undefined?null:validateCompanion(m.companion),Object.entries(m.files||{}).sort(([a],[b])=>a.localeCompare(b))]);
  return canonical(a)===canonical(b);
 }
 function validateInventory(m,release,digests){
@@ -72,6 +76,8 @@ function validateInventory(m,release,digests){
  validatePackagePaths(['manifest.json',...names]);
  for(const name of names){safePath(name);if(name==='manifest.json'||typeof m.files[name]!=='string'||!/^[a-f0-9]{64}$/.test(m.files[name])||digests[name]!==m.files[name])throw Error('Package checksum/inventory mismatch');}
  for(const name of ['entrypoint','artwork',...(m.attract!==undefined?['attract']:[])])if(!Object.hasOwn(m.files,safePath(m[name])))throw Error('Missing game asset');
+ if(Object.hasOwn(m,'companion'))validateCompanion(m.companion);
+ if(release.companion!==undefined&&JSON.stringify(m.companion===undefined?null:validateCompanion(m.companion))!==JSON.stringify(release.companion))throw Error('Release/package companion mismatch');
  return m;
 }
 async function readBounded(stream,limit,signal){let size=0;const parts=[];for await(const chunk of stream){signal?.throwIfAborted();size+=chunk.length;if(size>limit)throw Error('Content too large');parts.push(Buffer.from(chunk));}return Buffer.concat(parts);}
@@ -157,7 +163,10 @@ class GameInstaller{
   // A check runs every few minutes in the hub: an unchanged release costs one manifest.
   if(release.schema_version===2&&installed?.version===release.version&&sameInventory(this.library.release(id).manifest,fileInventory(release))){this.state(id,'installed',{version:release.version});return installed;}
   if(release.schema_version===2)return this.stageFiles(release,signal);
-  if(installed?.version===release.version){this.state(id,'installed',{version:release.version});return installed;}
+  if(installed?.version===release.version){
+   if(release.companion!==undefined&&JSON.stringify(this.library.release(id).manifest.companion===undefined?null:validateCompanion(this.library.release(id).manifest.companion))!==JSON.stringify(release.companion))throw Error('Immutable release conflict');
+   this.state(id,'installed',{version:release.version});return installed;
+  }
   this.state(id,'downloading',{received:0,total:release.package.size});
   const bytes=await download(this.fetch,release.package.url,release.package.size,signal,received=>this.state(id,'downloading',{received,total:release.package.size}));
   if(bytes.length!==release.package.size||hash(bytes)!==release.package.sha256)throw Error('Download checksum/size mismatch');

@@ -112,7 +112,7 @@ with tempfile.TemporaryDirectory() as tmp:
         with tempfile.TemporaryDirectory() as tmp:
             output = web.build(Path(tmp) / 'site')
             worker = (output / 'cubby-worker.js').read_text()
-            self.assertIn("importScripts('/runtime/core/browser-store.js')", worker)
+            self.assertIn("importScripts('/runtime/core/link.js','/runtime/core/browser-store.js')", worker)
             settings = json.loads(worker.split('attachWorker(self,', 1)[1].removesuffix(');\n'))
             self.assertTrue({'/play', '/play/', '/native/index.html', '/catalog'}.issubset(settings['shellPaths']))
             self.assertNotIn('/', settings['shellPaths'])
