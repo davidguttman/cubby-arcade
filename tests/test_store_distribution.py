@@ -41,15 +41,15 @@ class StoreDistribution(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         web.default_registry()
 
-    def test_default_fallback_has_five_offers_but_no_payloads(self):
+    def test_default_fallback_has_six_offers_but_no_payloads(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = web.build(Path(tmp) / 'site', registry=web.default_registry())
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only'])
+                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle'])
             beta = json.loads((site / 'beta/catalog').read_text())
-            self.assertEqual([e['id'] for e in beta], ['word-wand', 'line-cutter'])
-            self.assertEqual(beta[1], {
+            self.assertEqual([e['id'] for e in beta], ['line-cutter'])
+            self.assertEqual(beta[0], {
                 'id': 'line-cutter', 'title': 'Line Cutter',
                 'manifest_url': 'https://linecutter.david.app/store/line-cutter/manifest.json',
                 'artwork': 'https://linecutter.david.app/store/line-cutter/0.4.0/files/cover.png',
@@ -80,9 +80,9 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertFalse((site / 'games').exists())
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only'])
+                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle'])
             self.assertEqual([e['id'] for e in json.loads((site / 'beta/catalog').read_text())],
-                             ['word-wand', 'line-cutter'])
+                             ['line-cutter'])
             self.assertEqual((site / 'store/little-camp/1/little-camp-1.game.zip').read_bytes(), old.read_bytes())
             self.assertFalse((site / 'store/trail-mix').exists())
             self.assertTrue((site / 'store/line-cutter/1/line-cutter-1.game.zip').is_file())
