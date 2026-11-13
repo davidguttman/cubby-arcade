@@ -20,6 +20,22 @@ MAX_RELEASE = 256 * 1024
 DOWNLOAD_WORKERS = 6
 ID = re.compile(r'[a-z0-9][a-z0-9-]{0,79}')
 VERSION = re.compile(r'[a-z0-9][a-z0-9.-]{0,79}')
+MEDIA_LIMITS = {'thumbnail': 64 * 1024, 'artwork': 512 * 1024, 'attract': 8 * 1024 * 1024}
+
+
+def validate_media(media):
+    """Optional discovery derivatives; never part of a game's immutable inventory."""
+    if not isinstance(media, dict) or not media.keys() <= MEDIA_LIMITS.keys():
+        raise ValueError('Invalid media variants')
+    for name, item in media.items():
+        if (not isinstance(item, dict) or set(item) != {'url', 'size', 'sha256', 'source_sha256'}
+                or type(item.get('size')) is not int or not 0 < item['size'] <= MEDIA_LIMITS[name]):
+            raise ValueError('Invalid media size/descriptor')
+        file_manifest.resolve_url(item['url'])
+        for key in ('sha256', 'source_sha256'):
+            if not isinstance(item.get(key), str) or not re.fullmatch('[0-9a-f]{64}', item[key]):
+                raise ValueError('Invalid media checksum')
+    return media
 
 
 def check_url(url, developer=False):
@@ -124,6 +140,8 @@ def validate_registry(document, developer=False):
             check_url(entry.get(key), developer)
         if 'attract' in entry:
             check_url(entry['attract'], developer)
+        if 'media' in entry:
+            validate_media(entry['media'])
         if 'parents' in entry:   # Legacy registry field; companion discovery uses installed manifests.
             check_url(entry['parents'], developer)
         screenshots = entry.get('screenshots', [])

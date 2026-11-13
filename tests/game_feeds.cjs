@@ -1,5 +1,10 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const Feeds=require('../runtime/core/game-feeds.js');
+test('optional media derivatives preserve descriptors and reject unbounded or invalid metadata',()=>{
+ const item={url:'https://cdn.example/cover.jpg',size:9000,sha256:'a'.repeat(64),source_sha256:'b'.repeat(64)},offer={id:'demo',title:'Demo',manifest_url:'https://game.example/manifest.json',artwork:'https://game.example/cover.png',media:{thumbnail:item}};
+ assert.deepEqual(Feeds.validateEntries([offer]),[offer]);
+ for(const media of [[],{bad:item},{thumbnail:{...item,size:true}},{thumbnail:{...item,size:65537}},{thumbnail:{...item,sha256:'bad'}},{thumbnail:{...item,url:'http://cdn.example/a.jpg'}},{thumbnail:{...item,source_sha256:null}}])assert.throws(()=>Feeds.validateEntries([{...offer,media}]));
+});
 const A='https://cubby.david.app/catalog',B='https://other.example/catalog';
 const config=feeds=>({schema:1,feeds});
 const feed=(url,name='Feed',enabled=true)=>({url,name,enabled});

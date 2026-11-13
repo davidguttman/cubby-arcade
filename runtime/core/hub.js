@@ -125,6 +125,7 @@ function mount(host){
  host.innerHTML='<header class="topbar"><div class="brand">'+brand+'</div><nav class="view-nav" aria-label="Views"><span class="nav-pill" aria-hidden="true"></span></nav><div class="hud"></div></header>'+
   '<section class="view-body"><div class="hero"><div class="hero-backdrop" aria-hidden="true"></div><aside class="detail" hidden></aside><div class="hero-rest" aria-hidden="true"><div class="stage"><img class="rest-media" alt=""></div><div class="rest-hint">'+icon('pick')+'</div><div class="rest-done">'+icon('check')+icon('library')+'</div></div></div><div class="shelf-rail"><div class="shelf"></div></div></section>'+
   '<section class="options-panel" hidden></section><dialog class="adult-setup" aria-label="Adult keyboard setup"></dialog>';
+ const device=win.CubbyDeviceProfile==='rg353v';host.classList.toggle('device-hub',device);
  const nav=host.querySelector('.view-nav'),body=host.querySelector('.view-body'),backdrop=host.querySelector('.hero-backdrop'),restArt=host.querySelector('.hero-rest img'),shelf=host.querySelector('.shelf'),detail=host.querySelector('.detail'),options=host.querySelector('.options-panel'),dialog=host.querySelector('dialog.adult-setup');
  function button(parent,name,label,fn,cls){const b=doc.createElement('button');b.type='button';b.className=cls||'';b.setAttribute('aria-label',label);b.innerHTML=icon(name);b.addEventListener('click',fn);parent.appendChild(b);return b;}
  function element(parent,tag,cls){const e=doc.createElement(tag);if(cls)e.className=cls;parent.appendChild(e);return e;}
@@ -202,7 +203,7 @@ function mount(host){
  quitDialog.addEventListener('cancel',e=>{e.preventDefault();closeQuit();});
  const uninstallDialog=element(host,'dialog','uninstall-confirm');uninstallDialog.setAttribute('aria-label','Uninstall game? Saves are kept');
  let uninstallTarget=null,uninstallBusy=false,uninstallPreview=null;
- function closeUninstall(){if(uninstallBusy)return;uninstallDialog.close();uninstallTarget=null;refreshOwnership();detail.querySelector('.uninstall-game')?.focus();if(uninstallPreview?.isConnected&&!detail.hidden)uninstallPreview.play().catch(()=>{});uninstallPreview=null;}
+ function closeUninstall(){if(uninstallBusy)return;uninstallDialog.close();uninstallTarget=null;refreshOwnership();detail.querySelector('.uninstall-game')?.focus();if(!detail.hidden&&(startPreview||uninstallPreview?.isConnected))queuePreview();uninstallPreview=null;}
  function openUninstall(game){
   if(!platform.capabilities?.uninstall||uninstallBusy||launchBusy||!library.some(x=>x.id===game.id))return;
   uninstallTarget={...game};const video=detail.querySelector('video');uninstallPreview=video&&!video.paused?video:null;pausePreview();uninstallDialog.replaceChildren();
@@ -609,17 +610,35 @@ function mount(host){
  function activateView(view,initial=false){if(adult)return;show(view,initial);tabs[view].focus();focusView();if(loading[view])pendingTabFocus=view;}
  function finishTabFocus(view){if(pendingTabFocus!==view)return;pendingTabFocus=null;if(state.view===view&&doc.activeElement===tabs[view])focusView();}
  function primaryAction(){return detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')||detail.querySelector('.favorite');}
- function pausePreview(){detail.querySelector('video')?.pause();}
- let releasePreview=null;
- function retirePreview(){releasePreview?.();releasePreview=null;}
+ let previewTimer=null,startPreview=null,releasePreview=null;
+ function pausePreview(){win.clearTimeout(previewTimer);previewTimer=null;detail.querySelector('video')?.pause();}
+ function retirePreview(){pausePreview();startPreview=null;releasePreview?.();releasePreview=null;}
+ function queuePreview(){
+  win.clearTimeout(previewTimer);
+  // Leave room beyond the 180ms gamepad repeat plus its next animation frame.
+  if(device)previewTimer=win.setTimeout(()=>{previewTimer=null;if(!disposed&&!detail.hidden)startPreview?.();},280);
+  else startPreview?.();
+ }
  function entries(){return state.view==='store'?catalog:library;}
  function ownedInStore(id){return state.view==='store'&&library.some(x=>x.id===id);}
  function badgeFor(id){return ownedInStore(id)?icon('check'):state.isFavorite(id)?icon('star'):'';}
  function setBadge(badge,id){badge.innerHTML=badgeFor(id);badge.dataset.kind=ownedInStore(id)?'installed':state.isFavorite(id)?'favorite':'';}
  // A Store game already in the Library is only a picture: checked, dimmed, and skipped by every control.
  function setOwned(card){const id=card.dataset.gameId,owned=ownedInStore(id);card.disabled=owned;card.classList.toggle('is-owned',owned);card.setAttribute('aria-label',owned?'In library':'Preview game');const badge=card.querySelector('.card-badge');if(badge)setBadge(badge,id);}
+ function mediaURL(game,kind){return device&&typeof game?.media?.[kind]?.url==='string'?game.media[kind].url:game?.[kind==='attract'?'attract':'artwork']||'';}
+ function fallbackImage(image){const fallback=image.dataset.mediaFallback;if(fallback){delete image.dataset.mediaFallback;image.src=fallback;}}
+ function artwork(image,game,kind='artwork'){
+  const url=mediaURL(game,kind),original=game?.artwork||'';
+  if(image.dataset.mediaSource===url)return;
+  image.dataset.mediaSource=url;delete image.dataset.mediaFallback;
+  if(url&&url!==original)image.dataset.mediaFallback=original;
+  if(!image.dataset.mediaListener){image.addEventListener('error',()=>fallbackImage(image));image.dataset.mediaListener='1';}
+  if(url)image.src=url;else image.removeAttribute('src');
+ }
+ // Circular shelf copies are recreated from markup, not DOM listeners.
+ shelf.addEventListener('error',event=>{if(event.target.tagName==='IMG')fallbackImage(event.target);},true);
  // The hero always shows a game: the open preview, or a resting cover that invites a pick below.
- function feature(game){featured=game||null;const art=game?.artwork||'';if(restArt.getAttribute('src')!==art){if(art)restArt.src=art;else restArt.removeAttribute('src');}backdrop.style.backgroundImage=art?'url("'+art.replace(/["\\]/g,'\\$&')+'")':'';markSelection();}
+ function feature(game){featured=game||null;const art=mediaURL(game,'artwork');artwork(restArt,game);backdrop.style.backgroundImage=art?'url("'+art.replace(/["\\]/g,'\\$&')+'")':'';markSelection();}
  // Visual copies make native touch/trackpad scrolling circular. Only the middle
  // row contains buttons, so each game still has exactly one accessible control.
  let shelfCycle=0,hoverPreview=false;
@@ -683,11 +702,11 @@ function mount(host){
  }
  feature(null);return;}
  for(const game of store?[...catalog].sort((a,b)=>ownedInStore(a.id)-ownedInStore(b.id)):entries()){
- const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');image.src=game.artwork;image.alt='';
+ const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');artwork(image,game,'thumbnail');image.alt='';
  element(card,'span','card-badge');setOwned(card);
  // Scrolling can move cards under a stationary cursor and fire pointerenter.
  // Only actual pointer movement may override the keyboard/gamepad selection.
- card.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')previewHovered(game);});card.addEventListener('focus',()=>{preview(game);revealCard(card);});
+ card.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')previewHovered(game);});card.addEventListener('focus',()=>{if(state.detail?.id===game.id&&!detail.hidden)revealCard(card);else preview(game);});
  }
  if(state.view==='library'&&starterFailed)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  layoutShelf();
@@ -705,12 +724,13 @@ function mount(host){
  if(game.attract){
   // Native video posters can disappear before the decoder presents a frame.
   // Keep a real image underneath instead, including while a trailer reloads.
-  const poster=element(stage,'img','preview-poster');poster.src=game.artwork;poster.alt='';
-  media.classList.add('preview-video');media.poster=game.artwork;media.autoplay=true;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
-  let generation=0,active=true,frame=null;
+  const poster=element(stage,'img','preview-poster');artwork(poster,game);poster.alt='';
+  media.classList.add('preview-video');media.poster=mediaURL(game,'artwork');media.autoplay=!device;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
+  poster.addEventListener('error',()=>{media.poster=poster.src;});
+  let generation=0,active=true,frame=null,trailer=mediaURL(game,'attract');
   const cancelFrame=()=>{if(frame!==null){if(media.requestVideoFrameCallback)media.cancelVideoFrameCallback?.(frame);else win.cancelAnimationFrame?.(frame);frame=null;}};
   const cover=()=>{generation++;cancelFrame();media.style.opacity='0';};
-  const play=()=>{if(active)media.play().catch(()=>{if(active)cover();});};
+  const play=()=>{if(active&&!disposed&&!detail.hidden&&detail.querySelector('video')===media)media.play().catch(()=>{if(active)cover();});};
   const playing=()=>{
    if(!active)return;
    cancelFrame();const current=generation,reveal=()=>{frame=null;if(active&&current===generation&&media.readyState>=2)media.style.opacity='1';};
@@ -719,7 +739,7 @@ function mount(host){
    else reveal();
   };
   const ended=()=>{if(active){cover();media.load();play();}};
-  const error=()=>{release();media.remove();};
+  const error=()=>{if(!active)return;if(trailer!==game.attract){trailer=game.attract;cover();media.src=trailer;play();}else{release();media.remove();}};
   const release=()=>{
    if(!active)return;active=false;cover();
    for(const [name,listener] of [['loadstart',cover],['playing',playing],['ended',ended],['error',error]])media.removeEventListener(name,listener);
@@ -728,17 +748,21 @@ function mount(host){
   };
   releasePreview=release;
   cover();for(const [name,listener] of [['loadstart',cover],['playing',playing],['ended',ended],['error',error]])media.addEventListener(name,listener);
-  media.src=game.attract;stage.appendChild(media);play();
- }else{media.src=game.artwork;media.alt='';stage.appendChild(media);}
+  stage.appendChild(media);
+  // Paint the cover and controls immediately. Rapid device browsing never opens
+  // trailers that will be discarded on the next controller repeat.
+  startPreview=()=>{if(!active||detail.querySelector('video')!==media)return;if(!media.getAttribute('src')){trailer=mediaURL(state.detail?.id===game.id?state.detail:game,'attract');media.src=trailer;}play();};
+  queuePreview();
+ }else{artwork(media,game);media.alt='';stage.appendChild(media);}
  const actions=element(detail,'div','detail-actions');
  const star=button(actions,'star','Favorite',()=>{state.favorite(game.id);star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));const badge=shelf.querySelector('.game-card[data-game-id="'+game.id+'"] .card-badge');if(badge)setBadge(badge,game.id);syncShelfCopies();},'favorite');star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));
  feature(game);
- refreshOwnership();
+ refreshOwnership(false);
  }
  // Update ownership in place: asynchronous Library discovery must not restart the
  // Store trailer or steal focus from its favorite/back controls.
- function refreshOwnership(){
- for(const card of shelf.querySelectorAll('.game-card'))setOwned(card);syncShelfCopies();
+ function refreshOwnership(shelfChanged=true){
+ if(shelfChanged){for(const card of shelf.querySelectorAll('.game-card'))setOwned(card);syncShelfCopies();}
  if(detail.hidden||!state.detail)return;
  const actions=detail.querySelector('.detail-actions'),installed=library.find(x=>x.id===state.detail.id);if(!actions)return;
  if(installed){if(platform.capabilities?.uninstall&&!actions.querySelector('.uninstall-game'))button(actions,'trash','Uninstall game',()=>openUninstall(installed),'uninstall-game');const remove=actions.querySelector('.uninstall-game'),phase=installStates[installed.id]?.phase;if(remove)remove.disabled=launchBusy||uninstallBusy||['checking','downloading','verifying','pending','uninstalling'].includes(phase);const previous=actions.querySelector('.download-game'),focused=previous===doc.activeElement;actions.querySelector('.not-installed')?.remove();previous?.remove();actions.querySelector('.install-progress')?.remove();if(!actions.querySelector('.play-game'))button(actions,'play','Play game',()=>launch(installed.id),'play-game');if(focused)actions.querySelector('.play-game')?.focus();const play=actions.querySelector('.play-game');if(platform.capabilities?.tokens){play.disabled=launchBusy||!account?.available||account.balance<1;play.setAttribute('aria-label',account?.balance===0?'No tokens; adult refill needed':account?.launchFailed?'Retry game launch for one token':'Play game for one token');play.innerHTML=icon(account?.launchFailed?'retry':'play')+icon('token');let failure=actions.querySelector('.launch-error');if(account?.launchFailed&&!failure){failure=element(actions,'span','launch-error');failure.setAttribute('aria-label','Launch failed; no token spent');failure.innerHTML=icon('alert');}else if(!account?.launchFailed)failure?.remove();}}
@@ -760,13 +784,21 @@ function mount(host){
  // Owned games can't stay selected in the Store. A download the child just finished
  // hands off to its Library card; otherwise the selection moves to the next offer.
  function settleStore(){if(!state.detail||!ownedInStore(state.detail.id))return;if(requested===state.detail.id){requested=null;activateView('library');}else{const active=doc.activeElement,restore=active?.classList.contains('game-card')||!!active?.closest('.detail');hideDetail();renderGrid();if(restore)(selectedCard()||tabs.store).focus();}}
- async function refreshLibrary(){const generation=profileLoad;try{const entries=await platform.library();if(disposed||generation!==profileLoad)return;const changed=JSON.stringify(entries)!==JSON.stringify(library);library=entries;settleStore();if(changed&&state.view==='library'){const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)(selectedCard()||tabs.library).focus();}refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
+ async function refreshLibrary(){const generation=profileLoad;try{const entries=await platform.library();if(disposed||generation!==profileLoad)return;const changed=JSON.stringify(entries)!==JSON.stringify(library),withoutMedia=items=>JSON.stringify(items.map(({media,...game})=>game)),mediaOnly=withoutMedia(entries)===withoutMedia(library);library=entries;settleStore();if(changed&&state.view==='library'){
+  if(mediaOnly){
+   // A refreshed feed can supply derivatives for an already installed release.
+   // Upgrade pictures in place; never reset focus or restart a playing trailer.
+   for(const card of shelf.querySelectorAll('.game-card')){const game=library.find(game=>game.id===card.dataset.gameId);if(game)artwork(card.querySelector('img'),game,'thumbnail');}
+   const game=library.find(game=>game.id===state.detail?.id);if(game){state.detail=game;const poster=detail.querySelector('.preview-poster');if(poster)artwork(poster,game);const video=detail.querySelector('video');if(video)video.poster=mediaURL(game,'artwork');feature(game);}syncShelfCopies();
+  }else{const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)(selectedCard()||tabs.library).focus();}
+ }refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
  function reloadPlayerGames(){
   const generation=++profileLoad;library=[];catalog=[];starterPending=false;requested=null;returningGame=null;hideDetail();initialViewPending=false;loading.library=loading.store=true;failed.library=failed.store=false;catalogChecking=null;if(state.view!=='options')renderGrid();
   for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{
    if(disposed||generation!==profileLoad)return;
    if(view==='library')library=entries;else catalog=entries;
    loading[view]=false;if(state.view===view)renderGrid();refreshOwnership();
+   if(device&&!loading.library&&!loading.store&&catalog.some(game=>game.media))refreshLibrary();
   }).catch(()=>{if(disposed||generation!==profileLoad)return;loading[view]=false;failed[view]=true;if(state.view===view)renderGrid();});
  }
  let catalogChecking=null;
@@ -778,6 +810,7 @@ function mount(host){
    try{
     const entries=await platform.catalog(options);if(disposed||generation!==profileLoad||options.signal?.aborted)return;
     const changed=failed.store||JSON.stringify(entries)!==JSON.stringify(catalog);catalog=entries;failed.store=false;
+    if(changed&&device&&catalog.some(game=>game.media))await refreshLibrary();
     if(!changed||state.view!=='store')return;
     const active=doc.activeElement,focusedId=active?.classList.contains('game-card')?active.dataset.gameId:null;
     const removed=state.detail&&!catalog.some(game=>game.id===state.detail.id);
@@ -856,7 +889,7 @@ function mount(host){
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
  function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);retirePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
- function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)detail.querySelector('video')?.play().catch(()=>{});}
+ function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)queuePreview();}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
  async function loadStarterLibrary(){
@@ -876,7 +909,7 @@ function mount(host){
  if(starterGame)loadStarterLibrary();
  // Only initial discovery may choose Store; explicit navigation always wins.
  const initialProfileLoad=profileLoad;
- for(const [view,request] of [...(!starterGame?[['library',platform.library()]]:[]),['store',platform.catalog()]])request.then(entries=>{if(disposed||initialProfileLoad!==profileLoad)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(view==='library'&&initialViewPending&&!entries.length){const stayed=doc.activeElement===tabs.library;show('store');if(stayed){tabs.store.focus();focusView();if(loading.store)pendingTabFocus='store';}}else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed||initialProfileLoad!==profileLoad)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
+ for(const [view,request] of [...(!starterGame?[['library',platform.library()]]:[]),['store',platform.catalog()]])request.then(entries=>{if(disposed||initialProfileLoad!==profileLoad)return;if(view==='library')library=entries;else catalog=entries;loading[view]=false;if(device&&!loading.library&&!loading.store&&catalog.some(game=>game.media))refreshLibrary();if(view==='library'&&initialViewPending&&!entries.length){const stayed=doc.activeElement===tabs.library;show('store');if(stayed){tabs.store.focus();focusView();if(loading.store)pendingTabFocus='store';}}else if(state.view===view)renderGrid();if(view==='library'){initialViewPending=false;settleStore();refreshOwnership();}finishTabFocus(view);}).catch(()=>{if(disposed||initialProfileLoad!==profileLoad)return;failed[view]=true;loading[view]=false;if(view==='library')initialViewPending=false;if(state.view===view)renderGrid();finishTabFocus(view);});
  // Adult pages return here so Back lands where the adult left, not on the library.
  function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;if(picking)hidePicker();initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
  settingsUnlocked=returningToSettings();activateView(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);

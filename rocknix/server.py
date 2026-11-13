@@ -4,12 +4,14 @@ Games are trusted application code, not an isolation boundary. Cross-site caller
 and direct game-frame requests cannot invoke the adult package-management API.
 """
 import http.server
+import hashlib
 import io
 import json
 import os
 import re
 from pathlib import Path
 import secrets
+import tempfile
 import threading
 import time
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -98,12 +100,125 @@ class State:
         self.link = link.Link()
         self.developer = False
         self.fetched_feeds = {}
+        self.media_lock = threading.Lock()
+        self.media_downloads = {}
+        self.media_reserved = 0
+        self.media_temporaries = set()
         self.catalog = catalog.validate_registry(yaml.safe_load(
             (self.app / 'hosting/catalog.yaml').read_text()))
         try:
             self.catalog = catalog.validate_registry(json.loads((self.data / 'catalog.json').read_text()))
         except (OSError, ValueError, TypeError):
             pass
+
+    def media_offers(self):
+        # Only server-validated built-in/cached feeds may authorize downloads.
+        with self.lock:
+            return list(self.catalog) + [offer for entries in self.fetched_feeds.values() for offer in entries]
+
+    def library(self):
+        games = packages.library(self.games)
+        offers = self.media_offers()
+        for game in games:
+            try:
+                release = (self.games / game['id'] / 'current').resolve(strict=True)
+                manifest = packages.validate_manifest(json.loads((release / 'manifest.json').read_text()))
+                media = {}
+                for offer in offers:
+                    if offer['id'] != game['id']:
+                        continue
+                    for name, item in offer.get('media', {}).items():
+                        source = manifest.get('attract' if name == 'attract' else 'artwork')
+                        if source and manifest['files'].get(source) == item['source_sha256']:
+                            media.setdefault(name, dict(item, url='/media/' + item['sha256']))
+                if media:
+                    game['media'] = media
+            except (OSError, ValueError, TypeError, KeyError):
+                pass  # Original installed assets always remain usable.
+        return games
+
+    def media_descriptor(self, digest):
+        if not re.fullmatch('[0-9a-f]{64}', digest):
+            raise ValueError('Invalid media identity')
+        for offer in self.media_offers():
+            for name, item in offer.get('media', {}).items():
+                if item['sha256'] == digest:
+                    return name, item
+        raise ValueError('Media not offered')
+
+    def media_file(self, digest):
+        name, item = self.media_descriptor(digest)
+        folder = self.data / 'media'
+        catalog.file_manifest.no_symlinks(Path(self.data.anchor), self.data)
+        catalog.file_manifest.no_symlinks(self.data, folder)
+        folder.mkdir(exist_ok=True)
+        target = folder / digest
+        if target.is_symlink():
+            raise ValueError('Invalid media cache entry')
+        def verified(path):
+            return (not path.is_symlink() and path.is_file() and path.stat().st_size == item['size']
+                    and hashlib.sha256(path.read_bytes()).hexdigest() == digest)
+        if verified(target):
+            return target
+        # Deduplicate in-flight requests by digest, not one global network lock:
+        # an offline miss must never hold up cached artwork or other requests.
+        with self.media_lock:
+            if digest not in self.media_downloads:
+                if len(self.media_downloads) >= 64:
+                    raise ValueError('Media cache busy')
+                self.media_downloads[digest] = [threading.Lock(), 0]
+            job = self.media_downloads[digest]
+            job[1] += 1
+        job[0].acquire()
+        try:
+            if verified(target):
+                return target
+            target.unlink(missing_ok=True)
+            with self.media_lock:
+                # Reserve before IO so concurrent downloads share one64MiB
+                # budget, including temporary bytes. Only derivatives evict.
+                # Exact mkstemp names left by an interrupted prior process are
+                # disposable cache bytes too. Never scavenge unknown names or
+                # active downloads (their full size is already reserved).
+                files = sorted((path for path in folder.iterdir()
+                                if re.fullmatch(r'[0-9a-f]{64}(?:-[a-z0-9_]{8}\.tmp)?', path.name)
+                                and path not in self.media_temporaries and path.is_file() and not path.is_symlink()),
+                               key=lambda p: p.stat().st_mtime)
+                total = sum(path.stat().st_size for path in files)
+                for old in files:
+                    if total + self.media_reserved + item['size'] <= 64 * 1024 * 1024:
+                        break
+                    total -= old.stat().st_size
+                    old.unlink()
+                if total + self.media_reserved + item['size'] > 64 * 1024 * 1024:
+                    raise ValueError('Media cache busy')
+                self.media_reserved += item['size']
+            temporary = None
+            try:
+                with self.media_lock:
+                    descriptor, filename = tempfile.mkstemp(prefix=digest + '-', suffix='.tmp', dir=folder)
+                    os.close(descriptor)
+                    temporary = Path(filename)
+                    self.media_temporaries.add(temporary)
+                catalog.download(item['url'], temporary, catalog.MEDIA_LIMITS[name],
+                                 expected_size=item['size'], digest=digest, allow_redirects=False, timeout=3)
+                if not verified(temporary):
+                    raise ValueError('Media integrity mismatch')
+                with self.media_lock:
+                    temporary.replace(target)
+            finally:
+                with self.media_lock:
+                    if temporary:
+                        temporary.unlink(missing_ok=True)
+                        self.media_temporaries.discard(temporary)
+                    self.media_reserved -= item['size']
+            return target
+        finally:
+            job[0].release()
+            with self.media_lock:
+                job[1] -= 1
+                if not job[1]:
+                    del self.media_downloads[digest]
 
     @property
     def onboarding_required(self):
@@ -238,6 +353,17 @@ class Handler(assets.Handler):
 
     def translate_path(self, path):
         path = unquote(urlsplit(path).path)
+        if path.startswith('/media/'):
+            resolved = getattr(self, '_media_paths', {})
+            if path in resolved:
+                return resolved[path]
+            try:
+                result = str(self.state.media_file(path.removeprefix('/media/')))
+            except (OSError, ValueError, KeyError):
+                result = str(self.state.app / '.missing-runtime-asset')
+            resolved[path] = result
+            self._media_paths = resolved
+            return result
         if path in {'/adult/network.js', '/adult/network.css', '/adult/updates.js', '/adult/ready.js'}:
             return str(self.state.app / 'rocknix/adult' / path.rsplit('/', 1)[1])
         if path.startswith('/games/'):
@@ -264,10 +390,23 @@ class Handler(assets.Handler):
             relative = Path('.missing-runtime-asset')
         return str(self.state.app / relative)
 
+    def guess_type(self, path):
+        if urlsplit(self.path).path.startswith('/media/'):
+            try:
+                name, item = self.state.media_descriptor(urlsplit(self.path).path.removeprefix('/media/'))
+                return super().guess_type(urlsplit(item['url']).path) or ('video/mp4' if name == 'attract' else 'image/jpeg')
+            except ValueError:
+                pass
+        return super().guess_type(path)
+
     def ready_script(self, token):
         return ('<script src="/adult/ready.js" data-token="' + token + '"></script>').encode()
 
     def send_head(self):
+        # The shared range helper and stdlib file server both translate a
+        # non-range path. Resolve/download only once per HTTP request, including
+        # failures; reset for the next keep-alive request.
+        self._media_paths = {}
         path = unquote(urlsplit(self.path).path)
         if path == '/runtime/core/preferences.js':
             # Both the hub and delivered game pages load this host module. Keep
@@ -345,7 +484,7 @@ class Handler(assets.Handler):
         path = urlsplit(self.path).path
         with self.state.lock:
             if path in {'/library', '/api/library'}:
-                self.json_response(packages.library(self.state.games))
+                self.json_response(self.state.library())
                 return
             if path in {'/catalog', '/api/catalog'}:
                 self.json_response(self.state.catalog)

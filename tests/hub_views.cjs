@@ -39,6 +39,8 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   replaceChildren(...nodes){this.children=[];nodes.forEach(n=>this.appendChild(n));}
   set innerHTML(value){this._html=value;this.replaceChildren();if(value.includes('class="topbar"'))for(const cls of ['brand','view-nav','view-body','hero-backdrop','hero-rest','shelf','detail','options-panel','adult-setup','hud']){const e=this.appendChild(new Element(cls==='adult-setup'?'dialog':'div'));e.className=cls;if(cls==='detail')e.hidden=true;if(cls==='hero-rest')e.appendChild(new Element('img'));}}
   get innerHTML(){return this._html||'';}
+  set src(value){this.setAttribute('src',value);}
+  get src(){return this.attributes.src;}
   setAttribute(k,v){this.attributes[k]=String(v);}
   getAttribute(k){return this.attributes[k]??null;}
   removeAttribute(k){delete this.attributes[k];}
@@ -62,12 +64,40 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
  const windowListeners=new Map();
  doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:options=>(onAction=options.onAction,{dispose(){}})},
  addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
- removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{},setTimeout:()=>0,clearTimeout(){},...windowOverrides};
+ removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},fire(type){for(const fn of windowListeners.get(type)||[])fn();},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{},setTimeout:()=>0,clearTimeout(){},...windowOverrides};
  const host=new Element(),hub=Hub.mount(host);
  return {host,hub,action:(action,source)=>onAction({action,source}),refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 const games=[{id:'one',artwork:'one.svg',entrypoint:'/one'},{id:'two',artwork:'two.svg',entrypoint:'/two'}];
+test('device uses small artwork and deferred trailer, falling back only once',async()=>{
+ const clock=devicePreviewClock(),game={id:'small',entrypoint:'/small',artwork:'original.png',attract:'original.webm',media:{thumbnail:{url:'thumb.jpg'},artwork:{url:'hero.jpg'},attract:{url:'clip.mp4'}}};
+ const {host}=mountedHub([game],[],{}, {},clock.window);await settle();
+ const card=host.querySelector('.game-card img'),poster=host.querySelector('.preview-poster'),video=host.querySelector('video');
+ assert.equal(host.querySelector('.game-card').querySelector('img').src,'thumb.jpg');
+ assert.equal(poster.src,'hero.jpg');assert.equal(video.poster,'hero.jpg');assert.equal(video.src,undefined);
+ clock.run();assert.equal(video.src,'clip.mp4');
+ poster.dispatchEvent({type:'error'});assert.equal(poster.src,'original.png');
+ poster.dispatchEvent({type:'error'});assert.equal(poster.src,'original.png');
+ video.dispatchEvent({type:'error'});assert.equal(video.src,'original.webm');
+ video.dispatchEvent({type:'error'});assert.equal(host.querySelector('video'),null);
+});
+test('desktop keeps original artwork and trailers when device derivatives exist',async()=>{
+ const game={id:'small',entrypoint:'/small',artwork:'original.png',attract:'original.webm',media:{thumbnail:{url:'thumb.jpg'},artwork:{url:'hero.jpg'},attract:{url:'clip.mp4'}}};
+ const {host}=mountedHub([game]);await settle();
+ assert.equal(host.querySelector('.game-card').querySelector('img').src,'original.png');
+ assert.equal(host.querySelector('video').src,'original.webm');
+});
+test('new catalog media upgrades Library pictures without replacing its playing trailer or focus',async()=>{
+ const clock=devicePreviewClock(),original={...games[0],attract:'original.webm'};
+ let current=[original],offers=[];
+ const {host,hub}=mountedHub(current,[],{}, {library:async()=>current,catalog:async()=>offers},clock.window);await settle();clock.run();
+ const video=host.querySelector('video'),card=host.querySelector('.game-card');card.focus();
+ current=[{...original,media:{thumbnail:{url:'thumb.jpg'},artwork:{url:'hero.jpg'},attract:{url:'clip.mp4'}}}];offers=current;
+ await hub.refreshCatalog();
+ assert.equal(host.querySelector('video'),video);assert.equal(video.src,'original.webm');assert.equal(video.playCount,1);
+ assert.equal(host.ownerDocument.activeElement,card);assert.equal(card.querySelector('img').src,'thumb.jpg');assert.equal(host.querySelector('.preview-poster').src,'hero.jpg');
+});
 test('nonempty Library selects and previews a game on load and return',async()=>{
  const {host,hub}=mountedHub(games);await settle();
  assert.equal(hub.state.detail?.id,'one');assert.equal(host.querySelector('.detail').hidden,false);
@@ -140,6 +170,52 @@ test('rejected preview playback leaves the artwork visible',async()=>{
  const {host}=mountedHub([{...games[0],attract:'one.webm'}],[],{},{},{},{play(){return Promise.reject(new Error('blocked'));}});await settle();
  assert.equal(host.querySelector('.preview-poster')?.src,'one.svg');assert.equal(host.querySelector('video').style.opacity,'0');
 });
+function devicePreviewClock(){
+ let next=0,now=0;const jobs=new Map();
+ function advance(ms){const until=now+ms;for(;;){const due=[...jobs].filter(([,job])=>job.at<=until).sort((a,b)=>a[1].at-b[1].at)[0];if(!due)break;const [id,job]=due;jobs.delete(id);now=job.at;job.fn();}now=until;}
+ return {jobs,advance,window:{CubbyDeviceProfile:'rg353v',AbortController,fetch:()=>new Promise(()=>{}),setTimeout(fn,delay){const id=++next;jobs.set(id,{fn,delay,at:now+delay});return id;},clearTimeout(id){jobs.delete(id);}},run(){advance(280);}};
+}
+for(const view of ['library','store'])test('device '+view+' selects immediately but starts only the settled trailer',async()=>{
+ const clock=devicePreviewClock(),offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
+ const {host,hub}=mountedHub(view==='library'?offers:[],offers,{install:true}, {},clock.window);await settle();
+ const first=host.querySelector('video');assert.equal(first.src,undefined);assert.equal(first.playCount,undefined);
+ assert.ok(host.querySelector(view==='library'?'.play-game':'.download-game'));assert.ok(!host.querySelector(view==='library'?'.play-game':'.download-game').disabled);
+ host.querySelector('[data-game-id="two"]').focus();
+ assert.equal(hub.state.detail.id,'two');assert.equal(host.querySelector('.preview-poster').src,'two.svg');
+ const second=host.querySelector('video');assert.equal(second.src,undefined);clock.run();
+ assert.equal(first.playCount,undefined);assert.equal(first.src,undefined);assert.equal(first.loadCount,1);assert.equal(second.src,'two.webm');assert.equal(second.playCount,1);hub.dispose();
+});
+for(const view of ['library','store'])for(const repeat of [190,200])test('held device '+view+' navigation at '+repeat+'ms defers trailers until settled',async()=>{
+ const clock=devicePreviewClock(),offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
+ const {host,hub}=mountedHub(view==='library'?offers:[],offers,{install:true},{},clock.window);await settle();
+ const seen=[host.querySelector('video')];
+ for(let i=0;i<6;i++){
+  clock.advance(repeat);
+  assert.ok(seen.every(video=>!video.playCount),'controller repeats must not open intermediate trailers');
+  host.querySelector('[data-game-id="'+games[(i+1)%2].id+'"]').focus();seen.push(host.querySelector('video'));
+ }
+ clock.advance(279);assert.ok(seen.every(video=>!video.playCount));
+ clock.advance(1);assert.equal(seen.at(-1).playCount,1);assert.ok(seen.slice(0,-1).every(video=>!video.playCount));hub.dispose();
+});
+test('device pending trailer is canceled by leaving, blur and disposal and restarts on focus',async()=>{
+ const clock=devicePreviewClock(),{host,hub}=mountedHub([{...games[0],attract:'one.webm'}],[],{}, {},clock.window);await settle();
+ const win=host.ownerDocument.defaultView,video=host.querySelector('video');
+ // Exercise the same lifecycle callbacks a real window dispatches.
+ win.fire('blur');clock.run();assert.equal(video.src,undefined);
+ win.fire('focus');clock.run();assert.equal(video.src,'one.webm');
+ hub.show('store');hub.show('library');const next=host.querySelector('video');hub.dispose();clock.run();assert.equal(next.src,undefined);
+});
+test('leaving device discovery cancels an unloaded trailer and desktop remains immediate',async()=>{
+ const clock=devicePreviewClock(),{host,hub}=mountedHub([{...games[0],attract:'one.webm'}],[],{}, {},clock.window);await settle();
+ const video=host.querySelector('video');hub.show('options');clock.run();assert.equal(video.src,undefined);assert.equal(video.playCount,undefined);assert.equal(video.loadCount,1);hub.dispose();
+ const desktop=mountedHub([{...games[0],attract:'one.webm'}]);await settle();assert.equal(desktop.host.querySelector('video').src,'one.webm');assert.equal(desktop.host.querySelector('video').playCount,1);desktop.hub.dispose();
+});
+test('discarding a started preview releases its source when switching views and disposing',async()=>{
+ const {host,hub}=mountedHub([{...games[0],attract:'one.webm'}]);await settle();
+ const video=host.querySelector('video');hub.show('options');assert.equal(video.src,undefined);assert.equal(video.loadCount,1);
+ hub.show('library');const next=host.querySelector('video');assert.equal(next.src,'one.webm');hub.dispose();assert.equal(next.src,undefined);assert.equal(next.loadCount,1);
+ next.dispatchEvent({type:'ended'});assert.equal(next.playCount,1,'detached video events cannot restart playback');
+});
 test('scrolling beneath a stationary pointer cannot replace the controller selection',async()=>{
  const {host,hub}=mountedHub(games);await settle();
  const one=host.querySelector('[data-game-id="one"]'),two=host.querySelector('[data-game-id="two"]');
@@ -148,9 +224,9 @@ test('scrolling beneath a stationary pointer cannot replace the controller selec
  one.dispatchEvent({type:'pointermove',pointerType:'touch'});assert.equal(hub.state.detail.id,'two');
  one.dispatchEvent({type:'pointermove',pointerType:'mouse'});assert.equal(hub.state.detail.id,'one','actual mouse movement still previews a game');
 });
-test('retired videos release their decoder and cannot restart or reveal on delayed events',async()=>{
- const frames=[],cancelled=[];
- const {host,hub}=mountedHub(games.map(game=>({...game,attract:game.id+'.webm'})),[],{},{},{},{requestVideoFrameCallback:fn=>(frames.push(fn),frames.length),cancelVideoFrameCallback:id=>cancelled.push(id)});await settle();
+for(const device of [false,true])test('retired videos release their decoder and cannot restart or reveal on delayed events; device='+device,async()=>{
+ const frames=[],cancelled=[],clock=device?devicePreviewClock():null;
+ const {host,hub}=mountedHub(games.map(game=>({...game,attract:game.id+'.webm'})),[],{},{},clock?.window||{},{requestVideoFrameCallback:fn=>(frames.push(fn),frames.length),cancelVideoFrameCallback:id=>cancelled.push(id)});await settle();clock?.run();
  const old=host.querySelector('video');old.readyState=2;old.dispatchEvent({type:'playing'});
  const lateFrame=frames[0],plays=old.playCount;
  host.querySelector('[data-game-id="two"]').focus();
@@ -160,6 +236,7 @@ test('retired videos release their decoder and cannot restart or reveal on delay
  assert.equal(old.playCount,plays,'a queued end event must never restart a retired trailer');
  assert.equal(old.style.opacity,'0','a queued frame must never reveal a retired trailer');
  assert.equal(host.querySelector('.preview-poster').src,'two.svg');
+ if(device){assert.equal(host.querySelector('video').src,undefined);clock.run();}
  assert.equal(host.querySelector('video').src,'two.webm');
  const current=host.querySelector('video');hub.show('options');
  assert.equal(current.loadCount,1,'leaving the library releases its decoder too');

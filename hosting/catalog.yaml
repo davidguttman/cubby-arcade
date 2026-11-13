@@ -4,28 +4,124 @@
   manifest_url: https://trailmix.david.app/arcade/manifest.json
   artwork: https://trailmix.david.app/discovery/cover.png
   attract: https://trailmix.david.app/discovery/trailer.webm
+  media:
+    thumbnail:
+      url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-trail-mix-artwork-f699bb50bc6d.jpg
+      size: 8634
+      sha256: f7abfc51f85fbb925d49d750d551a0938d3ec075ebfb26fab80491f50ab38eac
+      source_sha256: f699bb50bc6dcc39b971756827fb52c71a838fc0ee2b36549cddd1d55f73bc81
+    artwork:
+      url: https://fortynews.publit.io/file/c_fit,w_640,h_480,q_75/cubby-trail-mix-artwork-f699bb50bc6d.jpg
+      size: 54830
+      sha256: 27f3afb18295039b9d972c018bd52e2f57fe6a3be6e9b75c9d607d97152fba1c
+      source_sha256: f699bb50bc6dcc39b971756827fb52c71a838fc0ee2b36549cddd1d55f73bc81
+    attract:
+      url: https://fortynews.publit.io/file/c_fit,w_320,h_240/cubby-trail-mix-attract-8ff0eeca17f6.webm
+      size: 1618083
+      sha256: 45a175c99bdd9dbbbbbf2478f25a6a302169da3b47209d6bfa830f4cee56e3b2
+      source_sha256: 8ff0eeca17f64e727716ab8152fb44f4bf6130f690f7555a86403523d3349f3b
 - id: fox-barrister
   title: Fox Barrister
   manifest_url: https://foxbarrister.david.app/arcade/manifest.json
   artwork: https://foxbarrister.david.app/discovery/cover.png
   attract: https://foxbarrister.david.app/discovery/trailer.webm
+  media:
+    thumbnail:
+      url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-fox-barrister-artwork-c6e0845ca178.jpg
+      size: 8526
+      sha256: a984a9753baa552198d20344ff1f606535c238d239f4c83b3f4a6887f4ac1178
+      source_sha256: c6e0845ca178a26806c8b7f3e041758a5e314cb6743e0d927cc18e7168c90b85
+    artwork:
+      url: https://fortynews.publit.io/file/c_fit,w_640,h_480,q_75/cubby-fox-barrister-artwork-c6e0845ca178.jpg
+      size: 54315
+      sha256: 853aea7bd835854f4effc1d5c035cd5617751fc359445a5fa4d7169299389fa0
+      source_sha256: c6e0845ca178a26806c8b7f3e041758a5e314cb6743e0d927cc18e7168c90b85
+    attract:
+      url: https://fortynews.publit.io/file/c_fit,w_320,h_240/cubby-fox-barrister-attract-ea612d9b1dc8.webm
+      size: 1860953
+      sha256: c4ae1a9b27c3a8330e0166f20f0e717dbf5f958b249ddb2fe212276efa618d1a
+      source_sha256: ea612d9b1dc86f20825b5a447822615b2c8807e0096395aa4303cac7b6e038b1
 - id: small-change
   title: Small Change
   manifest_url: https://smallchange.david.app/arcade/manifest.json
   artwork: https://smallchange.david.app/discovery/cover.png
   attract: https://smallchange.david.app/discovery/trailer.webm
+  media:
+    thumbnail:
+      url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-small-change-artwork-4db134e1302a.jpg
+      size: 11542
+      sha256: cf86bb56173a00d80ba7ce04444e78b7fc4d832f367e02ae3d95d1ea917aedd2
+      source_sha256: 4db134e1302ab06f58983b5fcc7f0c836cc3b303c04eb4c5f9029f96295b966c
+    artwork:
+      url: https://fortynews.publit.io/file/c_fit,w_640,h_480,q_75/cubby-small-change-artwork-4db134e1302a.jpg
+      size: 76866
+      sha256: d175fa20e4188dd690927427fdb9be4367e7556d3dfb34d3183da628f28dedc8
+      source_sha256: 4db134e1302ab06f58983b5fcc7f0c836cc3b303c04eb4c5f9029f96295b966c
+    attract:
+      url: https://fortynews.publit.io/file/c_fit,w_320,h_240/cubby-small-change-attract-18a71863d8db.webm
+      size: 1435298
+      sha256: 1bff33ca5d6bab0dc9a046c918f0ac6e3517807d602e34e2f25c1cf9086825f9
+      source_sha256: 18a71863d8db6d62fe407abb3d591cba5a7ff9b1ef483cd5a48dee6c502da42b
 - id: owl-the-way-home
   title: Owl the Way Home
   manifest_url: https://owlthewayhome.david.app/arcade/manifest.json
   artwork: https://owlthewayhome.david.app/discovery/cover.png
   attract: https://owlthewayhome.david.app/discovery/trailer.webm
+  media:
+    thumbnail:
+      url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-owl-the-way-home-artwork-76d100ca703e.jpg
+      size: 12147
+      sha256: b29aeee4f982d3df87498b46e0b3da76366b922e6fc32eeb6ba6ec62bc9a8156
+      source_sha256: 76d100ca703e9252bf6768556723f75b66d774ddbee4e2d7ac8c415f10b9147b
+    artwork:
+      url: https://fortynews.publit.io/file/c_fit,w_640,h_480,q_75/cubby-owl-the-way-home-artwork-76d100ca703e.jpg
+      size: 94240
+      sha256: cee9e2da8b006fdd0efc5dca74f30271c24e26f05d6563d5d541e2be1a6a50d6
+      source_sha256: 76d100ca703e9252bf6768556723f75b66d774ddbee4e2d7ac8c415f10b9147b
+    attract:
+      url: https://fortynews.publit.io/file/c_fit,w_320,h_240/cubby-owl-the-way-home-attract-14e8a5b99864-v.webm
+      size: 1746896
+      sha256: fde40ae914f19a6df2c66c5d0bda26c2e70377ddb610da3f5fd0bd10501322f5
+      source_sha256: 14e8a5b998642f42330557f0bacd7a858a9340b1ac09037a35e1238c34d01c8e
 - id: good-bribes-only
   title: Good Bribes Only
   manifest_url: https://goodbribesonly.david.app/arcade/manifest.json
   artwork: https://goodbribesonly.david.app/discovery/cover.png
   attract: https://goodbribesonly.david.app/discovery/trailer.webm
+  media:
+    thumbnail:
+      url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-good-bribes-only-artwork-767cf040236f-W.jpg
+      size: 7263
+      sha256: 300fc41f4ede728feb9b8c70bb4915699f7f212e208525362916c27ba444e523
+      source_sha256: 767cf040236f2e8dd33332415a3507a571c87afdc7214b16dfbfa803e51ee017
+    artwork:
+      url: https://fortynews.publit.io/file/c_fit,w_640,h_480,q_75/cubby-good-bribes-only-artwork-767cf040236f-W.jpg
+      size: 38942
+      sha256: 9f500ad0a656c1f85451af79574760183914a50ea7d343b108341286e021c78f
+      source_sha256: 767cf040236f2e8dd33332415a3507a571c87afdc7214b16dfbfa803e51ee017
+    attract:
+      url: https://fortynews.publit.io/file/c_fit,w_320,h_240/cubby-good-bribes-only-attract-fe68e098e6ba-d.webm
+      size: 1740249
+      sha256: 4594d6b2b1ed56a96993de3f7f7c8e86e3bb2ecb9d9c6f56993218da1d42c785
+      source_sha256: fe68e098e6ba593551c06dccb967f8feebbe2ee71c0b14056b391b7bdcee28e5
 - id: spell-castle
   title: Spell Castle
   manifest_url: https://spellcastle.david.app/arcade/manifest.json
   artwork: https://spellcastle.david.app/discovery/cover.png
   attract: https://spellcastle.david.app/discovery/trailer.webm
+  media:
+    thumbnail:
+      url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-spell-castle-artwork-e15a8509b775.jpg
+      size: 12545
+      sha256: b283c990b4415e73571204025695f9e84f240c3968f6683d1bee99abe7948dff
+      source_sha256: e15a8509b775b46abb95441bf4131f6f2d6c060262197b0c87b597abcd74aac1
+    artwork:
+      url: https://fortynews.publit.io/file/c_fit,w_640,h_480,q_75/cubby-spell-castle-artwork-e15a8509b775.jpg
+      size: 86206
+      sha256: 89664660feb2c3814a5237b655802dce067fe485d2182155b2e97485e61646b7
+      source_sha256: e15a8509b775b46abb95441bf4131f6f2d6c060262197b0c87b597abcd74aac1
+    attract:
+      url: https://fortynews.publit.io/file/c_fit,w_320,h_240/cubby-spell-castle-attract-037d95779c95.webm
+      size: 1830389
+      sha256: 95df4cd0b17023d82d5d15563309b844a9384faf8267b540d2106dc9c01eda4b
+      source_sha256: 037d95779c95af169f879bca5aa6b120b366e3971d9dff47e20717452926fbc5

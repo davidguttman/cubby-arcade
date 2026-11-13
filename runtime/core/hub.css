@@ -272,3 +272,15 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 
 /* Overflow copies are visual only; the middle row owns keyboard focus. */
 .shelf.is-looping>:first-child{margin-left:0}.shelf.is-looping>:last-child{margin-right:0}.shelf-copy{cursor:pointer;touch-action:manipulation;flex-shrink:0}.shelf-copy.is-owned{pointer-events:none}
+
+/* The handheld spends its frame budget on input and the selected game, not
+   perpetual decoration or repainting interpolated shadows on every card. */
+.device-hub .hero-backdrop{display:none}
+.hub .device-hub button{transition:transform .09s ease-out,opacity .09s linear}
+.hub .device-hub :is(.game-card,.shelf-copy){transition:transform .1s ease-out}
+.device-hub :is(.game-card,.shelf-copy) img{transition:none}
+.device-hub .nav-pill{transition:transform .12s ease-out}
+.device-hub .detail .stage,.device-hub .detail-actions{animation:none}
+.hub .device-hub .play-game svg,.hub .device-hub .brand-face circle,
+.hub .device-hub .rest-hint svg,.device-hub .shelf-status.empty svg,
+.device-hub .shelf-status.error svg{animation:none}
