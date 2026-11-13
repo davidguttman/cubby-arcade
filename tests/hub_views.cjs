@@ -43,6 +43,7 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   getAttribute(k){return this.attributes[k]??null;}
   removeAttribute(k){delete this.attributes[k];}
   addEventListener(k,f){(this.listeners[k]??=[]).push(f);}
+  removeEventListener(k,f){this.listeners[k]=(this.listeners[k]||[]).filter(fn=>fn!==f);}
   matches(selector){return selector.split(',').some(s=>{s=s.trim();const data=s.match(/\[data-game-id="([^"]+)"\]/);if(data)return this.dataset.gameId===data[1];const cls=s.match(/\.([\w-]+)/);return (!cls||this.classList.contains(cls[1]))&&(!s.startsWith('dialog')||this.tagName==='dialog')&&(!s.startsWith('button')||this.tagName==='button')&&(!s.startsWith('video')||this.tagName==='video')&&(!s.startsWith('img')||this.tagName==='img')&&(!s.includes(':not(:disabled)')||!this.disabled);});}
   querySelectorAll(selector){if(selector==='.hero-rest img')return this.querySelector('.hero-rest')?.querySelectorAll('img')||[];return this.children.flatMap(e=>[...(e.matches(selector)?[e]:[]),...e.querySelectorAll(selector)]);}
   querySelector(s){return this.querySelectorAll(s)[0]||null;}
@@ -54,7 +55,7 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   dispatchEvent(event){for(const fn of this.listeners[event.type]||[])fn(event);return true;}
   insertAdjacentHTML(){}
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
-  play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){}
+  play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){this.loadCount=(this.loadCount||0)+1;}
  }
  const doc={createElement:tag=>new Element(tag),activeElement:null};
  const platform={capabilities,library:async()=>games,catalog:async()=>catalog,install:async()=>{},onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({}),...overrides};
@@ -138,6 +139,31 @@ test('older video engines reveal only on playback and retain artwork on failure'
 test('rejected preview playback leaves the artwork visible',async()=>{
  const {host}=mountedHub([{...games[0],attract:'one.webm'}],[],{},{},{},{play(){return Promise.reject(new Error('blocked'));}});await settle();
  assert.equal(host.querySelector('.preview-poster')?.src,'one.svg');assert.equal(host.querySelector('video').style.opacity,'0');
+});
+test('scrolling beneath a stationary pointer cannot replace the controller selection',async()=>{
+ const {host,hub}=mountedHub(games);await settle();
+ const one=host.querySelector('[data-game-id="one"]'),two=host.querySelector('[data-game-id="two"]');
+ two.focus();one.dispatchEvent({type:'pointerenter',pointerType:'mouse'});
+ assert.equal(hub.state.detail.id,'two','layout-induced pointer entry is not a game selection');
+ one.dispatchEvent({type:'pointermove',pointerType:'touch'});assert.equal(hub.state.detail.id,'two');
+ one.dispatchEvent({type:'pointermove',pointerType:'mouse'});assert.equal(hub.state.detail.id,'one','actual mouse movement still previews a game');
+});
+test('retired videos release their decoder and cannot restart or reveal on delayed events',async()=>{
+ const frames=[],cancelled=[];
+ const {host,hub}=mountedHub(games.map(game=>({...game,attract:game.id+'.webm'})),[],{},{},{},{requestVideoFrameCallback:fn=>(frames.push(fn),frames.length),cancelVideoFrameCallback:id=>cancelled.push(id)});await settle();
+ const old=host.querySelector('video');old.readyState=2;old.dispatchEvent({type:'playing'});
+ const lateFrame=frames[0],plays=old.playCount;
+ host.querySelector('[data-game-id="two"]').focus();
+ assert.equal(old.loadCount,1,'retiring must reset the media resource, not only pause');
+ assert.deepEqual(cancelled,[1]);
+ old.dispatchEvent({type:'ended'});old.dispatchEvent({type:'playing'});lateFrame();
+ assert.equal(old.playCount,plays,'a queued end event must never restart a retired trailer');
+ assert.equal(old.style.opacity,'0','a queued frame must never reveal a retired trailer');
+ assert.equal(host.querySelector('.preview-poster').src,'two.svg');
+ assert.equal(host.querySelector('video').src,'two.webm');
+ const current=host.querySelector('video');hub.show('options');
+ assert.equal(current.loadCount,1,'leaving the library releases its decoder too');
+ hub.dispose();
 });
 test('empty Library remains an empty pictorial state',async()=>{
  const {host,hub}=mountedHub([]);await settle();hub.show('library');
