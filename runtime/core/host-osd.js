@@ -98,6 +98,34 @@
     return pads;
    }};
  }
+ // The handheld's browser turns a finger into one pointerdown and never its pointerup; after that a tap
+ // brings only a click (sometimes mousedown/mouseup too). So the first tap is held forever and no later
+ // tap presses at all, in games and the game menu alike. From what it does send, complete each tap into a
+ // pointerdown and a pointerup. Browsers that send their own pointer events (desktop, phones) get nothing
+ // extra: their mouse events and click come just after their own pointerup.
+ function completeTouches(win,listen,now=()=>win.performance?.now?.()??Date.now()){
+  const open=new Map();let lastDown=-1e9,lastUp=-1e9,tapPressed=false;
+  function fire(type,target,from,id){
+   const init={bubbles:true,cancelable:true,composed:true,pointerId:id,pointerType:'touch',isPrimary:true,button:0,buttons:type==='pointerdown'?1:0,clientX:from.clientX,clientY:from.clientY,screenX:from.screenX,screenY:from.screenY};
+   let event;try{event=new win.PointerEvent(type,init);}catch{event=new win.Event(type,{bubbles:true,cancelable:true,composed:true});for(const k of Object.keys(init))if(!(k in event))event[k]=init[k];}
+   event.cubbyCompleted=true;(target?.isConnected===false?win:target||win).dispatchEvent(event);
+  }
+  const own=e=>e.isTrusted&&!e.cubbyCompleted;
+  const theirs=()=>now()-lastDown<150||now()-lastUp<800;   // this browser is sending its own pointer events
+  const release=from=>{for(const [id,target] of [...open]){open.delete(id);fire('pointerup',target,from,id);}};
+  listen(win,'pointerdown',e=>{if(own(e)){lastDown=now();tapPressed=true;open.set(e.pointerId,e.target);}},true);
+  for(const type of ['pointerup','pointercancel'])listen(win,type,e=>{if(own(e)){lastUp=now();open.delete(e.pointerId);}},true);
+  listen(win,'mousedown',e=>{if(!own(e)||e.button!==0||theirs())return;tapPressed=true;open.set(1,e.target);fire('pointerdown',e.target,e,1);},true);
+  listen(win,'mouseup',e=>{if(own(e))release(e);},true);
+  // A click ends the tap: release what is still held, or, when nothing pressed, it is the whole tap.
+  // Keyboard clicks (detail 0) are not taps.
+  listen(win,'click',e=>{
+   if(!own(e)||e.button!==0||!e.detail)return;
+   if(open.size)release(e);
+   else if(!tapPressed&&!theirs()){fire('pointerdown',e.target,e,1);fire('pointerup',e.target,e,1);}
+   tapPressed=false;
+  },true);
+ }
  function install(win){
   if(win.HandheldOSD)return win.HandheldOSD;
   const doc=win.document,nav=win.navigator,prefs=win.HandheldPreferences?.preferences;
@@ -113,6 +141,7 @@
   Object.defineProperty(win,'HandheldControls',{configurable:true,get:()=>legacyGate,set(){}});
   Object.defineProperty(nav,'getGamepads',{configurable:true,value:()=>device.getGamepads()});
   function listen(target,type,callback,capture=false){target.addEventListener(type,callback,capture);listeners.push(()=>target.removeEventListener(type,callback,capture));}
+  completeTouches(win,listen);
   function cancelRelease(pointer){const id=pendingRelease.get(pointer);if(id!==undefined)win.cancelAnimationFrame?.(id);pendingRelease.delete(pointer);}
   function sync(){const pad=device.getGamepads().find(p=>p?.mapping==='standard');shadow?.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(!!pad?.buttons[indices[b.dataset.button]]?.pressed)));}
   function release(pointer){cancelRelease(pointer);if(!win.requestAnimationFrame){device.release(pointer);sync();return;}pendingRelease.set(pointer,win.requestAnimationFrame(()=>pendingRelease.set(pointer,win.requestAnimationFrame(()=>{pendingRelease.delete(pointer);device.release(pointer);sync();}))));}
@@ -165,5 +194,5 @@
   const api={device,calibration,reset,get root(){return shadow;},dispose(){if(disposed)return;disposed=true;reset();listeners.forEach(f=>f());host?.remove();style?.remove();doc.documentElement.removeAttribute('data-cubby-osd');if(descriptor)Object.defineProperty(nav,'getGamepads',descriptor);else delete nav.getGamepads;if(legacyDescriptor)Object.defineProperty(win,'HandheldControls',legacyDescriptor);else delete win.HandheldControls;if(win.HandheldOSD===api)delete win.HandheldOSD;}};
   return api;
  }
- return {createDevice,createCalibration,controllerKey,install};
+ return {createDevice,createCalibration,controllerKey,install,completeTouches};
 });

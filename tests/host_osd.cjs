@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-const {createDevice,install}=require('../runtime/core/host-osd.js');
+const {createDevice,install,completeTouches}=require('../runtime/core/host-osd.js');
 test('virtual controller is neutral immediately; multiple pointers hold and release independent buttons',()=>{
  const device=createDevice(()=>[]);assert.equal(device.getGamepads()[0].buttons.some(b=>b.pressed),false);
  device.press(1,'up');device.press(2,'a');device.press(3,'a');
@@ -79,4 +79,41 @@ test('an embedded physical handheld keeps the host gate but does not mount a vis
  f.win.HandheldControls={createControls(){throw Error('legacy game deck mounted');}};
  assert.doesNotThrow(()=>f.win.HandheldControls.createControls({},'game')());
  f.pointer('pointerdown','a');assert.equal(f.win.navigator.getGamepads()[0].buttons.some(b=>b.pressed),false);f.osd.dispose();
+});
+
+// A fake window that dispatches to capture listeners, as the browser would.
+function touchWindow(){
+ const ls={};let clock=0;
+ const win={performance:{now:()=>clock},addEventListener:(t,f)=>(ls[t]??=[]).push(f),removeEventListener(){},
+  Event:class{constructor(type){this.type=type;}},PointerEvent:class{constructor(type,init){Object.assign(this,{type},init);}},
+  dispatchEvent(e){for(const f of ls[e.type]||[])f(e);}};
+ const target={isConnected:true,dispatchEvent:e=>win.dispatchEvent(e)};
+ const seen=[];for(const t of ['pointerdown','pointerup'])win.addEventListener(t,e=>seen.push(t+(e.cubbyCompleted?'*':'')));
+ const send=(type,extra={})=>win.dispatchEvent({type,isTrusted:true,target,button:0,detail:type==='click'?1:0,clientX:10,clientY:20,pointerId:1,...extra});
+ return {win,seen,send,tick:ms=>{clock+=ms;}};
+}
+test('a tap on the handheld browser (pointerdown once, then only mouse events) becomes a press and a release every time',()=>{
+ const f=touchWindow(),listen=(t,type,fn,c)=>t.addEventListener(type,fn,c);completeTouches(f.win,listen);
+ // First tap: the browser's own pointerdown, then mouse events, never a pointerup.
+ f.send('pointerdown');f.tick(5);f.send('mousedown');f.tick(80);f.send('mouseup');f.send('click');
+ assert.deepEqual(f.seen,['pointerdown','pointerup*']);
+ // Later taps: no pointer events at all.
+ f.seen.length=0;f.tick(2000);f.send('mousedown');f.tick(80);f.send('mouseup');f.send('click');
+ f.tick(700);f.send('mousedown');f.send('mouseup');
+ assert.deepEqual(f.seen,['pointerdown*','pointerup*','pointerdown*','pointerup*']);
+});
+test('browsers that send their own pointer events get nothing extra, including a phone\'s late mouse events after a touch',()=>{
+ const f=touchWindow(),listen=(t,type,fn,c)=>t.addEventListener(type,fn,c);completeTouches(f.win,listen);
+ f.send('pointerdown');f.send('mousedown');f.tick(60);f.send('pointerup');f.send('mouseup');f.send('click');   // desktop mouse
+ f.tick(2000);f.send('pointerdown',{pointerType:'touch'});f.tick(400);f.send('pointerup');f.tick(300);f.send('mousedown');f.send('mouseup');   // phone: late compatibility events
+ f.tick(2000);f.send('mousedown',{button:2});f.send('mouseup',{button:2});   // a right click is not a tap
+ assert.deepEqual(f.seen,['pointerdown','pointerup','pointerdown','pointerup']);
+});
+
+test('a tap that brings only a click is a whole tap; keyboard clicks are not',()=>{
+ const f=touchWindow(),listen=(t,type,fn,c)=>t.addEventListener(type,fn,c);completeTouches(f.win,listen);
+ f.send('pointerdown');f.tick(600);f.send('click');   // the first tap: the browser's own pointerdown, then a click
+ f.tick(2000);f.send('click');f.tick(2000);f.send('click');
+ f.tick(2000);f.send('click',{detail:0});   // Enter on a focused button
+ assert.deepEqual(f.seen,['pointerdown','pointerup*','pointerdown*','pointerup*','pointerdown*','pointerup*']);
 });
