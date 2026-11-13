@@ -31,14 +31,20 @@ test('options contain adult setup but no manual touch controls',()=>{
 });
 
 // Small DOM adapter for exercising the mounted hub without a browser dependency.
-function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverrides={},mediaOverrides={}){
+function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverrides={},mediaOverrides={},geometry=null){
  let onInstall,onAction,revision=0;
+ const work={queries:0,layout:0,htmlReads:0,copyWrites:0,selectionWrites:0};
  class Element{
-  constructor(tag='div'){if(tag==='video')Object.assign(this,mediaOverrides);this.tagName=tag;this.children=[];this.attributes={};this.dataset={};this.hidden=false;this.listeners={};this.style={setProperty(){},removeProperty(){}};this.className='';this.ownerDocument=doc;this.classList={contains:n=>this.className.split(' ').includes(n),add:n=>{if(!this.classList.contains(n))this.className+=' '+n;},remove:n=>{this.className=this.className.split(' ').filter(x=>x!==n).join(' ');},toggle:(n,on)=>{on??=!this.classList.contains(n);this.classList[on?'add':'remove'](n);}};}
-  appendChild(e){this.children.push(e);e.parent=this;return e;}
-  replaceChildren(...nodes){this.children=[];nodes.forEach(n=>this.appendChild(n));}
+  constructor(tag='div'){if(tag==='video')Object.assign(this,mediaOverrides);this.tagName=tag;this.children=[];this.attributes={};this.dataset={};this.hidden=false;this.listeners={};this.style={setProperty(){},removeProperty(){}};this.className='';this.ownerDocument=doc;this.classList={contains:n=>this.className.split(' ').includes(n),add:n=>{if(!this.classList.contains(n))this.className+=' '+n;},remove:n=>{this.className=this.className.split(' ').filter(x=>x!==n).join(' ');},toggle:(n,on)=>{if(n==='is-selected'||n==='is-copy-selected')work.selectionWrites++;on??=!this.classList.contains(n);this.classList[on?'add':'remove'](n);}};}
+  appendChild(e){if(e.tagName==='#fragment'){for(const child of [...e.children])this.appendChild(child);return e;}this.children.push(e);e.parent=this;return e;}
+  insertBefore(e,before){const nodes=e.tagName==='#fragment'?[...e.children]:[e],index=this.children.indexOf(before);this.children.splice(index,0,...nodes);for(const node of nodes)node.parent=this;}
+  cloneNode(deep){const copy=new Element(this.tagName);copy.className=this.className;copy.attributes={...this.attributes};copy.dataset={...this.dataset};copy._html=this._html;if(deep)for(const child of this.children)copy.appendChild(child.cloneNode(true));return copy;}
+  get clientWidth(){work.layout++;return geometry&&this.classList.contains('shelf')?geometry.width:0;}
+  get offsetWidth(){work.layout++;return geometry&&(this.classList.contains('game-card')||this.classList.contains('shelf-copy'))?geometry.cardWidth:0;}
+  get offsetLeft(){work.layout++;if(!geometry||!this.parent)return 0;const siblings=this.parent.children.filter(e=>e.classList.contains('game-card')||e.classList.contains('shelf-copy'));return geometry.padding+siblings.indexOf(this)*(geometry.cardWidth+geometry.gap);}
+  replaceChildren(...nodes){if(this.classList.contains('shelf-copy'))work.copyWrites++;this.children=[];nodes.forEach(n=>this.appendChild(n));}
   set innerHTML(value){this._html=value;this.replaceChildren();if(value.includes('class="topbar"'))for(const cls of ['brand','view-nav','view-body','hero-backdrop','hero-rest','shelf','detail','options-panel','adult-setup','hud']){const e=this.appendChild(new Element(cls==='adult-setup'?'dialog':'div'));e.className=cls;if(cls==='detail')e.hidden=true;if(cls==='hero-rest')e.appendChild(new Element('img'));}}
-  get innerHTML(){return this._html||'';}
+  get innerHTML(){work.htmlReads++;return this._html||'';}
   set src(value){this.setAttribute('src',value);}
   get src(){return this.attributes.src;}
   setAttribute(k,v){this.attributes[k]=String(v);}
@@ -46,10 +52,10 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   removeAttribute(k){delete this.attributes[k];}
   addEventListener(k,f){(this.listeners[k]??=[]).push(f);}
   removeEventListener(k,f){this.listeners[k]=(this.listeners[k]||[]).filter(fn=>fn!==f);}
-  matches(selector){return selector.split(',').some(s=>{s=s.trim();const data=s.match(/\[data-game-id="([^"]+)"\]/);if(data)return this.dataset.gameId===data[1];const cls=s.match(/\.([\w-]+)/);return (!cls||this.classList.contains(cls[1]))&&(!s.startsWith('dialog')||this.tagName==='dialog')&&(!s.startsWith('button')||this.tagName==='button')&&(!s.startsWith('video')||this.tagName==='video')&&(!s.startsWith('img')||this.tagName==='img')&&(!s.includes(':not(:disabled)')||!this.disabled);});}
-  querySelectorAll(selector){if(selector==='.hero-rest img')return this.querySelector('.hero-rest')?.querySelectorAll('img')||[];return this.children.flatMap(e=>[...(e.matches(selector)?[e]:[]),...e.querySelectorAll(selector)]);}
+  matches(selector){return selector.split(',').some(s=>{s=s.trim();if(s.includes(' ')){const parts=s.split(/\s+/),last=parts.pop();return this.matches(last)&&!!this.parent?.closest(parts.join(' '));}const data=s.match(/\[data-game-id="([^"]+)"\]/);if(data)return this.dataset.gameId===data[1];const cls=s.match(/\.([\w-]+)/);return (!cls||this.classList.contains(cls[1]))&&(!s.startsWith('dialog')||this.tagName==='dialog')&&(!s.startsWith('button')||this.tagName==='button')&&(!s.startsWith('video')||this.tagName==='video')&&(!s.startsWith('img')||this.tagName==='img')&&(!s.includes(':not(:disabled)')||!this.disabled);});}
+  querySelectorAll(selector){work.queries++;if(selector==='.hero-rest img')return this.querySelector('.hero-rest')?.querySelectorAll('img')||[];return this.children.flatMap(e=>[...(e.matches(selector)?[e]:[]),...e.querySelectorAll(selector)]);}
   querySelector(s){return this.querySelectorAll(s)[0]||null;}
-  getBoundingClientRect(){return {left:0,top:0,width:0,height:0};}
+  getBoundingClientRect(){work.layout++;const width=this.clientWidth||this.offsetWidth,left=this.offsetLeft-(this.parent?.scrollLeft||0);return {left,top:0,width,height:0,right:left+width};}
   closest(s){for(let e=this;e;e=e.parent)if(s==='[hidden]'?e.hidden:s==='dialog'?e.tagName==='dialog':e.matches(s))return e;return null;}
   focus(){doc.activeElement=this;for(const fn of this.listeners.focus||[])fn();let e=this.parent;while(e){for(const fn of e.listeners.focusin||[])fn();e=e.parent;}}
   showModal(){this.open=true;}close(){this.open=false;}
@@ -59,14 +65,15 @@ function mountedHub(games,catalog=[],capabilities={},overrides={},windowOverride
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
   play(){this.playCount=(this.playCount||0)+1;return Promise.resolve();}pause(){this.pauseCount=(this.pauseCount||0)+1;}load(){this.loadCount=(this.loadCount||0)+1;}
  }
- const doc={createElement:tag=>new Element(tag),activeElement:null};
+ const doc={createElement:tag=>new Element(tag),createDocumentFragment:()=>new Element('#fragment'),activeElement:null};
  const platform={capabilities,library:async()=>games,catalog:async()=>catalog,install:async()=>{},onInstallState:fn=>{onInstall=fn;},installStatus:async()=>({}),...overrides};
  const windowListeners=new Map();
  doc.defaultView={localStorage:{getItem:()=>null},HandheldPreferences:{preferences:{subscribe:()=>()=>{},get:()=>({touchOverlay:'auto'})}},HandheldPlatform:{createPlatform:()=>platform},HandheldInput:{createInput:options=>(onAction=options.onAction,{dispose(){}})},
+ getComputedStyle:()=>({paddingLeft:String(geometry?.padding||0),paddingRight:String(geometry?.padding||0)}),
  addEventListener(type,listener){if(!windowListeners.has(type))windowListeners.set(type,new Set());windowListeners.get(type).add(listener);},
  removeEventListener(type,listener){windowListeners.get(type)?.delete(listener);},fire(type){for(const fn of windowListeners.get(type)||[])fn();},listenerCount:()=>[...windowListeners.values()].reduce((count,set)=>count+set.size,0),fetch:()=>Promise.resolve(),location:{},setTimeout:()=>0,clearTimeout(){},...windowOverrides};
  const host=new Element(),hub=Hub.mount(host);
- return {host,hub,action:(action,source)=>onAction({action,source}),refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
+ return {host,hub,work,action:(action,source)=>onAction({action,source}),refresh:entries=>{games=entries;onInstall({refresh:{phase:'installed',version:++revision}});}};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 const games=[{id:'one',artwork:'one.svg',entrypoint:'/one'},{id:'two',artwork:'two.svg',entrypoint:'/two'}];
@@ -175,6 +182,41 @@ function devicePreviewClock(){
  function advance(ms){const until=now+ms;for(;;){const due=[...jobs].filter(([,job])=>job.at<=until).sort((a,b)=>a[1].at-b[1].at)[0];if(!due)break;const [id,job]=due;jobs.delete(id);now=job.at;job.fn();}now=until;}
  return {jobs,advance,window:{CubbyDeviceProfile:'rg353v',AbortController,fetch:()=>new Promise(()=>{}),setTimeout(fn,delay){const id=++next;jobs.set(id,{fn,delay,at:now+delay});return id;},clearTimeout(id){jobs.delete(id);}},run(){advance(280);}};
 }
+test('selection reuses preview shell, poster and Library actions without stale targets',async()=>{
+ const {host,hub}=mountedHub(games,[],{uninstall:true});await settle();
+ const stage=host.querySelector('.stage'),close=host.querySelector('.detail-close'),poster=host.querySelector('.preview-media'),actions=host.querySelector('.detail-actions'),star=host.querySelector('.favorite'),play=host.querySelector('.play-game'),remove=host.querySelector('.uninstall-game');
+ host.querySelector('[data-game-id="two"]').focus();
+ assert.equal(host.querySelector('.stage'),stage);assert.equal(host.querySelector('.detail-close'),close);assert.equal(host.querySelector('.preview-media'),poster);assert.equal(poster.src,'two.svg');
+ assert.equal(host.querySelector('.detail-actions'),actions);assert.equal(host.querySelector('.favorite'),star);assert.equal(host.querySelector('.play-game'),play);assert.equal(host.querySelector('.uninstall-game'),remove);
+ star.click();assert.equal(hub.state.isFavorite('two'),true);assert.equal(hub.state.isFavorite('one'),false);
+ play.click();assert.equal(host.ownerDocument.defaultView.location.href,'/two');
+ remove.click();assert.equal(host.querySelector('.uninstall-picture img').src,'two.svg');host.querySelector('.cancel-uninstall').click();
+ host.querySelector('[data-game-id="one"]').focus();assert.equal(star.getAttribute('aria-pressed'),'false');star.click();assert.equal(hub.state.isFavorite('one'),true);
+});
+test('device reuses its poster across video and image selections while retiring each video',async()=>{
+ const clock=devicePreviewClock(),entries=[{...games[0],attract:'one.webm'},games[1],{id:'three',artwork:'three.svg',entrypoint:'/three',attract:'three.webm'}];
+ const {host}=mountedHub(entries,[],{},{},clock.window);await settle();clock.run();
+ const poster=host.querySelector('.preview-poster'),old=host.querySelector('video'),stage=host.querySelector('.stage');
+ host.querySelector('[data-game-id="two"]').focus();assert.equal(host.querySelector('.preview-media'),poster);assert.equal(poster.src,'two.svg');assert.equal(host.querySelector('video'),null);assert.equal(old.src,undefined);assert.equal(old.autoplay,false);
+ poster.dispatchEvent({type:'error'});assert.equal(old.poster,'one.svg','a reused poster must not mutate a retired video');
+ host.querySelector('[data-game-id="three"]').focus();assert.equal(host.querySelector('.stage'),stage);assert.equal(host.querySelector('.preview-poster'),poster);assert.equal(poster.src,'three.svg');
+ const video=host.querySelector('video');assert.notEqual(video,old);assert.equal(video.src,undefined);clock.run();assert.equal(video.src,'three.webm');
+});
+test('Store preview reuses download control and installs only the current offer',async()=>{
+ const installed=[],offers=games.map(g=>({...g,manifest_url:'/manifest/'+g.id}));
+ const {host,hub}=mountedHub([],offers,{install:true},{install:async id=>{installed.push(id);throw Error('offline');}});await settle();hub.show('store');
+ const download=host.querySelector('.download-game'),progress=host.querySelector('.install-progress');
+ host.querySelector('[data-game-id="two"]').focus();assert.equal(host.querySelector('.download-game'),download);assert.equal(host.querySelector('.install-progress'),progress);
+ download.click();await settle();assert.deepEqual(installed,['two']);
+});
+test('reused preview clears obsolete download state and never leaks a poster listener',async()=>{
+ const clock=devicePreviewClock(),first={...games[0],manifest_url:'/one.json',attract:'one.webm',media:{artwork:{url:'small-one.jpg'}}},second={...games[1],attract:'two.webm',media:{artwork:{url:'small-two.jpg'}}};
+ const {host,hub}=mountedHub([],[first,second],{install:true},{},clock.window);await settle();hub.show('store');
+ const poster=host.querySelector('.preview-poster'),count=poster.listeners.error.length;
+ host.querySelector('[data-game-id="two"]').focus();assert.equal(poster.listeners.error.length,count);assert.equal(host.querySelector('.download-game'),null);assert.equal(host.querySelector('.install-progress'),null);assert.ok(host.querySelector('.not-installed'));
+ const video=host.querySelector('video');poster.dispatchEvent({type:'error'});assert.equal(poster.src,'two.svg');assert.equal(video.poster,'two.svg');
+ host.querySelector('[data-game-id="one"]').focus();assert.equal(host.querySelector('.not-installed'),null);assert.ok(host.querySelector('.download-game'));assert.equal(poster.listeners.error.length,count);
+});
 for(const view of ['library','store'])test('device '+view+' selects immediately but starts only the settled trailer',async()=>{
  const clock=devicePreviewClock(),offers=games.map(game=>({...game,attract:game.id+'.webm',manifest_url:'/manifest'}));
  const {host,hub}=mountedHub(view==='library'?offers:[],offers,{install:true}, {},clock.window);await settle();
@@ -261,6 +303,67 @@ test('nonempty Store selects its first offer on load and return',async()=>{
  assert.equal(host.querySelectorAll('.is-selected').length,1);
  hub.show('options');hub.show('store');
  assert.equal(hub.state.detail?.id,'offer');assert.equal(host.querySelectorAll('.is-selected').length,1);
+});
+function loopShelf(count=24,library=null,windowOverrides={}){
+ const entries=Array.from({length:count},(_,i)=>({id:'game-'+i,artwork:i+'.svg',entrypoint:'/'+i,manifest_url:'/manifest/'+i}));
+ const geometry={width:480,cardWidth:100,gap:20,padding:16};
+ return {...mountedHub(library||entries,entries,{install:true},{},windowOverrides,{},geometry),geometry,entries};
+}
+test('selection navigation changes only old/new cards and copies without shelf scans or layout',async()=>{
+ const {host,hub,action,work}=loopShelf();await settle();
+ const cards=host.querySelectorAll('.game-card'),copies=host.querySelectorAll('.shelf-copy');cards[0].focus();
+ const before={...work};action('right');const delta=Object.fromEntries(Object.keys(work).map(key=>[key,work[key]-before[key]]));
+ assert.equal(hub.state.detail.id,'game-1');assert.equal(host.ownerDocument.activeElement,cards[1]);
+ assert.equal(delta.layout,0,'steady selection uses cached geometry');assert.equal(delta.htmlReads,0,'selection never serializes shelf markup');
+ assert.equal(delta.copyWrites,0,'selection does not replace copy contents');assert.ok(delta.selectionWrites<=6,JSON.stringify(delta));
+ // No shelf-wide query is allowed; detail/ancestor work stays constant as the shelf grows.
+ assert.ok(delta.queries<100,JSON.stringify(delta));
+ assert.deepEqual(cards.filter(card=>card.classList.contains('is-selected')),[cards[1]]);
+ assert.equal(copies.filter(copy=>copy.classList.contains('is-copy-selected')).length,2);hub.dispose();
+});
+test('a fitting shelf keeps its nonwrapping ends and cached selection geometry',async()=>{
+ const {host,hub,action,work}=loopShelf(2);await settle();const cards=host.querySelectorAll('.game-card');
+ assert.equal(host.querySelectorAll('.shelf-copy').length,0);cards[0].focus();action('left');assert.equal(host.ownerDocument.activeElement,cards[0]);
+ const before=work.layout;action('right');assert.equal(host.ownerDocument.activeElement,cards[1]);assert.equal(work.layout,before);action('right');assert.equal(host.ownerDocument.activeElement,cards[1]);hub.dispose();
+});
+test('native circular scroll and controller wrap keep the selection with fresh geometry after resize and rebuild',async()=>{
+ const {host,hub,action,work,geometry,entries,refresh}=loopShelf(8);await settle();
+ const shelf=host.querySelector('.shelf'),cards=host.querySelectorAll('.game-card');cards[0].focus();action('left');
+ assert.equal(hub.state.detail.id,'game-7');assert.equal(host.ownerDocument.activeElement,cards[7]);action('right');assert.equal(hub.state.detail.id,'game-0');
+ const centered=shelf.scrollLeft,cycle=8*120;shelf.scrollLeft=centered+cycle*3;shelf.dispatchEvent({type:'scroll'});assert.equal(shelf.scrollLeft,centered);
+ const before=work.layout;shelf.scrollLeft=centered-cycle*2;shelf.dispatchEvent({type:'scroll'});assert.equal(shelf.scrollLeft,centered);assert.equal(work.layout,before,'scroll normalization reads no geometry');
+ geometry.width=600;geometry.cardWidth=130;host.ownerDocument.defaultView.fire('resize');const resized=shelf.scrollLeft;assert.notEqual(resized,centered);
+ action('right');action('left');assert.equal(shelf.scrollLeft,resized,'selection uses new resize geometry');
+ refresh(entries.slice(0,2));await settle();assert.equal(host.querySelectorAll('.shelf-copy').length,0);assert.equal(hub.state.detail.id,'game-0');hub.dispose();
+});
+test('container/card resize observation invalidates geometry and disconnects on disposal',async()=>{
+ let observer;class ResizeObserver{constructor(callback){this.callback=callback;this.nodes=new Set();observer=this;}observe(node){this.nodes.add(node);}disconnect(){this.nodes.clear();}}
+ const {host,hub,action,geometry}=loopShelf(8,null,{ResizeObserver});await settle();
+ const shelf=host.querySelector('.shelf'),cards=host.querySelectorAll('.game-card');assert.ok(observer.nodes.has(shelf));assert.ok(cards.every(card=>observer.nodes.has(card)));
+ const previous=shelf.scrollLeft;geometry.cardWidth=140;geometry.width=530;observer.callback();const next=shelf.scrollLeft;assert.notEqual(next,previous);
+ action('right');action('left');assert.equal(shelf.scrollLeft,next);hub.dispose();assert.equal(observer.nodes.size,0);
+ observer.callback();assert.equal(host.querySelectorAll('.shelf-copy').length,16,'queued resize after disposal does no work');
+});
+test('updated device artwork reaches circular copies and their pointer/click controls use the refreshed game',async()=>{
+ const entries=Array.from({length:8},(_,i)=>({id:'game-'+i,artwork:i+'.svg',entrypoint:'/'+i})),clock=devicePreviewClock(),geometry={width:480,cardWidth:100,gap:20,padding:16};let current=entries;
+ const {host,hub}=mountedHub(entries,[],{},{library:async()=>current,catalog:async()=>current},clock.window,{},geometry);await settle();
+ const copies=host.querySelectorAll('.shelf-copy'),second=copies.find(copy=>copy.dataset.gameId==='game-1'),unrelated=copies.find(copy=>copy.dataset.gameId==='game-2').querySelector('img');
+ current=entries.map((game,i)=>i===1?{...game,media:{thumbnail:{url:'thumb.jpg'},artwork:{url:'hero.jpg'}}}:game);await hub.refreshCatalog();
+ for(const copy of copies.filter(copy=>copy.dataset.gameId==='game-1'))assert.equal(copy.querySelector('img').src,'thumb.jpg');
+ assert.equal(copies.find(copy=>copy.dataset.gameId==='game-2').querySelector('img'),unrelated);
+ second.dispatchEvent({type:'pointermove',pointerType:'touch'});assert.equal(hub.state.detail.id,'game-0');
+ const shelf=host.querySelector('.shelf'),scroll=shelf.scrollLeft;second.dispatchEvent({type:'pointermove',pointerType:'mouse'});assert.equal(hub.state.detail.id,'game-1');assert.equal(shelf.scrollLeft,scroll,'hover does not recenter native scrolling');
+ assert.equal(host.querySelector('.preview-media').src,'hero.jpg');second.click();assert.equal(host.ownerDocument.activeElement,host.querySelectorAll('.game-card')[1]);hub.dispose();
+});
+test('favorites and ownership update circular copies without replacing unrelated contents',async()=>{
+ const {host,hub,action,refresh,entries}=loopShelf(8,[]);await settle();
+ const cards=host.querySelectorAll('.game-card'),copies=host.querySelectorAll('.shelf-copy'),unrelated=copies.find(copy=>copy.dataset.gameId==='game-2').querySelector('img');
+ host.querySelector('.favorite').click();
+ for(const copy of copies.filter(copy=>copy.dataset.gameId==='game-0'))assert.equal(copy.querySelector('.card-badge').dataset.kind,'favorite');
+ assert.equal(copies.find(copy=>copy.dataset.gameId==='game-2').querySelector('img'),unrelated);
+ cards[1].focus();refresh([entries[0]]);await settle();
+ for(const copy of host.querySelectorAll('.shelf-copy').filter(copy=>copy.dataset.gameId==='game-0')){assert.ok(copy.classList.contains('is-owned'));assert.equal(copy.querySelector('.card-badge').dataset.kind,'installed');assert.equal(copy.getAttribute('aria-hidden'),'true');}
+ assert.equal(cards[0].getAttribute('aria-label'),'In library');assert.equal(hub.state.detail.id,'game-1');action('left');assert.equal(hub.state.detail.id,'game-7','updated navigation index skips the newly owned game');hub.dispose();
 });
 const shelfIds=host=>host.querySelectorAll('.game-card').map(card=>card.dataset.gameId);
 const offers=games.map(game=>({...game,manifest_url:'/manifest'}));

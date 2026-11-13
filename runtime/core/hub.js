@@ -605,7 +605,7 @@ function mount(host){
  const views=['library','store','options'],tabs={};let pendingTabFocus=null;for(const name of views)tabs[name]=button(nav,name,name,()=>activateView(name),'view-tab');
  function show(view,initial=false){if(adult)return;if(view!=='options')settingsUnlocked=false;pendingTabFocus=null;if(!initial)initialViewPending=false;retirePreview();state.show(view);tabs[view].setAttribute('aria-current','page');nav.style.setProperty('--active',views.indexOf(view));Object.keys(tabs).filter(x=>x!==view).forEach(x=>tabs[x].removeAttribute('aria-current'));body.hidden=view==='options';options.hidden=view!=='options';detail.hidden=true;body.classList.remove('has-detail');if(view==='options')renderOptions();else renderGrid();}
  // Activating a tab enters its content; merely navigating across tabs does not.
- function selectedCard(){const cards=Array.from(shelf.querySelectorAll('.game-card')).filter(card=>!card.disabled);return cards.find(card=>card.dataset.gameId===state.detail?.id)||cards[0];}
+ function selectedCard(){const card=cardsById.get(state.detail?.id);return card&&!card.disabled?card:selectableCards[0];}
  function focusView(){(state.view==='options'?options.querySelector('button:not(:disabled)'):selectedCard()||shelf.querySelector('.retry-starter'))?.focus();}
  function activateView(view,initial=false){if(adult)return;show(view,initial);tabs[view].focus();focusView();if(loading[view])pendingTabFocus=view;}
  function finishTabFocus(view){if(pendingTabFocus!==view)return;pendingTabFocus=null;if(state.view===view&&doc.activeElement===tabs[view])focusView();}
@@ -622,9 +622,9 @@ function mount(host){
  function entries(){return state.view==='store'?catalog:library;}
  function ownedInStore(id){return state.view==='store'&&library.some(x=>x.id===id);}
  function badgeFor(id){return ownedInStore(id)?icon('check'):state.isFavorite(id)?icon('star'):'';}
- function setBadge(badge,id){badge.innerHTML=badgeFor(id);badge.dataset.kind=ownedInStore(id)?'installed':state.isFavorite(id)?'favorite':'';}
+ function setBadge(badge,id){const kind=ownedInStore(id)?'installed':state.isFavorite(id)?'favorite':'';if(badge.dataset.kind===kind)return false;badge.innerHTML=badgeFor(id);badge.dataset.kind=kind;return true;}
  // A Store game already in the Library is only a picture: checked, dimmed, and skipped by every control.
- function setOwned(card){const id=card.dataset.gameId,owned=ownedInStore(id);card.disabled=owned;card.classList.toggle('is-owned',owned);card.setAttribute('aria-label',owned?'In library':'Preview game');const badge=card.querySelector('.card-badge');if(badge)setBadge(badge,id);}
+ function setOwned(card){const id=card.dataset.gameId,owned=ownedInStore(id),changed=card.disabled!==owned;card.disabled=owned;card.classList.toggle('is-owned',owned);card.setAttribute('aria-label',owned?'In library':'Preview game');const badge=card.querySelector('.card-badge');return (badge&&setBadge(badge,id))||changed;}
  function mediaURL(game,kind){return device&&typeof game?.media?.[kind]?.url==='string'?game.media[kind].url:game?.[kind==='attract'?'attract':'artwork']||'';}
  function fallbackImage(image){const fallback=image.dataset.mediaFallback;if(fallback){delete image.dataset.mediaFallback;image.src=fallback;}}
  function artwork(image,game,kind='artwork'){
@@ -635,66 +635,88 @@ function mount(host){
   if(!image.dataset.mediaListener){image.addEventListener('error',()=>fallbackImage(image));image.dataset.mediaListener='1';}
   if(url)image.src=url;else image.removeAttribute('src');
  }
- // Circular shelf copies are recreated from markup, not DOM listeners.
+ // Circular shelf copies clone content, not DOM listeners.
  shelf.addEventListener('error',event=>{if(event.target.tagName==='IMG')fallbackImage(event.target);},true);
  // The hero always shows a game: the open preview, or a resting cover that invites a pick below.
  function feature(game){featured=game||null;const art=mediaURL(game,'artwork');artwork(restArt,game);backdrop.style.backgroundImage=art?'url("'+art.replace(/["\\]/g,'\\$&')+'")':'';markSelection();}
  // Visual copies make native touch/trackpad scrolling circular. Only the middle
  // row contains buttons, so each game still has exactly one accessible control.
- let shelfCycle=0,hoverPreview=false;
- function shelfCards(){return Array.from(shelf.querySelectorAll('.game-card'));}
- function syncShelfCopies(){
-  const cards=new Map(shelfCards().map(card=>[card.dataset.gameId,card]));
-  for(const copy of shelf.querySelectorAll('.shelf-copy')){
-   const card=cards.get(copy.dataset.gameId);if(!card)continue;
-   if(copy.innerHTML!==card.innerHTML)copy.innerHTML=card.innerHTML;copy.className=card.className.replace('game-card','shelf-copy').replace('is-selected','is-copy-selected');
+ let shelfCycle=0,shelfStart=0,hoverPreview=false,markedCard=null;
+ let cards=[],selectableCards=[],cardsById=new Map(),cardIndexes=new Map(),gamesById=new Map(),copiesById=new Map(),shelfGeometry=new Map();
+ function indexShelf(){
+  selectableCards=cards.filter(card=>!card.disabled);cardIndexes=new Map(selectableCards.map((card,index)=>[card,index]));
+ }
+ function copyClass(card){return card.className.replace('game-card','shelf-copy').replace('is-selected','is-copy-selected');}
+ // Content only changes on a rebuild, picture refresh, favorite or ownership
+ // update. Selection changes classes on the old/new nodes, never their markup.
+ function syncShelfCopies(changed=cards){
+  for(const card of changed)for(const copy of copiesById.get(card.dataset.gameId)||[]){
+   copy.replaceChildren(...Array.from(card.children,child=>child.cloneNode(true)));copy.className=copyClass(card);
   }
  }
  function layoutShelf(){
-  for(const copy of shelf.querySelectorAll('.shelf-copy'))copy.remove();
-  shelfCycle=0;shelf.classList.remove('is-looping');
-  const cards=shelfCards(),width=shelf.clientWidth;
-  if(!width||cards.length<2)return;
-  const first=cards[0],last=cards[cards.length-1];
-  const style=win.getComputedStyle(shelf),padding=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight);
-  if(last.offsetLeft+last.offsetWidth-first.offsetLeft<=width-padding)return;
-  shelf.classList.add('is-looping');
-  function copyOf(card){
-   const copy=doc.createElement('div');copy.className='shelf-copy';copy.dataset.gameId=card.dataset.gameId;copy.setAttribute('aria-hidden','true');
-   copy.addEventListener('click',()=>{if(!card.disabled){preview(entries().find(g=>g.id===card.dataset.gameId));card.focus({preventScroll:true});revealCard(card);}});
-   copy.addEventListener('pointermove',e=>{if(e.pointerType!=='touch'&&!card.disabled)previewHovered(entries().find(g=>g.id===card.dataset.gameId));});
-   return copy;
+  for(const copies of copiesById.values())for(const copy of copies)copy.remove();
+  copiesById=new Map();shelfGeometry=new Map();shelfCycle=0;shelfStart=0;shelf.classList.remove('is-looping');
+  const width=shelf.clientWidth;if(!width||!cards.length)return;
+  const first=cards[0],last=cards[cards.length-1],style=win.getComputedStyle(shelf),padding=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight);
+  if(cards.length>1&&last.offsetLeft+last.offsetWidth-first.offsetLeft>width-padding){
+   shelf.classList.add('is-looping');
+   function copyOf(card){
+    const copy=doc.createElement('div');copy.className='shelf-copy';copy.dataset.gameId=card.dataset.gameId;copy.setAttribute('aria-hidden','true');
+    copy.addEventListener('click',()=>{if(!card.disabled){preview(gamesById.get(card.dataset.gameId));card.focus({preventScroll:true});revealCard(card);}});
+    copy.addEventListener('pointermove',e=>{if(e.pointerType!=='touch'&&!card.disabled)previewHovered(gamesById.get(card.dataset.gameId));});
+    const copies=copiesById.get(card.dataset.gameId)||[];copies.push(copy);copiesById.set(card.dataset.gameId,copies);return copy;
+   }
+   const before=doc.createDocumentFragment();for(const card of cards)before.appendChild(copyOf(card));shelf.insertBefore(before,first);
+   for(const card of cards)shelf.appendChild(copyOf(card));
+   syncShelfCopies();
+   shelfCycle=first.offsetLeft-copiesById.get(first.dataset.gameId)[0].offsetLeft;
   }
-  const before=doc.createDocumentFragment();for(const card of cards)before.appendChild(copyOf(card));shelf.insertBefore(before,first);
-  for(const card of cards)shelf.appendChild(copyOf(card));
-  shelfCycle=cards[0].offsetLeft-shelf.querySelector('.shelf-copy').offsetLeft;
-  syncShelfCopies();
+  // Read layout together once after a structural/size change. All following
+  // selection and native scroll events use these scroll-space coordinates.
+  const positions=cards.map(card=>({card,left:card.offsetLeft,width:card.offsetWidth})),firstLeft=positions[0].left,pitch=shelfCycle/cards.length;
+  if(shelfCycle)shelfStart=firstLeft+positions[0].width/2-width/2-pitch/2;
+  for(const position of positions){
+   let target=position.left+position.width/2-width/2;
+   if(shelfCycle){
+    const mod=x=>(x%pitch+pitch)%pitch;
+    // Keep artwork, not an empty gap, crossing both viewport edges.
+    for(let shift=0;shift<pitch;shift++){
+     const delta=shift%2?-(shift+1)/2:shift/2,x=target+delta;
+     if([x,x+width].every(edge=>{const r=mod(edge-firstLeft);return r>12&&r<position.width-12;})){target=x;break;}
+    }
+   }
+   shelfGeometry.set(position.card,{left:position.left,right:position.left+position.width,viewportWidth:width,target});
+  }
  }
+ function shelfPosition(x){return shelfCycle&&(x<shelfStart-1||x>=shelfStart+shelfCycle)?shelfStart+((x-shelfStart)%shelfCycle+shelfCycle)%shelfCycle:x;}
  function normalizeShelf(){
   if(!shelfCycle)return;
-  const first=shelfCards()[0],start=first.offsetLeft+first.offsetWidth/2-shelf.clientWidth/2-shelfCycle/shelfCards().length/2;
-  const x=shelf.scrollLeft;if(x<start-1||x>=start+shelfCycle)shelf.scrollLeft=start+((x-start)%shelfCycle+shelfCycle)%shelfCycle;
+  const x=shelf.scrollLeft,target=shelfPosition(x);if(x!==target)shelf.scrollLeft=target;
  }
  shelf.addEventListener('scroll',normalizeShelf,{passive:true});
  function revealCard(card){
-  const bounds=shelf.getBoundingClientRect();if(!bounds.width)return;
-  if(shelfCycle){
-   const cards=shelfCards(),pitch=shelfCycle/cards.length,w=card.offsetWidth,mod=x=>(x%pitch+pitch)%pitch;
-   let target=card.offsetLeft+w/2-shelf.clientWidth/2;
-   // Keep artwork, not an empty gap, crossing both edges of the viewport.
-   for(let shift=0;shift<pitch;shift++){
-    const delta=shift%2?-(shift+1)/2:shift/2,x=target+delta;
-    if([x,x+shelf.clientWidth].every(edge=>{const r=mod(edge-cards[0].offsetLeft);return r>12&&r<w-12;})){target=x;break;}
-   }
-   shelf.scrollLeft=target;normalizeShelf();return;
-  }
-  const rect=card.getBoundingClientRect(),inset=16;
-  if(rect.left<bounds.left+inset)shelf.scrollLeft+=rect.left-bounds.left-inset;else if(rect.right>bounds.right-inset)shelf.scrollLeft+=rect.right-bounds.right+inset;
+  const geometry=shelfGeometry.get(card);if(!geometry)return;
+  if(shelfCycle){shelf.scrollLeft=shelfPosition(geometry.target);return;}
+  const x=shelf.scrollLeft||0,inset=16;
+  if(geometry.left<x+inset)shelf.scrollLeft=geometry.left-inset;else if(geometry.right>x+geometry.viewportWidth-inset)shelf.scrollLeft=geometry.right-geometry.viewportWidth+inset;
  }
- function resizeShelf(){layoutShelf();const card=selectedCard();if(card)revealCard(card);}
+ function resizeShelf(){if(disposed)return;layoutShelf();const card=selectedCard();if(card)revealCard(card);}
  win.addEventListener('resize',resizeShelf);
- function markSelection(){const id=detail.hidden?(state.view==='library'?featured?.id:null):state.detail?.id;shelf.classList.toggle('has-selection',!!id);for(const card of shelf.querySelectorAll('.game-card')){const selected=card.dataset.gameId===id;card.classList.toggle('is-selected',selected);if(selected&&!hoverPreview)revealCard(card);}syncShelfCopies();}
- function renderGrid(){shelfCycle=0;shelf.classList.remove('is-looping');shelf.replaceChildren();const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'';body.classList.toggle('is-status',!!status);
+ // Also cover container/CSS size changes without a window resize. Artwork and
+ // badges have fixed-size boxes; observing the real cards covers style changes.
+ const shelfObserver=win.ResizeObserver?new win.ResizeObserver(resizeShelf):null;
+ shelfObserver?.observe(shelf);
+ function markSelection(){
+  const id=detail.hidden?(state.view==='library'?featured?.id:null):state.detail?.id,card=cardsById.get(id)||null;
+  shelf.classList.toggle('has-selection',!!id);
+  if(card!==markedCard){
+   for(const [node,selected] of [[markedCard,false],[card,true]])if(node){node.classList.toggle('is-selected',selected);for(const copy of copiesById.get(node.dataset.gameId)||[])copy.classList.toggle('is-copy-selected',selected);}
+   markedCard=card;
+  }
+  if(card&&!hoverPreview)revealCard(card);
+ }
+ function renderGrid(){shelfObserver?.disconnect();shelfObserver?.observe(shelf);cards=[];selectableCards=[];cardsById=new Map();cardIndexes=new Map();gamesById=new Map(entries().map(game=>[game.id,game]));copiesById=new Map();shelfGeometry=new Map();markedCard=null;shelfCycle=0;shelf.classList.remove('is-looping');shelf.replaceChildren();const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'';body.classList.toggle('is-status',!!status);
  const store=state.view==='store',offer=store?catalog.find(g=>!ownedInStore(g.id)):null;body.classList.toggle('all-owned',store&&!status&&!offer);
  if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');if(state.view==='library'&&starterGame){
   if(starterPending){const progress=element(box,'progress','install-progress');progress.setAttribute('aria-label','Download progress');const job=installStates[starterGame];if(job?.total){progress.max=job.total;progress.value=job.received||0;}else progress.removeAttribute('value');}
@@ -702,14 +724,14 @@ function mount(host){
  }
  feature(null);return;}
  for(const game of store?[...catalog].sort((a,b)=>ownedInStore(a.id)-ownedInStore(b.id)):entries()){
- const card=button(shelf,'play','Preview game',()=>preview(game),'game-card');card.dataset.gameId=game.id;card.replaceChildren();const image=element(card,'img');artwork(image,game,'thumbnail');image.alt='';
+ const card=button(shelf,'play','Preview game',()=>preview(gamesById.get(game.id)),'game-card');card.dataset.gameId=game.id;cards.push(card);cardsById.set(game.id,card);shelfObserver?.observe(card);card.replaceChildren();const image=element(card,'img');artwork(image,game,'thumbnail');image.alt='';
  element(card,'span','card-badge');setOwned(card);
  // Scrolling can move cards under a stationary cursor and fire pointerenter.
  // Only actual pointer movement may override the keyboard/gamepad selection.
- card.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')previewHovered(game);});card.addEventListener('focus',()=>{if(state.detail?.id===game.id&&!detail.hidden)revealCard(card);else preview(game);});
+ card.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')previewHovered(gamesById.get(game.id));});card.addEventListener('focus',()=>{if(state.detail?.id===game.id&&!detail.hidden)revealCard(card);else preview(gamesById.get(game.id));});
  }
  if(state.view==='library'&&starterFailed)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
- layoutShelf();
+ indexShelf();layoutShelf();
  // Library always starts with a selection and keeps it through refreshes.
  const keep=entries().find(g=>g.id===(state.detail?.id||(state.view==='library'?returningGame:null)||featured?.id));
  if(state.view==='library'){returningGame=null;preview(keep||entries()[0]);markSelection();return;}
@@ -717,16 +739,26 @@ function mount(host){
  if(store&&!state.detail){if(offer)preview(keep&&!ownedInStore(keep.id)?keep:offer);else{hideDetail();feature(entries()[0]);}return;}
  feature(keep||entries()[0]);}
  function previewHovered(game){hoverPreview=true;try{preview(game);}finally{hoverPreview=false;}}
- function preview(game){if(!game||state.detail?.id===game.id&&!detail.hidden)return;retirePreview();state.select(game);detail.replaceChildren();detail.hidden=false;body.classList.add('has-detail');
- const stage=element(detail,'div','stage');
- button(stage,'back','Return to games',()=>returnToGames(),'detail-close');
- const media=doc.createElement(game.attract?'video':'img');media.className='preview-media';
+ let previewShell=null;
+ function ensurePreviewShell(){
+  if(previewShell)return previewShell;
+  const stage=element(detail,'div','stage');button(stage,'back','Return to games',()=>returnToGames(),'detail-close');
+  const poster=element(stage,'img');poster.alt='';artwork(poster,null);
+  // The image is reused; an error must update only today's video, never one
+  // retained by an earlier selection's closure.
+  poster.addEventListener('error',()=>{const video=stage.querySelector('video');if(video)video.poster=poster.src;});
+  const actions=element(detail,'div','detail-actions');
+  const star=button(actions,'star','Favorite',()=>{const id=state.detail?.id;if(!id||detail.hidden)return;state.favorite(id);star.setAttribute('aria-pressed',String(state.isFavorite(id)));const card=cardsById.get(id),badge=card?.querySelector('.card-badge');if(badge&&setBadge(badge,id))syncShelfCopies([card]);},'favorite');
+  return previewShell={stage,poster,actions,star};
+ }
+ function preview(game){if(!game||state.detail?.id===game.id&&!detail.hidden)return;retirePreview();state.select(game);detail.hidden=false;body.classList.add('has-detail');
+ const {stage,poster,star}=ensurePreviewShell();stage.querySelector('video')?.remove();
+ poster.className=game.attract?'preview-poster':'preview-media';artwork(poster,game);
  if(game.attract){
+  const media=doc.createElement('video');media.className='preview-media';
   // Native video posters can disappear before the decoder presents a frame.
   // Keep a real image underneath instead, including while a trailer reloads.
-  const poster=element(stage,'img','preview-poster');artwork(poster,game);poster.alt='';
   media.classList.add('preview-video');media.poster=mediaURL(game,'artwork');media.autoplay=!device;media.muted=true;media.playsInline=true;media.setAttribute('playsinline','');
-  poster.addEventListener('error',()=>{media.poster=poster.src;});
   let generation=0,active=true,frame=null,trailer=mediaURL(game,'attract');
   const cancelFrame=()=>{if(frame!==null){if(media.requestVideoFrameCallback)media.cancelVideoFrameCallback?.(frame);else win.cancelAnimationFrame?.(frame);frame=null;}};
   const cover=()=>{generation++;cancelFrame();media.style.opacity='0';};
@@ -753,19 +785,18 @@ function mount(host){
   // trailers that will be discarded on the next controller repeat.
   startPreview=()=>{if(!active||detail.querySelector('video')!==media)return;if(!media.getAttribute('src')){trailer=mediaURL(state.detail?.id===game.id?state.detail:game,'attract');media.src=trailer;}play();};
   queuePreview();
- }else{artwork(media,game);media.alt='';stage.appendChild(media);}
- const actions=element(detail,'div','detail-actions');
- const star=button(actions,'star','Favorite',()=>{state.favorite(game.id);star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));const badge=shelf.querySelector('.game-card[data-game-id="'+game.id+'"] .card-badge');if(badge)setBadge(badge,game.id);syncShelfCopies();},'favorite');star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));
+ }
+ star.setAttribute('aria-pressed',String(state.isFavorite(game.id)));
  feature(game);
  refreshOwnership(false);
  }
  // Update ownership in place: asynchronous Library discovery must not restart the
  // Store trailer or steal focus from its favorite/back controls.
  function refreshOwnership(shelfChanged=true){
- if(shelfChanged){for(const card of shelf.querySelectorAll('.game-card'))setOwned(card);syncShelfCopies();}
+ if(shelfChanged){const changed=cards.filter(card=>setOwned(card));if(changed.length){indexShelf();syncShelfCopies(changed);}}
  if(detail.hidden||!state.detail)return;
- const actions=detail.querySelector('.detail-actions'),installed=library.find(x=>x.id===state.detail.id);if(!actions)return;
- if(installed){if(platform.capabilities?.uninstall&&!actions.querySelector('.uninstall-game'))button(actions,'trash','Uninstall game',()=>openUninstall(installed),'uninstall-game');const remove=actions.querySelector('.uninstall-game'),phase=installStates[installed.id]?.phase;if(remove)remove.disabled=launchBusy||uninstallBusy||['checking','downloading','verifying','pending','uninstalling'].includes(phase);const previous=actions.querySelector('.download-game'),focused=previous===doc.activeElement;actions.querySelector('.not-installed')?.remove();previous?.remove();actions.querySelector('.install-progress')?.remove();if(!actions.querySelector('.play-game'))button(actions,'play','Play game',()=>launch(installed.id),'play-game');if(focused)actions.querySelector('.play-game')?.focus();const play=actions.querySelector('.play-game');if(platform.capabilities?.tokens){play.disabled=launchBusy||!account?.available||account.balance<1;play.setAttribute('aria-label',account?.balance===0?'No tokens; adult refill needed':account?.launchFailed?'Retry game launch for one token':'Play game for one token');play.innerHTML=icon(account?.launchFailed?'retry':'play')+icon('token');let failure=actions.querySelector('.launch-error');if(account?.launchFailed&&!failure){failure=element(actions,'span','launch-error');failure.setAttribute('aria-label','Launch failed; no token spent');failure.innerHTML=icon('alert');}else if(!account?.launchFailed)failure?.remove();}}
+ const actions=previewShell?.actions,installed=library.find(x=>x.id===state.detail.id);if(!actions)return;
+ if(installed){if(platform.capabilities?.uninstall&&!actions.querySelector('.uninstall-game'))button(actions,'trash','Uninstall game',()=>{const game=library.find(game=>game.id===state.detail?.id);if(game)openUninstall(game);},'uninstall-game');const remove=actions.querySelector('.uninstall-game'),phase=installStates[installed.id]?.phase;if(remove)remove.disabled=launchBusy||uninstallBusy||['checking','downloading','verifying','pending','uninstalling'].includes(phase);const previous=actions.querySelector('.download-game'),focused=previous===doc.activeElement;actions.querySelector('.not-installed')?.remove();previous?.remove();actions.querySelector('.install-progress')?.remove();if(!actions.querySelector('.play-game'))button(actions,'play','Play game',()=>launch(state.detail?.id),'play-game');if(focused)actions.querySelector('.play-game')?.focus();const play=actions.querySelector('.play-game');if(platform.capabilities?.tokens){play.disabled=launchBusy||!account?.available||account.balance<1;play.setAttribute('aria-label',account?.balance===0?'No tokens; adult refill needed':account?.launchFailed?'Retry game launch for one token':'Play game for one token');const glyph=account?.launchFailed?'retry':'play';if(play.dataset.glyph!==glyph){play.innerHTML=icon(glyph)+icon('token');play.dataset.glyph=glyph;}let failure=actions.querySelector('.launch-error');if(account?.launchFailed&&!failure){failure=element(actions,'span','launch-error');failure.setAttribute('aria-label','Launch failed; no token spent');failure.innerHTML=icon('alert');}else if(!account?.launchFailed)failure?.remove();}}
  else if(platform.capabilities?.install&&state.detail.manifest_url){
   actions.querySelector('.play-game')?.remove();actions.querySelector('.uninstall-game')?.remove();actions.querySelector('.launch-error')?.remove();
   actions.querySelector('.not-installed')?.remove();
@@ -779,7 +810,7 @@ function mount(host){
   let progress=actions.querySelector('.install-progress');if(!progress){progress=element(actions,'progress','install-progress');progress.setAttribute('aria-label','Download progress');}
   progress.hidden=!busy;if(status?.total){progress.max=status.total;progress.value=status.received||0;}else progress.removeAttribute('value');
  }
- else if(!actions.querySelector('.not-installed')){actions.querySelector('.play-game')?.remove();actions.querySelector('.uninstall-game')?.remove();const status=element(actions,'span','not-installed');status.setAttribute('aria-label','Not installed; adult installation required');status.innerHTML=icon('down');}
+ else{for(const selector of ['.play-game','.uninstall-game','.download-game','.install-progress','.launch-error'])actions.querySelector(selector)?.remove();if(!actions.querySelector('.not-installed')){const status=element(actions,'span','not-installed');status.setAttribute('aria-label','Not installed; adult installation required');status.innerHTML=icon('down');}}
  }
  // Owned games can't stay selected in the Store. A download the child just finished
  // hands off to its Library card; otherwise the selection moves to the next offer.
@@ -788,8 +819,8 @@ function mount(host){
   if(mediaOnly){
    // A refreshed feed can supply derivatives for an already installed release.
    // Upgrade pictures in place; never reset focus or restart a playing trailer.
-   for(const card of shelf.querySelectorAll('.game-card')){const game=library.find(game=>game.id===card.dataset.gameId);if(game)artwork(card.querySelector('img'),game,'thumbnail');}
-   const game=library.find(game=>game.id===state.detail?.id);if(game){state.detail=game;const poster=detail.querySelector('.preview-poster');if(poster)artwork(poster,game);const video=detail.querySelector('video');if(video)video.poster=mediaURL(game,'artwork');feature(game);}syncShelfCopies();
+   gamesById=new Map(library.map(game=>[game.id,game]));const changed=[];for(const card of cards){const game=gamesById.get(card.dataset.gameId),image=card.querySelector('img');if(game&&image.dataset.mediaSource!==mediaURL(game,'thumbnail')){artwork(image,game,'thumbnail');changed.push(card);}}
+   const game=library.find(game=>game.id===state.detail?.id);if(game){state.detail=game;const poster=previewShell?.poster;if(poster)artwork(poster,game);const video=detail.querySelector('video');if(video)video.poster=mediaURL(game,'artwork');feature(game);}syncShelfCopies(changed);
   }else{const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)(selectedCard()||tabs.library).focus();}
  }refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
  function reloadPlayerGames(){
@@ -827,9 +858,9 @@ function mount(host){
  const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(starterPending&&state.view==='library')renderGrid();if(installedChanged&&!starterPending)refreshLibrary();});
  platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
  const gameUpdates=startGameUpdates(win,platform);
- function hideDetail(){retirePreview();detail.replaceChildren();state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
+ function hideDetail(){retirePreview();detail.replaceChildren();previewShell=null;state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
  // Back changes focus, not selection: a populated shelf always has usable actions.
- function returnToGames(toTab=false){const card=shelf.querySelector('[data-game-id="'+state.detail?.id+'"]');(toTab?tabs[state.view]:card||tabs[state.view]).focus();}
+ function returnToGames(toTab=false){const card=cardsById.get(state.detail?.id);(toTab?tabs[state.view]:card||tabs[state.view]).focus();}
  function renderOptions(){options.replaceChildren();gateSubmit=null;
  if(!settingsUnlocked){renderGate();return;}
  // Every tile shares one wrapping grid, so a handheld's short screen fits them in two rows.
@@ -882,13 +913,17 @@ function mount(host){
  if(a==='select'||a==='nextView'||a==='previousView'){activateView(views[(views.indexOf(state.view)+(a==='previousView'?2:1))%3]);return;}
  const padKeys=Array.from(doc.activeElement?.closest?.('.gate-pad')?.querySelectorAll('button')||[]);
  if(padKeys.length){if(a==='pause'){gateSubmit?.();return;}if(['left','right','up','down'].includes(a)){const i=padKeys.indexOf(doc.activeElement),row=i-i%3;if(a==='up'&&i<3)tabs.options.focus();else padKeys[a==='left'?row+(i+2)%3:a==='right'?row+(i+1)%3:a==='up'?i-3:(i+3)%12]?.focus();return;}}
+ const active=doc.activeElement;
+ if(active?.classList.contains('game-card')&&(a==='left'||a==='right')){
+  const i=cardIndexes.get(active);if(i!==undefined){const next=i+(a==='right'?1:-1),index=shelfCycle?(next+selectableCards.length)%selectableCards.length:next;selectableCards[index]?.focus({preventScroll:true});return;}
+ }
+ if((a==='confirm'||a==='pause')&&cardIndexes.has(active)){preview(gamesById.get(active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();return;}
  const nodes=Array.from(host.querySelectorAll('button')).filter(b=>!b.closest('[hidden]')&&!b.closest('dialog')&&!b.disabled);if(!nodes.length)return;
- const active=doc.activeElement,index=nodes.indexOf(active);
- if(shelfCycle&&active?.classList.contains('game-card')&&(a==='left'||a==='right')){const cards=shelfCards().filter(card=>!card.disabled),i=cards.indexOf(active);cards[(i+(a==='right'?1:-1)+cards.length)%cards.length]?.focus({preventScroll:true});return;}
+ const index=nodes.indexOf(active);
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);retirePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;shelfObserver?.disconnect();win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);retirePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)queuePreview();}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
