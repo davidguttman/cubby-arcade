@@ -271,13 +271,18 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .link-code{width:min(300px,56vh);margin:14px auto;border-radius:14px;overflow:hidden;background:#fff}.link-code svg{display:block;width:100%;height:auto}.hub .link-code svg :is(rect,path){stroke:none;stroke-width:0}
 
 /* Overflow copies are visual only; the middle row owns keyboard focus. */
-.shelf.is-looping>:first-child{margin-left:0}.shelf.is-looping>:last-child{margin-right:0}.shelf-copy{cursor:pointer;touch-action:manipulation;flex-shrink:0}.shelf-copy.is-owned{pointer-events:none}
+.shelf.is-looping>:first-child{margin-left:0}.shelf.is-looping>:last-child{margin-right:0}
+/* Few games: room either side so any game can sit in the middle slot like a looping shelf. */
+.shelf.is-slotted{padding-left:calc(50% - var(--card-h) * 2 / 3);padding-right:calc(50% - var(--card-h) * 2 / 3)}
+.shelf.is-slotted>:first-child{margin-left:0}.shelf.is-slotted>:last-child{margin-right:0}
+/* The slot stays still: a newly selected game takes its place without a lift or zoom animation. */
+.hub .shelf :is(.game-card,.shelf-copy){transition:none}.shelf-copy{cursor:pointer;touch-action:manipulation;flex-shrink:0}.shelf-copy.is-owned{pointer-events:none}
 
 /* The handheld spends its frame budget on input and the selected game, not
    perpetual decoration or repainting interpolated shadows on every card. */
 .device-hub .hero-backdrop{display:none}
 .hub .device-hub button{transition:transform .09s ease-out,opacity .09s linear}
-.hub .device-hub :is(.game-card,.shelf-copy){transition:transform .1s ease-out;box-shadow:none}
+.hub .device-hub :is(.game-card,.shelf-copy){transition:none;box-shadow:none}
 /* Keep selection clear without the blurred shadows that stall handheld painting. */
 .hub .device-hub :is(.game-card,.shelf-copy):is(.is-selected,.is-copy-selected,:focus,:focus-visible){box-shadow:0 0 0 4px #ffc94d}
 .device-hub :is(.game-card,.shelf-copy) img{transition:none}

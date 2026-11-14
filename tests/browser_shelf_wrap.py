@@ -29,6 +29,14 @@ async def exercise(cdp, screenshots):
                     edges = await page.locator('.shelf').evaluate('''el=>{const s=el.getBoundingClientRect();return [s.left+2,s.right-2].map(x=>Array.from(el.children).some(c=>{const r=c.getBoundingClientRect();return r.left<x&&r.right>x;}));}''')
                     assert edges == [True, True], edges
                     assert await page.locator('.shelf-copy button,.shelf-copy[tabindex]').count() == 0
+                    # The middle slot stays still: each press puts the next game where the last one was.
+                    slot = "()=>{const r=document.activeElement.getBoundingClientRect();return Math.round(r.left+r.width/2)}"
+                    spots = []
+                    for key in ['ArrowRight'] * 5 + ['ArrowLeft'] * 7:
+                        await page.keyboard.press(key)
+                        spots.append(await page.evaluate(slot))
+                    assert max(spots) - min(spots) <= 1, f'selected tile moved: {spots}'
+                    await cards.first.focus()
                     await page.keyboard.press('ArrowLeft')
                     assert await cards.last.evaluate('(el)=>el===document.activeElement'), 'left must wrap to last'
                     await page.keyboard.press('ArrowRight')
@@ -92,6 +100,11 @@ async def exercise(cdp, screenshots):
                 await page.locator('.game-card').first.focus()
                 await page.keyboard.press('ArrowLeft')
                 assert await page.locator('.game-card').first.evaluate('(el)=>el===document.activeElement')
+                # A short row keeps the same middle slot instead of moving the highlight along it.
+                spots = [await page.evaluate("()=>{const r=document.activeElement.getBoundingClientRect();return Math.round(r.left+r.width/2)}")]
+                await page.keyboard.press('ArrowRight')
+                spots.append(await page.evaluate("()=>{const r=document.activeElement.getBoundingClientRect();return Math.round(r.left+r.width/2)}"))
+                assert max(spots) - min(spots) <= 1, f'short-row selection moved: {spots}'
                 await page.set_viewport_size({'width':180,'height':480})
                 await page.wait_for_timeout(150)
                 assert await page.locator('.shelf-copy').count() > 0

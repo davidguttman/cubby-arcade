@@ -656,7 +656,7 @@ function mount(host){
  }
  function layoutShelf(){
   for(const copies of copiesById.values())for(const copy of copies)copy.remove();
-  copiesById=new Map();shelfGeometry=new Map();shelfCycle=0;shelfStart=0;shelf.classList.remove('is-looping');
+  copiesById=new Map();shelfGeometry=new Map();shelfCycle=0;shelfStart=0;shelf.classList.remove('is-looping','is-slotted');shelf.style.removeProperty('gap');
   const width=shelf.clientWidth;if(!width||!cards.length)return;
   const first=cards[0],last=cards[cards.length-1],style=win.getComputedStyle(shelf),padding=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight);
   if(cards.length>1&&last.offsetLeft+last.offsetWidth-first.offsetLeft>width-padding){
@@ -670,22 +670,19 @@ function mount(host){
    const before=doc.createDocumentFragment();for(const card of cards)before.appendChild(copyOf(card));shelf.insertBefore(before,first);
    for(const card of cards)shelf.appendChild(copyOf(card));
    syncShelfCopies();
+   // The selected game always sits in the middle slot. Pick the gap that also leaves
+   // artwork, not empty space, at both edges, so nothing has to shift to cover them.
+   const cardWidth=first.offsetWidth,gap=Math.round(parseFloat(style.columnGap)||0);
+   const reach=width/2-cardWidth/2,fits=g=>{const r=((-reach)%(cardWidth+g)+(cardWidth+g))%(cardWidth+g);return r>12&&r<cardWidth-12;};
+   if(!fits(gap))for(let step=1;step<=12;step++){const g=[gap+step,gap-step].find(g=>g>=8&&fits(g));if(g!==undefined){shelf.style.gap=g+'px';break;}}
    shelfCycle=first.offsetLeft-copiesById.get(first.dataset.gameId)[0].offsetLeft;
-  }
+  }else shelf.classList.add('is-slotted');
   // Read layout together once after a structural/size change. All following
   // selection and native scroll events use these scroll-space coordinates.
   const positions=cards.map(card=>({card,left:card.offsetLeft,width:card.offsetWidth})),firstLeft=positions[0].left,pitch=shelfCycle/cards.length;
   if(shelfCycle)shelfStart=firstLeft+positions[0].width/2-width/2-pitch/2;
   for(const position of positions){
-   let target=position.left+position.width/2-width/2;
-   if(shelfCycle){
-    const mod=x=>(x%pitch+pitch)%pitch;
-    // Keep artwork, not an empty gap, crossing both viewport edges.
-    for(let shift=0;shift<pitch;shift++){
-     const delta=shift%2?-(shift+1)/2:shift/2,x=target+delta;
-     if([x,x+width].every(edge=>{const r=mod(edge-firstLeft);return r>12&&r<position.width-12;})){target=x;break;}
-    }
-   }
+   const target=position.left+position.width/2-width/2;
    shelfGeometry.set(position.card,{left:position.left,right:position.left+position.width,viewportWidth:width,target});
   }
  }
@@ -697,9 +694,8 @@ function mount(host){
  shelf.addEventListener('scroll',normalizeShelf,{passive:true});
  function revealCard(card){
   const geometry=shelfGeometry.get(card);if(!geometry)return;
-  if(shelfCycle){shelf.scrollLeft=shelfPosition(geometry.target);return;}
-  const x=shelf.scrollLeft||0,inset=16;
-  if(geometry.left<x+inset)shelf.scrollLeft=geometry.left-inset;else if(geometry.right>x+geometry.viewportWidth-inset)shelf.scrollLeft=geometry.right-geometry.viewportWidth+inset;
+  // The middle slot holds the selection; the games move through it, the slot does not.
+  shelf.scrollLeft=shelfCycle?shelfPosition(geometry.target):geometry.target;
  }
  function resizeShelf(){if(disposed)return;layoutShelf();const card=selectedCard();if(card)revealCard(card);}
  win.addEventListener('resize',resizeShelf);
