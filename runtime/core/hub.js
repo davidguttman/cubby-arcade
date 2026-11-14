@@ -125,7 +125,7 @@ function mount(host){
  host.innerHTML='<header class="topbar"><div class="brand">'+brand+'</div><nav class="view-nav" aria-label="Views"><span class="nav-pill" aria-hidden="true"></span></nav><div class="hud"></div></header>'+
   '<section class="view-body"><div class="hero"><div class="hero-backdrop" aria-hidden="true"></div><aside class="detail" hidden></aside><div class="hero-rest" aria-hidden="true"><div class="stage"><img class="rest-media" alt=""></div><div class="rest-hint">'+icon('pick')+'</div><div class="rest-done">'+icon('check')+icon('library')+'</div></div></div><div class="shelf-rail"><div class="shelf"></div></div></section>'+
   '<section class="options-panel" hidden></section><dialog class="adult-setup" aria-label="Adult keyboard setup"></dialog>';
- const device=win.CubbyDeviceProfile==='rg353v';host.classList.toggle('device-hub',device);
+ const device=win.CubbyDeviceProfile==='rg353v';host.classList.toggle('device-hub',device||!!win.CubbyHandheldEmbed);
  const nav=host.querySelector('.view-nav'),body=host.querySelector('.view-body'),backdrop=host.querySelector('.hero-backdrop'),restArt=host.querySelector('.hero-rest img'),shelf=host.querySelector('.shelf'),detail=host.querySelector('.detail'),options=host.querySelector('.options-panel'),dialog=host.querySelector('dialog.adult-setup');
  function button(parent,name,label,fn,cls){const b=doc.createElement('button');b.type='button';b.className=cls||'';b.setAttribute('aria-label',label);b.innerHTML=icon(name);b.addEventListener('click',fn);parent.appendChild(b);return b;}
  function element(parent,tag,cls){const e=doc.createElement(tag);if(cls)e.className=cls;parent.appendChild(e);return e;}
@@ -401,7 +401,7 @@ function mount(host){
   const others=feedConfig.feeds.filter((_,i)=>i!==index).map(feed=>feed.url);
   const nameProblem=()=>!name.value.trim()||/[\x00-\x1f\x7f]/.test(name.value);
   function urlProblem(){const raw=url.value.trim();let href=null;try{href=win.HandheldGameFeeds?win.HandheldGameFeeds.feedURL(raw):/^https:\/\/[^/\s]/i.test(raw)?raw:null;}catch{}return !href||others.includes(href);}
-  const keys=win.CubbyDeviceProfile==='rg353v'&&win.HandheldKeyboard?element(feedDialog,'div','feed-keyboard'):null;let typing=null;
+  const keys=(device||win.CubbyHandheldEmbed)&&win.HandheldKeyboard?element(feedDialog,'div','feed-keyboard'):null;let typing=null;
   function typeInto(input){if(!keys||typing===input)return;typing=input;for(const [each,wrap] of wraps)wrap.classList.toggle('is-typing',each===input);feedBoard=win.HandheldKeyboard.create({container:keys,field:input,layout:'web',capitalizeFirst:input===name});}
   // A red field turns back as soon as it is fixed; an unfinished one isn't red until tried.
   let save=null;
@@ -574,7 +574,7 @@ function mount(host){
  let nameBoard=null,nameSave=null;
  function renamePlayer(p){
   playerDialog.replaceChildren();
-  const entry=nameEntry(playerDialog,{avatar:p.avatar,value:p.name,keys:win.CubbyDeviceProfile==='rg353v',problem:raw=>profiles.nameProblem(p.id,raw),cancel:()=>renderPlayers(),save:name=>{try{profiles.rename(p.id,name);}catch{return false;}renderPlayer();renderPlayers();return true;}});
+  const entry=nameEntry(playerDialog,{avatar:p.avatar,value:p.name,keys:!!(device||win.CubbyHandheldEmbed),problem:raw=>profiles.nameProblem(p.id,raw),cancel:()=>renderPlayers(),save:name=>{try{profiles.rename(p.id,name);}catch{return false;}renderPlayer();renderPlayers();return true;}});
   nameBoard=entry.board;nameSave=entry.save;
  }
  function openPlayers(){if(adult||!profiles)return;adult=true;playerDialog.replaceChildren();playerDialog.showModal();renderPlayers();}
@@ -875,16 +875,14 @@ function mount(host){
  const tiles=element(options,'div','settings-tiles'),controller=()=>{if(calibration)button(tiles,'controller','Adult controller setup',openController,'controller-settings settings-tile');};
  const feeds=()=>{if(platform.feedConfig&&platform.setFeedConfig)button(tiles,'store','Game feeds',openFeeds,'manage-feeds settings-tile');};
  const quit=()=>{if(platform.capabilities.quit)button(options,'quit','Quit application',openQuit,'quit-app');};
- // Device hosts have physical controls and their own adult pages, so they list
- // those here; key remapping only applies to hosts with a real keyboard.
- if(platform.settings?.length){for(const entry of platform.settings){if(entry.href==='#adult-players'&&!profiles)continue;if(entry.href==='#adult-link'&&!link)continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}controller();feeds();if(platform.capabilities.power){const powerTile=button(tiles,'quit','Power',()=>openPowerMenu(powerTile),'settings-tile power-menu');}quit();
-  // Past six tiles, a short screen takes four smaller ones a row to stay in two rows.
-  tiles.classList.toggle('many',tiles.children.length>6);showNotice();showVersion();return;}
+ // One list on every host. A host only adds pages its platform has (Wi-Fi, updates) in
+ // front; Players, saves, Phones, controller and feeds are the core's, then power/quit.
+ for(const entry of platform.settings||[]){if(entry.href?.startsWith('#adult-'))continue;const tile=button(tiles,entry.icon,entry.label,()=>openSetting(entry.href),'settings-tile');if(entry.notice)tile.dataset.notice='';}
  if(profiles)button(tiles,'players','Players',()=>openSetting('#adult-players'),'manage-players settings-tile');
- button(tiles,'trash','Manage game saves',()=>openSetting('#adult-saves'),'manage-saves settings-tile');if(link)button(tiles,'phone','Phones',()=>openSetting('#adult-link'),'manage-link settings-tile');controller();
- const setup=element(tiles,'div','adult-entry');const b=button(setup,'keyboard','Adult keyboard setup',openAdult);b.insertAdjacentHTML('beforeend',icon('adult'));
- feeds();quit();
- tiles.classList.toggle('many',tiles.children.length>6);
+ button(tiles,'trash','Game saves',()=>openSetting('#adult-saves'),'manage-saves settings-tile');if(link)button(tiles,'phone','Phones',()=>openSetting('#adult-link'),'manage-link settings-tile');
+ controller();feeds();if(platform.capabilities.power){const powerTile=button(tiles,'quit','Power',()=>openPowerMenu(powerTile),'settings-tile power-menu');}quit();
+ // Past six tiles, a short screen takes four smaller ones a row to stay in two rows.
+ tiles.classList.toggle('many',tiles.children.length>6);showNotice();showVersion();
  }
  // A quiet badge for adults: gear tab, then the tile that needs attention.
  let notice=false,noticeTimer=null;
@@ -929,7 +927,7 @@ function mount(host){
  if(a==='confirm'||a==='pause'){if(index<0){const first=shelf.querySelector('.game-card:not(:disabled)')||nodes[0];first.focus();}else if(active.classList.contains('game-card')){preview(entries().find(g=>g.id===active.dataset.gameId));detail.querySelector('.play-game:not(:disabled),.download-game:not(:disabled)')?.focus();}else active.click();return;}
  if(['left','right','up','down'].includes(a)){const origin=active?.getBoundingClientRect(),horizontal=a==='left'||a==='right',positive=a==='right'||a==='down';let next;if(origin&&index>=0){const x=origin.left+origin.width/2,y=origin.top+origin.height/2;const inShelf=active.classList.contains('game-card');const candidates=nodes.filter(n=>n!==active&&(!horizontal||!inShelf||n.classList.contains('game-card'))).map(n=>{const r=n.getBoundingClientRect(),dx=r.left+r.width/2-x,dy=r.top+r.height/2-y,primary=horizontal?dx:dy,secondary=horizontal?dy:dx;return {n,primary,score:Math.abs(primary)+Math.abs(secondary)*2};}).filter(c=>positive?c.primary>4:c.primary < -4).sort((a,b)=>a.score-b.score);next=candidates[0]?.n;}if(!detail.hidden){if(a==='up'&&active?.classList.contains('game-card')&&!next?.classList.contains('game-card'))next=primaryAction()||next;else if(a==='right'&&active?.classList.contains('detail-close'))next=primaryAction()||next;else if(active?.closest('.detail-actions')){if(a==='down'&&!next?.closest('.detail-actions'))next=shelf.querySelector('.game-card.is-selected')||next;else if(a==='left'&&!next?.closest('.detail-actions'))next=detail.querySelector('.detail-close')||next;}}if(!next&&(active?.classList.contains('game-card')||!horizontal&&active?.classList.contains('view-tab')))return;if(a==='up'&&next?.classList.contains('view-tab')&&!active?.classList.contains('view-tab'))next=tabs[state.view];if(!next){const delta=positive?1:-1;next=nodes[(index+delta+nodes.length)%nodes.length];}next.focus();}
  }});
- function dispose(){if(disposed)return;disposed=true;shelfObserver?.disconnect();win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);retirePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
+ function dispose(){if(disposed)return;disposed=true;win.clearInterval?.(shortcutTimer);shelfObserver?.disconnect();win.clearTimeout(calibrationTimer);win.clearTimeout(rejectTimer);if(controllerDialog.open)calibration?.cancel();stopCatalog();gameUpdates.stop();stopBattery();win.clearInterval?.(noticeTimer);win.clearTimeout?.(powerTimer);retirePreview();stopCapture();unsubscribeInstall?.();unsubscribeAccount?.();input.dispose();win.removeEventListener('pagehide',dispose);win.removeEventListener('resize',fitPlayerName);win.removeEventListener('resize',resizeShelf);shelf.removeEventListener?.('scroll',normalizeShelf);win.removeEventListener('hashchange',openSettingsFromHash);win.removeEventListener('blur',pausePreview);win.removeEventListener('focus',resumePreview);}
  function resumePreview(){if(doc.activeElement===doc.body){focusView();win.requestAnimationFrame?.(()=>{if(!disposed&&doc.activeElement===doc.body)focusView();});}if(!detail.hidden&&!uninstallDialog.open)queuePreview();}
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
@@ -954,6 +952,10 @@ function mount(host){
  // Adult pages return here so Back lands where the adult left, not on the library.
  function openSettingsFromHash(){if(win.location?.hash!=='#options'||quitDialog.open)return;if(picking)hidePicker();initialViewPending=false;show('options');options.querySelector('button')?.focus();win.history.replaceState(null,'',win.location.pathname);}
  settingsUnlocked=returningToSettings();activateView(win.location?.hash==='#options'?'options':'library',true);openSettingsFromHash();win.addEventListener('hashchange',openSettingsFromHash);
+ // Hold L+R+Start for two seconds on any pad: the gear tab, which still asks the question. Every host.
+ let shortcutHeld=0,shortcutFired=false;
+ const shortcutTimer=win.setInterval?.(()=>{if(disposed)return;let pad=null;try{pad=[...(win.navigator?.getGamepads?.()||[])].find(p=>p?.connected);}catch{}
+  if(pad?.buttons[4]?.pressed&&pad?.buttons[5]?.pressed&&pad?.buttons[9]?.pressed){const now=Date.now();if(!shortcutHeld)shortcutHeld=now;if(now-shortcutHeld>2000&&!shortcutFired){shortcutFired=true;win.location.hash='options';}}else{shortcutHeld=0;shortcutFired=false;}},100);
  // Who is playing is asked once each time Cubby starts; coming back from a game or an
  // adult page keeps the player.
  renderPlayer();if(manyPlayers()&&!profiles.pinned()&&win.location?.hash!=='#options')openPicker();

@@ -14,7 +14,8 @@ function install(win){
  function focus(){(selection?homeButton:resumeButton)?.focus();}
  function open(){if(opened||disposed)return;opened=true;selection=0;blocked=true;ready=false;if(menu)menu.hidden=false;signal();focus();}
  function resume(){if(!opened)return;opened=false;blocked=true;ready=false;if(menu)menu.hidden=true;signal();}
- function home(){win.location.href=/^https?:$/.test(win.location.protocol)?'/play':'/';}
+ // /play on a website is the Cubby Buddy page around the hub; inside it, go back to the hub itself.
+ function home(){win.location.href=/^https?:$/.test(win.location.protocol)?(win.CubbyHandheldEmbed?'/native/index.html':'/play'):'/';}
  // Games return to their title first; only Cubby turns this request into navigation.
  listen(win,'handheld:quit',home);
  function neutral(pad){return !pad.buttons.some(b=>b.pressed)&&pad.axes.every(a=>Math.abs(a)<0.5);}

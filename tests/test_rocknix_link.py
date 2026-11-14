@@ -253,7 +253,8 @@ class RouteTests(unittest.TestCase):
         self.assertLess(page.index(b'/runtime/core/qr.js'), page.index(b'/runtime/core/hub.js'))
         for name in ('link.js', 'qr.js'):
             self.assertEqual(self.request('GET', '/runtime/core/' + name), (200, (ROOT / 'runtime/core' / name).read_bytes()))
-        self.assertIn(b"href: '#adult-link'", self.request('GET', '/rocknix/bridge.js')[1])
+        # Phones is the shared hub's own settings tile on every host, not a bridge entry.
+        self.assertIn(b"'Phones',()=>openSetting('#adult-link')", self.request('GET', '/runtime/core/hub.js')[1])
 
 
 if __name__ == '__main__':

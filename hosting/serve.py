@@ -38,6 +38,9 @@ class Handler(SimpleHTTPRequestHandler):
                    '/native/index.html': '/index.html'}
         # Static production exports keep the native hub at its physical path;
         # historical/local exports may still store it at the root index.
+        # Like production, /play is the Cubby Buddy page that wraps the hub (website/play.html).
+        if parsed.path in {'/play', '/play/'} and (Path(self.directory) / 'site/play.html').is_file():
+            return super().translate_path('/site/play.html')
         if parsed.path in {'/play', '/play/', '/native/index.html'} and (Path(self.directory) / 'native/index.html').is_file():
             return super().translate_path('/native/index.html')
         return super().translate_path(aliases.get(parsed.path, parsed.path))

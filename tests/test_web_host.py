@@ -103,10 +103,13 @@ with tempfile.TemporaryDirectory() as tmp:
             self.assertIn('/runtime/core/hub.js', settings['shellPaths'])
             self.assertTrue(all('\\' not in name for name in settings['shellPaths']))
 
-    def test_browser_play_alias_resolves_preview_launcher_not_site_landing(self):
+    def test_browser_play_alias_resolves_cubby_buddy_page_not_site_landing(self):
+        # /play is the Cubby Buddy page; it frames the hub at /native/index.html.
         handler = object.__new__(web.PreviewHandler)
         handler.directory = '/tmp/cubby-preview'
-        self.assertEqual(handler.translate_path('/play?demo=1'), '/tmp/cubby-preview/index.html')
+        self.assertEqual(handler.translate_path('/play?demo=1'), '/tmp/cubby-preview/site/play.html')
+        page = (web.HERE / 'website/play.html').read_text()
+        self.assertIn("'/native/index.html?embed=handheld&parentOrigin='", page)
 
     def test_browser_worker_has_explicit_offline_hub_without_native_inventory_changes(self):
         with tempfile.TemporaryDirectory() as tmp:

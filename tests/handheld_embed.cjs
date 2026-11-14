@@ -18,6 +18,8 @@ test('embed is opt-in, validates parent origin and survives package navigation',
  const next=fixture('',f.storage);assert.deepEqual(configuration(next.win),{parentOrigin:'https://david.app'});
  for(const origin of ['https://evil.test','https://david.app.evil.test','http://david.app','https://foo.davidguttman.jump.sh.evil.test'])assert.equal(configuration(fixture('?embed=handheld&parentOrigin='+encodeURIComponent(origin)).win),null);
  assert.equal(configuration(fixture('').win),null);
+ for(const origin of ['https://cubbyarcade.com','https://www.cubbyarcade.com','https://cubby.david.app'])assert.deepEqual(configuration(fixture('?embed=handheld&parentOrigin='+encodeURIComponent(origin)).win),{parentOrigin:origin});
+ for(const origin of ['http://cubbyarcade.com','https://cubbyarcade.com.evil.test','https://evil.cubbyarcade.com'])assert.equal(configuration(fixture('?embed=handheld&parentOrigin='+encodeURIComponent(origin)).win),null);
  const top=fixture();top.win.parent=top.win;assert.equal(configuration(top.win),null);
 });
 test('only bound parent can activate or drive the standard virtual controller',()=>{

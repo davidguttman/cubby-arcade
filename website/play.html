@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Cubby Arcade</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#d9d3c9">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/site/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/site/apple-touch-icon.png">
+<!-- Cubby on the web, shown on the Cubby Buddy: the ordinary hub runs in the photo's screen at the handheld's own
+     640x480, through the handheld-embed protocol (docs/handheld-embed.md). The photo's buttons, the keyboard and
+     the hub's own gamepad reading are the controls. Only the d-pad (and left stick), A, B, Start and the round menu
+     button do anything; menu is Cubby's system menu. No words: the buttons are the photo's. -->
+<style>
+html,body{margin:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  background:radial-gradient(ellipse at 50% 40%,#ece6dc,#cfc8bc 75%)}
+#wrap{display:flex;align-items:center;justify-content:center;height:100%}
+/* Every position is a share of the photograph (968x1408), so it holds at any size. */
+.dev{position:relative;width:var(--dw,360px);aspect-ratio:242/352;background:url(/site/cubby-buddy.webp) center/100% 100% no-repeat;
+  filter:drop-shadow(0 calc(var(--dw,360px)*.03) calc(var(--dw,360px)*.04) #0005)}
+.screen{position:absolute;left:11.983%;top:7.848%;width:76.446%;aspect-ratio:4/3;overflow:hidden;background:#000}
+.screen iframe{position:absolute;left:0;top:0;width:640px;height:480px;border:0;transform-origin:0 0;transform:scale(var(--ss,1));background:#000}
+.hit{position:absolute;border:0;padding:0;margin:0;background:transparent;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
+.hit.round{clip-path:circle(50%)}
+.hit.pressed,.pad.on{background:radial-gradient(circle,#0000004d 0 55%,#0000 72%)}
+.pad{position:absolute;border-radius:50%;touch-action:none}
+#dpad{left:9.917%;top:53.693%;width:27.273%;height:18.750%}#lstick{left:16.116%;top:76.420%;width:21.488%;height:14.773%}
+.ba{left:73.450%;top:53.196%;width:24.793%;height:17.045%}.bb{left:61.260%;top:61.861%;width:24.793%;height:17.045%}
+.st{left:48.760%;top:68.466%;width:14.876%;height:8.523%}
+.mn{left:45.248%;top:54.403%;width:9.298%;height:6.392%}
+</style>
+<div id="wrap">
+  <div class="dev">
+    <div class="screen"><iframe id="hub" title="Cubby Arcade" allow="autoplay; gamepad; fullscreen"></iframe></div>
+    <div class="pad" id="dpad"></div><div class="pad" id="lstick"></div>
+    <button class="hit ba" data-b="a" aria-label="A"></button><button class="hit bb" data-b="b" aria-label="B"></button>
+    <button class="hit st" data-b="start" aria-label="Start"></button><button class="hit round mn" data-b="select" aria-label="Menu"></button>
+  </div>
+</div>
+<script>
+(() => {
+  'use strict';
+  const TYPE = 'cubby:embed:v1', origin = location.origin, frame = document.getElementById('hub');
+  // The embedded hub binds itself to this page's origin; its games come back to /native/index.html.
+  frame.src = '/native/index.html?embed=handheld&parentOrigin=' + encodeURIComponent(origin);
+  const send = data => frame.contentWindow && frame.contentWindow.postMessage({ type: TYPE, ...data }, origin);
+  const active = () => !document.hidden;
+  const held = new Set();
+  function press(b) { if (held.has(b)) return; held.add(b); send({ event: 'button', button: b, down: true }); }
+  function release(b) { if (!held.delete(b)) return; send({ event: 'button', button: b, down: false }); }
+  function tap(b) { press(b); release(b); }
+  function setActive() { const on = active(); if (!on) held.clear(); send({ event: 'active', active: on }); }
+  addEventListener('message', e => {
+    if (e.origin !== origin || e.source !== frame.contentWindow || !e.data || e.data.type !== TYPE) return;
+    if (e.data.event === 'ready') { setActive(); fit(); }
+    // Escape inside the screen: Cubby's own menu, like the round button.
+    else if (e.data.event === 'exit') tap('select');
+  });
+  document.addEventListener('visibilitychange', setActive);
+  // The handheld is sized from the window; the screen's 640x480 hub is scaled to the photo's screen.
+  function fit() {
+    const cw = Math.min(innerWidth - 16, (innerHeight - 16) * 242 / 352) * 185 / 242;
+    const dw = Math.floor(cw * 242 / 185);
+    document.documentElement.style.setProperty('--dw', dw + 'px');
+    document.documentElement.style.setProperty('--ss', String(dw * 0.76446 / 640));
+  }
+  addEventListener('resize', fit); fit();
+  // Keys pressed while this page (not the screen) has focus: Cubby's default keyboard layout.
+  const KEYS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyZ: 'a', Space: 'a', KeyX: 'b',
+    Enter: 'start', KeyP: 'start', KeyM: 'select', ShiftRight: 'select', Escape: 'select' };
+  addEventListener('keydown', e => { const b = KEYS[e.code]; if (!b) return; e.preventDefault(); if (!e.repeat) press(b); });
+  addEventListener('keyup', e => { const b = KEYS[e.code]; if (b) { e.preventDefault(); release(b); } });
+  addEventListener('blur', () => { for (const b of [...held]) release(b); });
+  // The photo's buttons go down and come up like any other.
+  for (const el of document.querySelectorAll('button[data-b]')) {
+    const b = el.dataset.b, up = () => { if (el.classList.contains('pressed')) { el.classList.remove('pressed'); release(b); } };
+    el.addEventListener('pointerdown', e => { e.preventDefault(); el.classList.add('pressed'); press(b); try { el.setPointerCapture(e.pointerId); } catch (_) {} });
+    for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) el.addEventListener(t, up);
+  }
+  // The d-pad and the left stick read where the thumb is from their middle, so it can slide round and hold diagonals.
+  const want = new Map(), dirs = ['up', 'down', 'left', 'right'];
+  const apply = () => { const all = new Set([...want.values()].flatMap(x => [...x])); for (const b of dirs) all.has(b) ? press(b) : release(b); };
+  for (const d of document.querySelectorAll('.pad')) {
+    const read = e => { const r = d.getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2, on = new Set();
+      if (Math.hypot(x, y) > r.width * 0.12) { const a = Math.atan2(y, x) / Math.PI * 180, near = c => Math.abs(((a - c + 540) % 360) - 180) <= 67.5;
+        if (near(0)) on.add('right'); if (near(180)) on.add('left'); if (near(90)) on.add('down'); if (near(-90)) on.add('up'); }
+      want.set(d, on); d.classList.toggle('on', on.size > 0); apply(); };
+    const end = () => { delete d.dataset.id; want.delete(d); d.classList.remove('on'); apply(); };
+    d.addEventListener('pointerdown', e => { e.preventDefault(); d.dataset.id = e.pointerId; try { d.setPointerCapture(e.pointerId); } catch (_) {} read(e); });
+    d.addEventListener('pointermove', e => { if (d.dataset.id === String(e.pointerId)) read(e); });
+    for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) d.addEventListener(t, end);
+  }
+  // A gamepad, forwarded too: browsers may keep pads from a frame that lacks focus. The hub ORs this with what it
+  // reads itself, so a press is never doubled.
+  const PAD = { 0: 'a', 1: 'b', 8: 'select', 9: 'start', 12: 'up', 13: 'down', 14: 'left', 15: 'right' }, was = {};
+  (function poll() { requestAnimationFrame(poll); const pad = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(Boolean); if (!pad) return;
+    const now = {}; for (const [i, b] of Object.entries(PAD)) now[b] = !!(pad.buttons[i] && pad.buttons[i].pressed);
+    if (pad.axes[0] < -0.5) now.left = true; if (pad.axes[0] > 0.5) now.right = true; if (pad.axes[1] < -0.5) now.up = true; if (pad.axes[1] > 0.5) now.down = true;
+    for (const b in now) { if (now[b] && !was[b]) press(b); if (!now[b] && was[b]) release(b); was[b] = now[b]; } })();
+  addEventListener('contextmenu', e => e.preventDefault());
+})();
+</script>
+</html>

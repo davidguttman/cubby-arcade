@@ -166,12 +166,12 @@ test('an unmarked page (the hub) is never rescoped',()=>{
 });
 
 // Hosts. Each is its real bridge: profiles work wherever a host can keep players apart.
-test('the handheld host keeps players in browser storage and lists the adult page',async()=>{
+test('the handheld host keeps players in browser storage and leaves the Players tile to the shared hub',async()=>{
  const win={CubbyDeviceToken:'t',addEventListener(){},fetch:async()=>({ok:true,json:async()=>[]})};
  vm.runInNewContext(fs.readFileSync('rocknix/bridge.js','utf8'),{window:win,setTimeout,setInterval,clearInterval,JSON,Error,Set,Promise,requestAnimationFrame(){},navigator:{}});
  const s=storage([['cubby:profile:p_second1:handheld:one:run','1']]),p=createPlatform({...win.HandheldPlatformOptions,storage:s});
  assert.equal(p.capabilities.profiles,true);assert.deepEqual(await p.savedGames('p_second1'),['one']);
- assert.ok(p.settings.some(entry=>entry.href==='#adult-players'&&entry.icon==='players'));
+ assert.ok(!p.settings.some(entry=>entry.href.startsWith('#adult-')));
 });
 test('the browser host keeps players in browser storage',()=>{
  const bridge=createBridge({caches:{},crypto:{},fetch:async()=>({ok:false}),origin:'https://x.test',metadata:{list:async()=>[],get:async()=>({}),change:async()=>{}}});

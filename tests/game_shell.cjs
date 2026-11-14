@@ -78,3 +78,11 @@ test('ordinary Cubby preserves Select game input and both existing menu chords',
  h.pads[0].buttons[9].pressed=true;h.poll();assert.equal(h.shell.isOpen(),true);
  const shoulders=harness();shoulders.poll();shoulders.pads[0].buttons[4].pressed=shoulders.pads[0].buttons[5].pressed=true;shoulders.poll();assert.equal(shoulders.shell.isOpen(),true);
 });
+
+test('an embedded game returns to the hub itself, not the /play page that wraps it',()=>{
+ for(const protocol of ['https:', 'http:']){
+  const h=harness(true);h.env.location.protocol=protocol;
+  h.env.dispatchEvent(new h.env.CustomEvent('handheld:quit'));
+  assert.equal(h.env.location.href,'/native/index.html');
+ }
+});

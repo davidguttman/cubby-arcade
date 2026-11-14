@@ -30,6 +30,8 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
         shutil.copyfile(HERE / 'runtime/index.html', site / 'index.html')
         shutil.copytree(HERE / 'runtime/core', site / 'runtime/core', ignore=shutil.ignore_patterns('__pycache__'))
         (site / '.handheld-web-export').write_text('generated\n')
+        # The settings tab shows which Cubby this is, like the handheld does.
+        (site / 'version.json').write_text(json.dumps({'version': json.loads((HERE / 'package.json').read_text())['version']}) + '\n')
         (site / 'library').write_text(json.dumps([]) + '\n')
         for archive in archives:
             publishing.publish(archive, site, base_url)
@@ -55,7 +57,7 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
 
         # Browser worker has its own explicit offline shell; native hosts bypass it.
         # Hash the shell bytes so independently deployed builds never share caches.
-        browser_paths = ['/play', '/play/', '/native/index.html', '/catalog', '/beta/catalog',
+        browser_paths = ['/play', '/play/', '/site/play.html', '/site/cubby-buddy.webp', '/native/index.html', '/catalog', '/beta/catalog',
                          *['/' + p.relative_to(site).as_posix() for p in sorted((site / 'runtime/core').glob('*')) if p.is_file()]]
         browser_hash = hashlib.sha256(b''.join(
             (site / name.lstrip('/')).read_bytes() for name in browser_paths
@@ -110,7 +112,7 @@ class PreviewHandler(http.server.SimpleHTTPRequestHandler):
     def translate_path(self, path):
         # Browser system-menu returns here; keep static previews usable too.
         if path.split('?', 1)[0] in ('/play', '/play/'):
-            path = '/index.html'
+            path = '/site/play.html'
         return super().translate_path(path)
 
     def end_headers(self):

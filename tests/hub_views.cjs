@@ -9,9 +9,9 @@ test('library is the initial view and state tracks explicit selections',()=>{
  s.show('options');assert.equal(s.detail,null);assert.throws(()=>s.show('unknown'));
 });
 
-test('host-supplied settings replace keyboard setup and every icon resolves',()=>{
+test('hosts only add their platform pages to one shared settings list, and every icon resolves',()=>{
  const source=require('node:fs').readFileSync(require.resolve('../runtime/core/hub.js'),'utf8');
- assert.match(source,/platform\.settings\?\.length/);
+ assert.match(source,/platform\.settings\|\|\[\]/);assert.doesNotMatch(source,/Adult keyboard setup',openAdult/);
  const paths=source.slice(source.indexOf('const paths={'),source.indexOf('function icon('));
  for(const [,name] of source.matchAll(/(?:icon\(|\?)'([a-z]+)'/g))if(/^(retry|play|down|loading)$/.test(name))assert.match(paths,new RegExp('[{,]'+name+":'"));
  const bridge=require('node:fs').readFileSync(require.resolve('../rocknix/bridge.js'),'utf8');
@@ -408,8 +408,8 @@ test('gear tab shows only the question until answered, and locks again on leavin
 });
 test('every host gates its whole settings tab, including Quit',async()=>{
  const {host,hub}=mountedHub(games,[],{quit:true},{quit:async()=>{}});await settle();hub.show('options');
- for(const name of ['.quit-app','.manage-saves','.adult-entry'])assert.equal(host.querySelector(name),null,name);
- passGate(host);for(const name of ['.quit-app','.manage-saves','.adult-entry'])assert.ok(host.querySelector(name),name);
+ for(const name of ['.quit-app','.manage-saves'])assert.equal(host.querySelector(name),null,name);
+ passGate(host);for(const name of ['.quit-app','.manage-saves'])assert.ok(host.querySelector(name),name);assert.equal(host.querySelector('.adult-entry'),null);
 });
 test('the question never traps a child: shoulders and Back move on, and the D-pad reaches the tabs',async()=>{
  const {host,hub,action}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();
@@ -739,7 +739,7 @@ for(const device of [false,true])test('everyday settings precede setup and feeds
   updateAttention:async()=>({attention:true})
  },windowOverrides:{HandheldOSD:{calibration,reset(){}},setInterval:()=>0,clearInterval(){}}});
  await settle();hub.show('options');assert.equal(host.querySelector('.manage-feeds'),null);passGate(host);
- const expected=device?['Wi-Fi settings','Cubby updates','Players','Game saves','Adult controller setup','Game feeds','Power','Quit application']:['Players','Manage game saves','Adult controller setup','Adult keyboard setup','Game feeds','Quit application'];
+ const expected=device?['Wi-Fi settings','Cubby updates','Players','Game saves','Adult controller setup','Game feeds','Power','Quit application']:['Players','Game saves','Adult controller setup','Game feeds','Quit application'];
  assert.deepEqual(settingsLabels(host),expected);
  assert.equal(host.ownerDocument.activeElement.getAttribute('aria-label'),expected[0]);
  if(device){const update=host.querySelectorAll('.settings-tile').find(tile=>tile.getAttribute('aria-label')==='Cubby updates');assert.ok(Object.hasOwn(update.dataset,'notice'),'Update tile retains its attention marker');assert.ok(host.querySelectorAll('.view-tab')[2].classList.contains('has-notice'),'Gear retains update attention');}
@@ -748,7 +748,7 @@ for(const device of [false,true])test('everyday settings precede setup and feeds
 });
 test('settings omit unsupported advanced actions without displacing everyday defaults',async()=>{
  const {host,hub}=mountedHub(games);await settle();hub.show('options');passGate(host);
- assert.deepEqual(settingsLabels(host),['Manage game saves','Adult keyboard setup']);
+ assert.deepEqual(settingsLabels(host),['Game saves']);
  assert.equal(host.ownerDocument.activeElement,host.querySelector('.manage-saves'));hub.dispose();
  const device=mountedHub(games,[],{},{settings:deviceSettings()});await settle();device.hub.show('options');passGate(device.host);
  assert.deepEqual(settingsLabels(device.host),['Wi-Fi settings','Cubby updates','Game saves']);

@@ -6,7 +6,8 @@
  'use strict';
  const TYPE='cubby:embed:v1',KEY='cubby:handheld-embed:v1';
  const indices={a:0,b:1,x:2,y:3,l:4,r:5,select:8,start:9,up:12,down:13,left:14,right:15};
- function allowed(origin){return origin==='https://david.app'||origin==='https://www.david.app'||/^https:\/\/[a-z0-9-]+\.davidguttman\.jump\.sh$/.test(origin);}
+ // Cubby's own site may wrap the hub in its Cubby Buddy page (/play).
+ function allowed(origin){return origin==='https://david.app'||origin==='https://www.david.app'||origin==='https://cubbyarcade.com'||origin==='https://www.cubbyarcade.com'||origin==='https://cubby.david.app'||/^https:\/\/[a-z0-9-]+\.davidguttman\.jump\.sh$/.test(origin);}
  function configuration(win){
   if(win.parent===win)return null;
   try{

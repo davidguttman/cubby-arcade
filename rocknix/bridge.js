@@ -57,23 +57,8 @@
   // then these picture tiles open the worded pages kept out of the wordless child hub.
   win.HandheldPlatformOptions = {kind: 'kiosk', bridge, settings: [
     {icon: 'wifi', label: 'Wi-Fi settings', href: '/adult/network'},
-    {icon: 'update', label: 'Cubby updates', href: '/adult/updates', notice: true},
-    {icon: 'players', label: 'Players', href: '#adult-players'},
-    {icon: 'trash', label: 'Game saves', href: '#adult-saves'},
-    {icon: 'phone', label: 'Phones', href: '#adult-link'}
+    {icon: 'update', label: 'Cubby updates', href: '/adult/updates', notice: true}
   ]};
-  // Controller shortcut to the gear tab, which still asks the question:
-  // hold L+R+Start for two seconds.
-  win.addEventListener('DOMContentLoaded', () => {
-    let held = 0, fired = false;
-    function adultShortcut(now) {
-      const pad = [...(navigator.getGamepads?.() || [])].find(p => p?.connected);
-      if (pad?.buttons[4]?.pressed && pad?.buttons[5]?.pressed && pad?.buttons[9]?.pressed) {
-        if (!held) held = now;
-        if (now-held > 2000 && !fired) { fired = true; win.location.hash = 'options'; }
-      } else { held = 0; fired = false; }
-      requestAnimationFrame(adultShortcut);
-    }
-    requestAnimationFrame(adultShortcut);
-  });
+  // Players, saves, Phones, controller, feeds and power are the shared hub's own tiles.
+  // Hold L+R+Start for the gear tab lives in the shared hub (runtime/core/hub.js).
 })(window);

@@ -14,6 +14,8 @@
    if(!workers.controller)await new Promise(resolve=>{const changed=()=>{if(workers.controller){workers.removeEventListener('controllerchange',changed);resolve();}};workers.addEventListener('controllerchange',changed);changed();});
   })(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Worker unavailable')),20000);})]);
   const bridge=win.HandheldBrowserStore.createBridge();await bridge.ready();
+  // The settings tab's version label, as on the handheld; the site build writes it.
+  bridge.version=()=>win.fetch('/version.json',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(Error('No version')));
   const starterGame=win.CubbyHandheldEmbed&&new URLSearchParams(win.location?.search).get('starter')==='line-cutter'?'line-cutter':undefined;
   win.HandheldPlatformOptions={kind:'web',bridge,starterGame};
   let hub;
