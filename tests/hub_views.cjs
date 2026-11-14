@@ -1046,6 +1046,19 @@ test('adult feeds show the active player face and name',async()=>{
 });
 
 const starterPack=['line-cutter','fox-barrister','owl-the-way-home','spell-castle'];
+test('starter progress keeps its loading animation mounted through events and catalog refresh',async()=>{
+ let onInstall,finish;const installed=[];
+ const {host,hub}=mountedHub([],[],{install:true},{library:async()=>installed,onInstallState:fn=>{onInstall=fn;},install:async id=>{await new Promise(resolve=>{finish=resolve;});installed.push({id,artwork:'/cover',entrypoint:'/'+id});}},{HandheldPlatformOptions:{starterGame:'line-cutter'}});
+ await settle();const loading=host.querySelector('.shelf-status'),progress=host.querySelector('.install-progress');assert.ok(loading);assert.ok(progress);
+ for(let received=1;received<=5;received++){
+  onInstall({'line-cutter':{phase:'downloading',received,total:10}});
+  assert.equal(host.querySelector('.shelf-status'),loading,'progress must not replace the animated loading subtree');
+  assert.equal(host.querySelector('.install-progress'),progress);assert.equal(progress.value,received);assert.equal(progress.max,10);
+ }
+ await hub.refreshCatalog();assert.equal(host.querySelector('.shelf-status'),loading,'catalog completion must not restart the same loading animation');
+ onInstall({'line-cutter':{phase:'verifying'}});assert.equal(host.querySelector('.shelf-status'),loading);assert.equal(progress.getAttribute('value'),null);
+ finish();await settle();assert.equal(host.querySelector('.shelf-status'),null);assert.ok(host.querySelector('.play-game'));hub.dispose();
+});
 function starterPackHub({present=[],marked=[],fail=null}={}){
  const values=new Map(marked.map(id=>['cubby:starter:v1:'+id,'1'])),calls=[];let installed=present.map(id=>({id,artwork:'/cover',entrypoint:'/'+id})),failed=false;
  values.set('saved-game','keep');

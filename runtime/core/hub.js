@@ -714,10 +714,21 @@ function mount(host){
   }
   if(card&&!hoverPreview)revealCard(card);
  }
- function renderGrid(){shelfObserver?.disconnect();shelfObserver?.observe(shelf);cards=[];selectableCards=[];cardsById=new Map();cardIndexes=new Map();gamesById=new Map(entries().map(game=>[game.id,game]));copiesById=new Map();shelfGeometry=new Map();markedCard=null;shelfCycle=0;shelf.classList.remove('is-looping');shelf.replaceChildren();const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'';body.classList.toggle('is-status',!!status);
+ function updateStarterProgress(box){
+  let progress=box.querySelector('.install-progress');
+  if(state.view!=='library'||!starterGame||!starterPending){progress?.remove();return;}
+  if(!progress){progress=element(box,'progress','install-progress');progress.setAttribute('aria-label','Download progress');}
+  const job=installStates[starterCurrent];if(job?.total){progress.max=job.total;progress.value=job.received||0;}else progress.removeAttribute('value');
+ }
+ function renderGrid(){
+ const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'',previous=shelf.querySelector('.shelf-status');
+ // Download events and catalog refreshes must not remount the spinner/dots:
+ // replacing their nodes restarts the CSS animations before a full rotation.
+ if(status==='loading'&&previous?.classList.contains('loading')&&previous.dataset.view===state.view){updateStarterProgress(previous);return;}
+ shelfObserver?.disconnect();shelfObserver?.observe(shelf);cards=[];selectableCards=[];cardsById=new Map();cardIndexes=new Map();gamesById=new Map(entries().map(game=>[game.id,game]));copiesById=new Map();shelfGeometry=new Map();markedCard=null;shelfCycle=0;shelf.classList.remove('is-looping');shelf.replaceChildren();body.classList.toggle('is-status',!!status);
  const store=state.view==='store',offer=store?catalog.find(g=>!ownedInStore(g.id)):null;body.classList.toggle('all-owned',store&&!status&&!offer);
- if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');if(state.view==='library'&&starterGame){
-  if(starterPending){const progress=element(box,'progress','install-progress');progress.setAttribute('aria-label','Download progress');const job=installStates[starterCurrent];if(job?.total){progress.max=job.total;progress.value=job.received||0;}else progress.removeAttribute('value');}
+ if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.dataset.view=state.view;box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');if(state.view==='library'&&starterGame){
+  updateStarterProgress(box);
   if(starterFailed&&!starterPending)button(box,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  }
  feature(null);return;}
