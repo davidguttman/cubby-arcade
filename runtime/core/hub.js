@@ -118,7 +118,9 @@ function mount(host){
  let profile=profiles?.current(),profileLoad=0;
  if(profile)platform.setFeedProfile?.(profile);
  const state=createState(profiles?profiles.storageFor(profile):storage);
- const starterGame=win.HandheldPlatformOptions?.starterGame;let starterPending=!!starterGame,starterFailed=false;
+ const starterOptions=win.HandheldPlatformOptions;
+ const starterGames=[...new Set((Array.isArray(starterOptions?.starterGames)?starterOptions.starterGames:[starterOptions?.starterGame]).filter(Boolean))];
+ const starterGame=starterGames[0];let starterPending=!!starterGame,starterRunning=false,starterFailed=false,starterCurrent=starterGame;
  let account=null,launchBusy=false,featured=null,initialViewPending=true,requested=null;
  const gameReturn='cubby:game-return';let returningGame=null;try{returningGame=win.sessionStorage.getItem(gameReturn);win.sessionStorage.removeItem(gameReturn);}catch{}
  let installStates={},library=[],catalog=[],loading={library:true,store:true},failed={library:false,store:false},adult=false,draft=null,cancelCapture=null,disposed=false;
@@ -715,8 +717,8 @@ function mount(host){
  function renderGrid(){shelfObserver?.disconnect();shelfObserver?.observe(shelf);cards=[];selectableCards=[];cardsById=new Map();cardIndexes=new Map();gamesById=new Map(entries().map(game=>[game.id,game]));copiesById=new Map();shelfGeometry=new Map();markedCard=null;shelfCycle=0;shelf.classList.remove('is-looping');shelf.replaceChildren();const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'';body.classList.toggle('is-status',!!status);
  const store=state.view==='store',offer=store?catalog.find(g=>!ownedInStore(g.id)):null;body.classList.toggle('all-owned',store&&!status&&!offer);
  if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');if(state.view==='library'&&starterGame){
-  if(starterPending){const progress=element(box,'progress','install-progress');progress.setAttribute('aria-label','Download progress');const job=installStates[starterGame];if(job?.total){progress.max=job.total;progress.value=job.received||0;}else progress.removeAttribute('value');}
-  if(starterFailed)button(box,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
+  if(starterPending){const progress=element(box,'progress','install-progress');progress.setAttribute('aria-label','Download progress');const job=installStates[starterCurrent];if(job?.total){progress.max=job.total;progress.value=job.received||0;}else progress.removeAttribute('value');}
+  if(starterFailed&&!starterPending)button(box,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  }
  feature(null);return;}
  for(const game of store?[...catalog].sort((a,b)=>ownedInStore(a.id)-ownedInStore(b.id)):entries()){
@@ -726,11 +728,11 @@ function mount(host){
  // Only actual pointer movement may override the keyboard/gamepad selection.
  card.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')previewHovered(gamesById.get(game.id));});card.addEventListener('focus',()=>{if(state.detail?.id===game.id&&!detail.hidden)revealCard(card);else preview(gamesById.get(game.id));});
  }
- if(state.view==='library'&&starterFailed)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
+ if(state.view==='library'&&starterFailed&&!starterPending)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  indexShelf();layoutShelf();
  // Library always starts with a selection and keeps it through refreshes.
  const keep=entries().find(g=>g.id===(state.detail?.id||(state.view==='library'?returningGame:null)||featured?.id));
- if(state.view==='library'){returningGame=null;preview(keep||entries()[0]);markSelection();return;}
+ if(state.view==='library'){returningGame=null;preview(keep||entries().find(g=>g.id===starterGame)||entries()[0]);markSelection();return;}
  // Store keeps a valid offer or opens its first; with none left it rests on a covered check.
  if(store&&!state.detail){if(offer)preview(keep&&!ownedInStore(keep.id)?keep:offer);else{hideDetail();feature(entries()[0]);}return;}
  feature(keep||entries()[0]);}
@@ -826,7 +828,7 @@ function mount(host){
   }else{const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)(selectedCard()||tabs.library).focus();}
  }refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
  function reloadPlayerGames(){
-  const generation=++profileLoad;library=[];catalog=[];starterPending=false;requested=null;returningGame=null;hideDetail();initialViewPending=false;loading.library=loading.store=true;failed.library=failed.store=false;catalogChecking=null;if(state.view!=='options')renderGrid();
+  const generation=++profileLoad;library=[];catalog=[];starterPending=starterRunning;requested=null;returningGame=null;hideDetail();initialViewPending=false;loading.library=loading.store=true;failed.library=failed.store=false;catalogChecking=null;if(state.view!=='options')renderGrid();
   for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{
    if(disposed||generation!==profileLoad)return;
    if(view==='library')library=entries;else catalog=entries;
@@ -928,18 +930,34 @@ function mount(host){
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
  async function loadStarterLibrary(){
+  // Pending starts before this function runs; a separate lock also rejects
+  // queued clicks on a Retry control removed by a progress rerender.
+  if(starterRunning||disposed)return;
+  starterRunning=true;
   const generation=profileLoad;
+  try{
+  if(state.view==='library'&&state.detail&&!returningGame)returningGame=state.detail.id;
   starterPending=true;starterFailed=false;loading.library=true;failed.library=false;if(state.view==='library')renderGrid();
-  try{await gameUpdates.idle();const seeded=await prepareStarter(platform,{id:starterGame,storage});if(disposed||generation!==profileLoad)return;
-   // First preparation selects its game, but never overrides a game return or
-   // navigation/selection the user made while the verified install was pending.
-   if((seeded==='installed'||seeded==='present')&&initialViewPending&&state.view==='library'&&!returningGame&&!state.detail) returningGame=starterGame;
-  }
-  catch{if(disposed||generation!==profileLoad)return;starterFailed=true;}
+  try{await gameUpdates.idle();if(disposed||generation!==profileLoad)return;
+  for(const id of starterGames){
+   starterCurrent=id;
+   try{const seeded=await prepareStarter(platform,{id,storage});if(disposed||generation!==profileLoad)return;
+    // First preparation selects its first game, but never overrides a return or
+    // navigation/selection made while the verified installs were pending.
+    if((seeded==='installed'||seeded==='present')&&initialViewPending&&state.view==='library'&&!returningGame&&!state.detail) returningGame=id;
+   }
+   catch{if(disposed||generation!==profileLoad)return;starterFailed=true;}
+  }}catch{if(disposed||generation!==profileLoad)return;starterFailed=true;}
   try{const entries=await platform.library();if(disposed||generation!==profileLoad)return;library=entries;failed.library=starterFailed&&!entries.length;}
   catch{if(disposed||generation!==profileLoad)return;failed.library=true;}
   if(disposed||generation!==profileLoad)return;starterPending=false;loading.library=false;initialViewPending=false;
   if(state.view==='library')renderGrid();refreshOwnership();finishTabFocus('library');
+  }finally{
+   starterRunning=false;
+   // Player changes invalidate this run's view data, not device preparation.
+   // Resume only after its install settles, skipping independently marked games.
+   if(!disposed&&generation!==profileLoad)loadStarterLibrary();
+  }
  }
  if(starterGame)loadStarterLibrary();
  // Only initial discovery may choose Store; explicit navigation always wins.

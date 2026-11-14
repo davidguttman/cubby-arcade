@@ -15,3 +15,11 @@ test('only valid handheld embed explicitly opts into Line Cutter starter',async(
   await e.run();assert.equal(e.win.HandheldPlatformOptions.starterGame,expected);
  }
 });
+
+test('handheld starter pack accepts only known games, deduplicates and remains embed-only',async()=>{
+ const query='?starter=line-cutter&starter=fox-barrister&starter=owl-the-way-home&starter=spell-castle&starter=fox-barrister&starter=other';
+ for(const embed of [{},null]){
+  const e=env({CubbyHandheldEmbed:embed,location:{search:query},isSecureContext:true,navigator:{serviceWorker:{controller:{},register:async()=>{},ready:Promise.resolve()}},HandheldBrowserStore:{createBridge:()=>({ready:async()=>{}})}});
+  await e.run();assert.deepEqual(Array.from(e.win.HandheldPlatformOptions.starterGames||[]),embed?['line-cutter','fox-barrister','owl-the-way-home','spell-castle']:[]);
+ }
+});

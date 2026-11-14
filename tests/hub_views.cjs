@@ -1044,3 +1044,78 @@ test('adult feeds show the active player face and name',async()=>{
  const {host,hub}=playersHub({list:three,pin:'p_fixture1',overrides:{feedConfig:async()=>Feeds.defaultConfig(),setFeedConfig:async next=>next}});await settle();const dialog=await openFeedsPage(host,hub);
  assert.equal(dialog.querySelector('.feed-player-name').textContent,'Fox');assert.ok(dialog.querySelector('.feed-player').querySelector('.player-face'));assert.deepEqual(feedNames(dialog),['Cubby Arcade','Cubby Beta']);assert.equal(dialog.querySelectorAll('.feed-toggle')[1].getAttribute('aria-checked'),'false');hub.dispose();
 });
+
+const starterPack=['line-cutter','fox-barrister','owl-the-way-home','spell-castle'];
+function starterPackHub({present=[],marked=[],fail=null}={}){
+ const values=new Map(marked.map(id=>['cubby:starter:v1:'+id,'1'])),calls=[];let installed=present.map(id=>({id,artwork:'/cover',entrypoint:'/'+id})),failed=false;
+ values.set('saved-game','keep');
+ const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)};
+ const result=mountedHub([],[],{install:true},{library:async()=>installed,install:async(id,options)=>{calls.push(id);assert.equal(options.starter,true);if(id===fail&&!failed){failed=true;throw Error('offline');}installed.push({id,artwork:'/cover',entrypoint:'/'+id});}},{HandheldPlatformOptions:{starterGames:starterPack},localStorage:storage});
+ return {...result,values,calls,ids:()=>installed.map(g=>g.id)};
+}
+test('starter pack installs all four through verified shared installation with independent markers',async()=>{
+ const e=starterPackHub();await settle();assert.deepEqual(e.calls,starterPack);assert.deepEqual(e.ids(),starterPack);assert.equal(e.hub.state.detail.id,'line-cutter');for(const id of starterPack)assert.equal(e.values.get('cubby:starter:v1:'+id),'1');assert.equal(e.values.get('saved-game'),'keep');
+});
+test('cached starter pack defaults to its first requested game, not alphabetical shelf order',async()=>{
+ const ordered=['fox-barrister','line-cutter','owl-the-way-home','spell-castle'];
+ const e=starterPackHub({present:ordered,marked:starterPack});await settle();
+ assert.deepEqual(e.calls,[]);assert.equal(e.hub.state.detail.id,'line-cutter');
+ e.host.querySelector('[data-game-id="owl-the-way-home"]').focus();e.refresh();await settle();
+ assert.equal(e.hub.state.detail.id,'owl-the-way-home','refresh preserves an explicit pick');e.hub.dispose();
+});
+test('a deliberately removed default starter is not selected or reinstalled',async()=>{
+ const e=starterPackHub({present:['fox-barrister','owl-the-way-home','spell-castle'],marked:starterPack});await settle();
+ assert.deepEqual(e.calls,[]);assert.equal(e.hub.state.detail.id,'fox-barrister');e.hub.dispose();
+});
+test('starter pack adds games to an existing profile without reinstalling a present or deliberately removed starter',async()=>{
+ const e=starterPackHub({present:['line-cutter'],marked:['fox-barrister']});await settle();assert.deepEqual(e.calls,['owl-the-way-home','spell-castle']);assert.deepEqual(e.ids(),['line-cutter','owl-the-way-home','spell-castle']);
+});
+test('starter pack continues after partial failure; retry skips prepared games and preserves selection',async()=>{
+ const e=starterPackHub({fail:'fox-barrister'});await settle();assert.deepEqual(e.calls,starterPack);assert.deepEqual(e.ids(),['line-cutter','owl-the-way-home','spell-castle']);assert.ok(e.host.querySelector('.play-game'));assert.ok(e.host.querySelector('.retry-starter'));assert.equal(e.values.has('cubby:starter:v1:fox-barrister'),false);
+ e.host.querySelector('[data-game-id="owl-the-way-home"]').focus();e.host.querySelector('.retry-starter').click();await settle();assert.deepEqual(e.calls,[...starterPack,'fox-barrister']);assert.equal(e.hub.state.detail.id,'owl-the-way-home');assert.equal(e.host.querySelector('.retry-starter'),null);
+});
+test('starter pack progress after a failure cannot expose or start an overlapping retry',async()=>{
+ const values=new Map(),calls=[],installed=[];let onInstall,finishOwl,finishFox,foxFailed=false;
+ const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)};
+ const {host,hub}=mountedHub([],[],{install:true},{library:async()=>installed,onInstallState:fn=>{onInstall=fn;},install:async(id,options)=>{
+  calls.push(id);assert.equal(options.starter,true);
+  if(id==='fox-barrister'&&!foxFailed){foxFailed=true;throw Error('offline');}
+  if(id==='owl-the-way-home')await new Promise(resolve=>{finishOwl=resolve;});
+  if(id==='fox-barrister')await new Promise(resolve=>{finishFox=resolve;});
+  installed.push({id,artwork:'/cover',entrypoint:'/'+id});
+ }},{HandheldPlatformOptions:{starterGames:starterPack},localStorage:storage});
+ await settle();assert.deepEqual(calls,starterPack.slice(0,3));
+ onInstall({'owl-the-way-home':{phase:'downloading',received:1,total:2}});
+ assert.ok(host.querySelector('.install-progress'));assert.equal(host.querySelector('.retry-starter'),null,'a failed earlier game must not expose Retry while the next install is pending');
+ finishOwl();await settle();assert.deepEqual(calls,starterPack);
+ host.querySelector('[data-game-id="owl-the-way-home"]').focus();
+ const retry=host.querySelector('.retry-starter');assert.ok(retry);retry.click();await settle();
+ assert.deepEqual(calls,[...starterPack,'fox-barrister']);
+ onInstall({'fox-barrister':{phase:'downloading',received:1,total:2}});
+ assert.equal(host.querySelector('.retry-starter'),null);
+ retry.click();await settle();assert.deepEqual(calls,[...starterPack,'fox-barrister'],'even a queued click on a retired Retry control cannot run a second pack');
+ finishFox();await settle();assert.deepEqual(calls,[...starterPack,'fox-barrister']);
+ assert.equal(hub.state.detail.id,'owl-the-way-home');assert.equal(host.querySelector('.retry-starter'),null);
+ for(const id of starterPack)assert.equal(values.get('cubby:starter:v1:'+id),'1');hub.dispose();
+});
+test('starter pack resumes serially for the current player after switching during an install',async()=>{
+ const installs=[],installed=[];let finishLine,finishOwl,onInstall;
+ const {host,hub,localStorage}=playersHub({list:three,pin:Profiles.FIRST,capabilities:{install:true},windowOverrides:{HandheldPlatformOptions:{starterGames:starterPack}},overrides:{
+  library:async()=>installed,onInstallState:fn=>{onInstall=fn;},install:async id=>{
+   installs.push(id);
+   if(id==='line-cutter')await new Promise(resolve=>{finishLine=resolve;});
+   if(id==='owl-the-way-home')await new Promise(resolve=>{finishOwl=resolve;});
+   installed.push({id,artwork:'/cover',entrypoint:'/'+id});
+  }
+ }});
+ await settle();assert.deepEqual(installs,['line-cutter']);
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[1].click();await settle();
+ assert.equal(host.querySelector('.player-button').dataset.avatar,'fox');assert.deepEqual(installs,['line-cutter'],'player reload must not overlap the unfinished install');
+ onInstall({'line-cutter':{phase:'downloading',received:1,total:2}});
+ finishLine();await settle();assert.deepEqual(installs,starterPack.slice(0,3),'remaining starters must resume after the previous generation settles');
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[2].click();await settle();
+ assert.equal(host.querySelector('.player-button').dataset.avatar,'frog');assert.deepEqual(installs,starterPack.slice(0,3));
+ finishOwl();await settle();assert.deepEqual(installs,starterPack);assert.deepEqual(installed.map(game=>game.id),starterPack);
+ assert.equal(host.querySelectorAll('.game-card').length,4);assert.ok(host.querySelector('.play-game'));assert.equal(host.querySelector('.retry-starter'),null);
+ for(const id of starterPack)assert.equal(localStorage.getItem('cubby:starter:v1:'+id),'1');hub.dispose();
+});

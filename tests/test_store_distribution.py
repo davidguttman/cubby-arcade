@@ -82,8 +82,8 @@ class StoreDistribution(unittest.TestCase):
         # stable or beta catalog, which the shared core searches for starters.
         import re
         source = Path('runtime/core/browser-bootstrap.js').read_text()
-        starters = set(re.findall(r"get\('starter'\)==='([a-z0-9-]+)'", source))
-        self.assertEqual(starters, {'line-cutter'})
+        starters = set(re.findall(r"'([a-z0-9-]+)'", re.search(r"starterAllowlist=\[([^]]+)\]", source).group(1)))
+        self.assertEqual(starters, {'line-cutter', 'fox-barrister', 'owl-the-way-home', 'spell-castle'})
         offered = {e['id'] for e in web.default_registry() + web.default_beta_registry()}
         self.assertLessEqual(starters, offered)
 
