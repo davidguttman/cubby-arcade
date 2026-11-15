@@ -39,6 +39,15 @@ class StockProvisionTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(p.Blocked):
                 p.validate_storage(dict(FACTS, **changes), 1024)
 
+    def test_second_characterized_stock_variant_is_supported_but_not_neighbors(self):
+        facts = dict(FACTS, sectors=61079552, android='11', product='RG353P', platform='rk356x')
+        p.validate_stock(facts, p.PROFILE)
+        p.validate_storage(facts, 1024)
+        for changes in ({'sectors':61079551}, {'sectors':61079553},
+                        {'platform':'rk3568'}, {'name':'OTHER'}, {'product':'RG353V'}):
+            with self.subTest(changes=changes), self.assertRaises(p.Blocked):
+                p.validate_stock(dict(facts, **changes), p.PROFILE)
+
     def test_identity_ignores_battery_but_never_storage_changes(self):
         self.assertEqual(p.identity(FACTS),p.identity(dict(FACTS,battery=75)))
         with self.assertRaises(p.Blocked): p.same_storage(FACTS, dict(FACTS,cid='b'*32))
@@ -182,6 +191,48 @@ class OrchestrationTests(unittest.TestCase):
             adb.return_value.command.assert_not_called()
         self.assertFalse(self.args.job.exists())
 
+    def test_install_can_start_in_verified_recovery_without_su_or_reboot_to_recovery(self):
+        self.patches()
+        adb = p.Adb('fake-adb', 'test123')
+        def command(*args, **kwargs):
+            if args == ('get-state',): return b'recovery\n'
+            if args == ('shell','id','-u'): return b'0\n'
+            if args[:2] == ('shell','getprop'):
+                return {'init.svc.recovery':b'running', 'ro.bootmode':b'normal',
+                        'ro.build.version.release':b'11', 'ro.product.model':b'RG353P',
+                        'ro.board.platform':b'rk356x'}[args[2]]
+            if args == ('shell','sh','-c',p.quote(p.PROBE)):
+                facts = dict(FACTS, sectors=61079552, type='MMC', charging='Charging', mounted=0, sd=0)
+                return ''.join(f'{key}={value}\n' for key,value in facts.items()).encode()
+            if args in [('root',), ('wait-for-recovery',), ('reboot',)]: return b''
+            raise AssertionError(f'unexpected command: {args}')
+        with patch.object(p,'discover',return_value='test123'), patch.object(p,'Adb',return_value=adb), \
+             patch.object(adb,'command',side_effect=command), \
+             patch.object(p,'probe_recovery_tools'), \
+             patch.object(p,'prepare_host_identity',return_value=(self.root/'host','digest')), \
+             patch.object(p,'write_verified') as write, patch.object(p,'enroll_host_identity'), \
+             patch.object(p,'reconnect',return_value={'stage':'commissioning_pending'}):
+            self.assertEqual(p.run(self.args)['stage'],'commissioning_pending')
+            self.assertEqual(write.call_args.args[4]['sectors'],61079552)
+
+    def test_stock_entry_waits_for_recovery_state_after_both_transitions(self):
+        self.patches()
+        stock=dict(FACTS,android='11',product='RG353P',platform='rk3566')
+        with patch.object(p,'discover',return_value='test123'), patch.object(p,'Adb') as adb, \
+             patch.object(p,'probe_recovery_tools'), \
+             patch.object(p,'prepare_host_identity',return_value=(self.root/'host','digest')), \
+             patch.object(p,'write_verified'), patch.object(p,'enroll_host_identity'), \
+             patch.object(p,'reconnect',return_value={'stage':'commissioning_pending'}):
+            adb.return_value.facts.return_value=stock
+            adb.return_value.is_recovery.return_value=False
+            p.run(self.args)
+            self.assertEqual(adb.return_value.command.call_args_list,[
+                unittest.mock.call('reboot','recovery'),
+                unittest.mock.call('wait-for-recovery',timeout=120),
+                unittest.mock.call('root'),
+                unittest.mock.call('wait-for-recovery',timeout=120),
+                unittest.mock.call('reboot')])
+
     def test_wrong_reconnected_image_never_claims_commissioned(self):
         with p.Journal(self.args.job,self.binding) as journal:
             (self.args.job/'known_hosts').write_text('pinned')
@@ -291,6 +342,15 @@ sys.exit(result.returncode)
         self.assertEqual(target.read_bytes(), payload)
         self.assertNotIn(payload.hex(), self.log.read_text())
 
+    def test_newline_and_mixed_feature_lists_still_verify_actual_framing(self):
+        original = self.executable.read_text()
+        for features in ('cmd\nshell_v2\n', 'cmd,shell_v2\nstat_v2'):
+            with self.subTest(features=features):
+                self.executable.write_text(original.replace(repr('shell_v2,cmd'), repr(features)))
+                adb = p.Adb(str(self.executable), 'test123')
+                adb.require_shell_v2()
+                self.assertTrue(adb.shell_v2_verified)
+
     def test_remote_failure_is_not_a_successful_command(self):
         with self.assertRaises(p.Blocked):
             self.adb.command('shell', 'sh', '-c', p.quote('echo sensitive >&2; exit 17'))
@@ -333,7 +393,7 @@ sys.exit(result.returncode)
         self.assertTrue(self.adb.shell_v2_verified)
         with patch.object(p.subprocess, 'run') as run:
             run.return_value.returncode = 0; run.return_value.stdout = b''
-            for transition in [('root',), ('reboot','recovery'), ('wait-for-device',)]:
+            for transition in [('root',), ('reboot','recovery'), ('wait-for-device',), ('wait-for-recovery',)]:
                 self.adb.shell_v2_verified = True
                 self.adb.command(*transition)
                 self.assertFalse(self.adb.shell_v2_verified)
@@ -471,9 +531,24 @@ class EnrollmentTests(unittest.TestCase):
 class StockRootTests(unittest.TestCase):
     def test_stock_su_must_prove_uid_zero(self):
         adb=p.Adb('fake-adb','test123')
-        with patch.object(adb,'command',return_value=b'2000') as command:
+        with patch.object(adb,'is_recovery',return_value=False), \
+             patch.object(adb,'command',return_value=b'2000') as command:
             with self.assertRaisesRegex(p.Blocked,'stock_root_unavailable'):
                 adb.facts(recovery=False)
             self.assertEqual(command.call_args.args,('shell','su','0','id','-u'))
+
+    def test_recovery_requires_both_adb_state_and_running_service_not_bootmode(self):
+        adb=p.Adb('fake-adb','test123')
+        for state,service in [(b'device',b''), (b'recovery',b''),
+                              (b'device',b'running'), (b'recovery',b'stopped')]:
+            with self.subTest(state=state,service=service), \
+                 patch.object(adb,'command',side_effect=[b'0',state,service]):
+                with self.assertRaisesRegex(p.Blocked,'not_android_recovery'):
+                    adb.facts()
+        probe = ''.join(f'{key}={value}\n' for key,value in
+                       dict(FACTS,type='MMC',charging='Charging',mounted=0,sd=0).items()).encode()
+        with patch.object(adb,'command',side_effect=[b'0',b'recovery',b'running',probe]) as command:
+            self.assertEqual(adb.facts()['cid'],FACTS['cid'])
+            self.assertNotIn(unittest.mock.call('shell','getprop','ro.bootmode'), command.call_args_list)
 
 if __name__=='__main__':unittest.main()

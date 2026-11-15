@@ -9,11 +9,12 @@ Cubby/SD installation proves this stock-device path works end to end.
 
 The explicit `rg353v-android11` profile means the operator has independently
 identified the physical handheld as the characterized RG353V. Its shared stock
-Android firmware reports model `RG353P`, Android 11, and platform `rk3566`.
+Android firmware reports model `RG353P`, Android 11, and platform `rk3566` or
+`rk356x` on the characterized units.
 **Those Android strings alone do not distinguish the physical RG353V/RG353P.**
-The characterized unit used V1.20E, rooted `su 0`, root ADB recovery, and a
-non-removable BJTD4R eMMC with 61,071,360 sectors. The tool intentionally rejects
-other MMC names/capacities rather than guessing compatibility. A present SD
+The characterized units used V1.20E, rooted `su 0`, root ADB recovery, and a
+non-removable BJTD4R eMMC with exactly 61,071,360 or 61,079,552 sectors. The tool
+intentionally rejects other MMC names/capacities rather than guessing compatibility. A present SD
 card, unauthorized/multiple ADB devices, mounted internal partitions, battery
 below 30%, unknown battery level, or missing recovery primitives stop the job.
 The supported fingerprint is not a claim that every factory shipment exposes
@@ -119,6 +120,13 @@ tests; confirm them with the stock/recovery daemon versions on the device.
    hash, version/commit, selected public key, and the actual eMMC CID.
 3. Enter root Android recovery; re-probe identity, mounts (including by-name
    aliases), battery, capacity, absence of an SD card, and required tools.
+   Recovery requires both ADB state `recovery` and `init.svc.recovery=running`;
+   `ro.bootmode` may incorrectly remain `normal`. Transitions wait specifically
+   for ADB's recovery state, then revalidate shell-v2 and root. A job may start
+   in this verified recovery without `su`: direct root probes still collect and
+   validate Android model/version/platform and eMMC identity before binding.
+   The installer does not automatically unmount internal filesystems; a mounted
+   recovery target still blocks writing.
    Require `blockdev --rereadpt /dev/block/mmcblk0` to succeed on the unmounted
    stock disk **before** writing, proving that this recovery/kernel supports
    the actual partition-table reread operation, not merely a help option.
