@@ -1,5 +1,7 @@
 #!/bin/bash
 set -euo pipefail
+# Keep signed app inventories exact; Python caches are not release payloads.
+export PYTHONDONTWRITEBYTECODE=1
 RELEASE=$1
 BASE=/storage/cubby
 # BusyBox remount looks up canonical mount targets, not release symlink aliases.

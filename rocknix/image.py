@@ -40,6 +40,11 @@ if [ "$(tr -d '\\000' < /proc/device-tree/model)" = 'Anbernic RG353V' ]; then
   # Diagnostics do not depend on Cubby, Sway, or writable /storage setup.
   # Native autostart runs after graphical.target; do not hold up multi-user.
   mkdir -p /run/systemd/system/rocknix.target.wants /run/systemd/system/multi-user.target.wants
+  if [ -f /flash/cubby-device-identity/service ]; then
+    mkdir -p /run/systemd/system/sysinit.target.wants
+    cp /flash/cubby-device-identity/service /run/systemd/system/cubby-device-identity.service
+    ln -sf ../cubby-device-identity.service /run/systemd/system/sysinit.target.wants/cubby-device-identity.service
+  fi
   cp /flash/cubby-usb-diagnostics/service /run/systemd/system/cubby-usb-diagnostics.service
   ln -sf ../cubby-usb-diagnostics.service /run/systemd/system/rocknix.target.wants/cubby-usb-diagnostics.service
   cp /flash/cubby-wifi-recovery/service /run/systemd/system/cubby-wifi-recovery.service
@@ -359,7 +364,8 @@ def image_update_identity(plan):
 
 
 def media_identity_record(plan):
-    return {'device_cid': plan.get('device_cid'), 'media_identities': plan['media_identities']}
+    return {'device_cid': plan.get('device_cid'), 'media_identities': plan['media_identities'],
+            **({'network_identity': plan['network_identity']} if 'network_identity' in plan else {})}
 
 
 def provision_media_identity(cubby, plan):
@@ -479,6 +485,12 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
             ):
                 flash.writebytes('/cubby-wifi-recovery/' + destination,
                                  (source_root / 'rocknix/device' / source).read_bytes())
+            flash.makedir('/cubby-device-identity')
+            for source, destination in [('identity.py', 'identity.py'),
+                                        ('device-identity-start.sh', 'start.sh'),
+                                        ('cubby-device-identity.service', 'service')]:
+                flash.writebytes('/cubby-device-identity/' + destination,
+                                 (source_root / 'rocknix/device' / source).read_bytes())
             if management_keys:
                 flash.makedir('/cubby-setup')
                 flash.writebytes('/cubby-setup/authorized_keys', management_keys)
@@ -517,7 +529,7 @@ def build(upstream: Path, rootfs: Path, output: Path, storage_gib: int = 6,
         (cubby / 'state').mkdir()
         provenance = cubby / 'image-provenance'
         provenance.mkdir()
-        provision_media_identity(cubby, production_plan)
+        provision_media_identity(cubby, production_plan or {'media_identities': identities})
         (provenance / 'build.json').write_text(json.dumps({
             **({'product_version': production_plan['version']} if production_plan else {}),
             'rocknix_release': '20261101', 'rocknix_sha256': ROCKNIX_SHA256,

@@ -1,0 +1,14 @@
+[Unit]
+Description=Cubby persistent per-device network identity
+DefaultDependencies=no
+After=local-fs.target userconfig.service
+Before=network-base.service NetworkManager.service avahi-daemon.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /flash/cubby-device-identity/start.sh
+RemainAfterExit=yes
+TimeoutStartSec=15
+
+[Install]
+WantedBy=sysinit.target

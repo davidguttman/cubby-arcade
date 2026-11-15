@@ -68,7 +68,7 @@ class DeviceBindingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'identity record'):
             production.validate_binding(plan)
         with self.assertRaisesRegex(ValueError,'media identities'):
-            production.validate_binding({'device_cid':CID})
+            production.validate_binding({'device_cid':CID,'network_identity':plan['network_identity']})
 
     def test_provisioned_identity_file_contains_only_machine_binding(self):
         plan = production.bind_plan(self.plan(), CID, b'public')
@@ -76,7 +76,8 @@ class DeviceBindingTests(unittest.TestCase):
             cubby = Path(d)/'cubby'; cubby.mkdir()
             image.provision_media_identity(cubby,plan)
             record = json.loads((cubby/'image-provenance/device.json').read_text())
-            self.assertEqual(record, {'device_cid':CID,'media_identities':plan['media_identities']})
+            self.assertEqual(record, {'device_cid':CID,'media_identities':plan['media_identities'],
+                                      'network_identity':plan['network_identity']})
             self.assertEqual(production.digest((cubby/'image-provenance/device.json').read_bytes()),
                              plan['storage_files']['cubby/image-provenance/device.json'])
 

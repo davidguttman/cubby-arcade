@@ -1,6 +1,7 @@
 """Narrow native commissioning actions. Invoked over pinned recovery SSH only."""
 import configparser
 import glob
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -34,19 +35,60 @@ class Device:
         if not self.fixture and ('ROCKNIX' not in Path('/etc/os-release').read_text()
                                  or os.geteuid() != 0):
             raise ValueError('native_root_required')
-        image = json.loads(self.path('/storage/cubby/current/image.json').read_text())
+        if 'release_manifest' in self.expected:
+            image = json.loads(self.path('/storage/cubby/image-provenance/build.json').read_text())
+            image = dict(version=image['product_version'], source_commit=image['source_commit'])
+            active = self.release_identity(self.expected['release_manifest'])
+        else:
+            image = json.loads(self.path('/storage/cubby/current/image.json').read_text())
+            active = None
         binding = json.loads(self.path('/storage/cubby/image-provenance/device.json').read_text())
         mounts = {row.split()[1]: row.split()[0]
                   for row in self.path('/proc/mounts').read_text().splitlines()}
         return dict(version=image['version'], commit=image['source_commit'],
                     cid=self.path('/sys/block/mmcblk0/device/cid').read_text().strip(),
                     bound_cid=binding['device_cid'], flash=mounts.get('/flash'),
-                    storage=mounts.get('/storage'))
+                    storage=mounts.get('/storage'), **({'active_release':active} if active else {}))
+
+    def release_identity(self, expected):
+        """The operator supplies a previously verified immutable signed manifest.
+
+        Compare its complete metadata and every installed app byte, not a claimed
+        source commit absent from the signed format. Original image provenance
+        remains separately required by identity()/validate().
+        """
+        current = self.path('/storage/cubby/current')
+        if current.is_symlink():
+            target = os.readlink(current)
+            if not re.fullmatch(r'releases/[A-Za-z0-9][A-Za-z0-9._-]{0,127}', target):
+                raise ValueError('unsafe_active_release')
+            for path in (current.parent/'releases', current.parent/target):
+                if path.is_symlink() or not path.is_dir(): raise ValueError('unsafe_active_release')
+        metadata = current/'release.json'
+        if not regular(metadata) or json.loads(metadata.read_text()) != expected:
+            raise ValueError('active_release_manifest_mismatch')
+        app = current/'app'
+        if app.is_symlink() or not app.is_dir(): raise ValueError('unsafe_active_app')
+        found = set()
+        for path in app.rglob('*'):
+            mode = path.lstat().st_mode
+            if stat.S_ISDIR(mode): continue
+            if not stat.S_ISREG(mode): raise ValueError('unsafe_active_file')
+            name = path.relative_to(app).as_posix(); found.add(name)
+            spec = expected['files'].get(name)
+            if (not spec or path.stat().st_size != spec['size']
+                    or stat.S_IMODE(mode) != spec['mode']
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != spec['sha256']):
+                raise ValueError('active_release_file_mismatch')
+        if found != set(expected['files']): raise ValueError('active_release_inventory_mismatch')
+        return release_identity(expected)
 
     def validate(self):
         actual = self.identity()
         if (any(actual.get(k) != self.expected.get(k) for k in ('version', 'commit', 'cid'))
                 or actual.get('bound_cid') != self.expected.get('cid')
+                or ('release_manifest' in self.expected and actual.get('active_release')
+                    != release_identity(self.expected['release_manifest']))
                 or actual.get('flash') != '/dev/mmcblk0p1'
                 or actual.get('storage') != '/dev/mmcblk0p2'):
             raise ValueError('commissioning_wrong_target')
@@ -92,7 +134,7 @@ class Device:
         progress = readiness_value(lambda: self.command('systemctl', 'show', 'cubby-boot-screen.service', '-p', 'Result', '--value'), '')
         checks = dict(no_failed_units=not failed, artwork=splash.startswith('rendered 640x480 '),
                       boot_progress=progress == 'success', management=management,
-                      updater=(update.get('installed') == self.expected['version']
+                      updater=(update.get('installed') == self.expected.get('release_manifest', self.expected)['version']
                                and update.get('configured') is True and update.get('error') is None
                                and update.get('phase') == 'idle'
                                and not self.path('/storage/cubby/updates/pending.json').exists()),
@@ -161,6 +203,12 @@ class Device:
         return dict(clean=True, launcher_restarted=True, removed_profile_ids=owned)
 
 
+def release_identity(manifest):
+    return dict(version=manifest['version'], sequence=manifest['sequence'],
+                manifest_sha256=hashlib.sha256(json.dumps(manifest, sort_keys=True,
+                    separators=(',', ':')).encode()).hexdigest())
+
+
 def readiness_value(probe, unavailable):
     """Expected startup absence is false readiness, not a native identity error.
 
@@ -176,6 +224,27 @@ def readiness_value(probe, unavailable):
 def regular(path): return stat.S_ISREG(path.lstat().st_mode)
 
 
+def game_selector(entry, state):
+    """Only the installer's games/<id>/current -> releases/<version> link.
+
+    Check both target components with lstat, never resolve or walk a link.
+    rmtree unlinks this selector rather than traversing it during handoff.
+    """
+    parts = entry.relative_to(state).parts
+    if (len(parts) != 3 or parts[0] != 'games' or parts[2] != 'current'
+            or not re.fullmatch(r'[a-z0-9][a-z0-9.-]{0,79}', parts[1])
+            or '..' in parts[1]):
+        return False
+    target = os.readlink(entry)
+    if not re.fullmatch(r'releases/[a-z0-9][a-z0-9.-]{0,79}', target) or '..' in target:
+        return False
+    try:
+        return all(stat.S_ISDIR(component.lstat().st_mode)
+                   for component in (entry.parent/'releases', entry.parent/target))
+    except FileNotFoundError:
+        return False
+
+
 def safe_tree(path, boundary):
     for ancestor in [path, *path.parents]:
         if ancestor == boundary.parent: break
@@ -183,6 +252,8 @@ def safe_tree(path, boundary):
     if not path.is_dir(): raise ValueError('missing_state_directory')
     for entry in path.rglob('*'):
         mode = entry.lstat().st_mode
+        if stat.S_ISLNK(mode) and game_selector(entry, path):
+            continue
         if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
             raise ValueError('unsafe_state_entry')
 

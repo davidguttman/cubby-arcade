@@ -21,7 +21,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BLOCK = '/dev/block/mmcblk0'
-MOUNT = '/run/cubby-provision-storage'
+MOUNT = '/tmp/cubby-provision-storage'
 PROFILE = 'rg353v-android11'
 MAX_RAW = 64 * 1024**3
 
@@ -60,7 +60,7 @@ def same_storage(before, after):
 def validate_storage(facts, raw_size):
     # This intentionally narrow profile does not guess support for other MMCs.
     if (facts.get('name') != 'BJTD4R' or facts.get('removable') != 0
-            or facts.get('sectors') != 61071360
+            or facts.get('sectors') not in (61071360, 61079552)
             or not re.fullmatch('[0-9a-f]{32}', str(facts.get('cid', '')))):
         raise Blocked('unsupported_internal_emmc')
     if facts.get('mounted') or facts.get('sd'):
@@ -77,7 +77,7 @@ def validate_stock(facts, profile):
     if profile != PROFILE:
         raise Blocked('explicit_supported_physical_profile_required')
     if (facts.get('android') != '11' or facts.get('product') != 'RG353P'
-            or facts.get('platform') != 'rk3566'):
+            or facts.get('platform') not in ('rk3566', 'rk356x')):
         raise Blocked('unsupported_stock_android_fingerprint')
     stock_storage = dict(facts, mounted=False)
     validate_storage(stock_storage, 512)
@@ -107,14 +107,25 @@ def image_geometry(path):
     return {f'mmcblk0p{index}': tuple(part) for index, part in enumerate(parts, 1)}
 
 
+def staging_directory_script():
+    # Android recovery provides /tmp, but not necessarily /run. Never reuse an
+    # existing destination (including dangling symlinks) or a symlinked parent.
+    parent = quote(str(Path(MOUNT).parent))
+    target = quote(MOUNT)
+    return (f'test -d {parent}; test ! -L {parent}; '
+            f'test ! -e {target}; test ! -L {target}; '
+            f'umask 077; mkdir {target}; ')
+
+
 def probe_recovery_tools(adb):
     # Execute the actual ioctl on the unmounted stock table before destructive
     # writing. A listed binary/help option alone does not prove kernel support.
     adb.command('shell','sh','-c',quote(
         'set -o pipefail; set -eu; test -b /dev/block/mmcblk0; '
-        'for t in gzip dd sync mount umount sha256sum readlink blockdev; '
+        'for t in gzip dd sync mount umount sha256sum readlink blockdev mkdir rmdir chmod; '
         'do command -v "$t" >/dev/null; done; '
-        'blockdev --rereadpt /dev/block/mmcblk0'))
+        + staging_directory_script() + f'rmdir {quote(MOUNT)}; '
+        + 'blockdev --rereadpt /dev/block/mmcblk0'))
 
 
 PARTITION_PROBE = '''set -eu
@@ -248,7 +259,7 @@ class Adb:
         try:
             features = subprocess.run(self.args('features'), stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
-            if features.returncode or b'shell_v2' not in features.stdout.strip().split(b','):
+            if features.returncode or b'shell_v2' not in re.split(rb'[,\s]+', features.stdout.strip()):
                 raise Blocked('adb_shell_v2_required')
             result = subprocess.run(self.args('shell','-T','sh','-c',
                 quote("cat; printf '%s' cubby-shell-v2-stderr >&2; exit 73")),
@@ -270,7 +281,7 @@ class Adb:
             command = self.shell_args(*args[1:])
         else:
             command = self.args(*args)
-            if args and args[0] in ('root', 'reboot', 'wait-for-device'):
+            if args and args[0] in ('root', 'reboot', 'wait-for-device', 'wait-for-recovery'):
                 self.shell_v2_verified = False
         try:
             result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -280,15 +291,30 @@ class Adb:
         if result.returncode: raise Blocked('adb_command_failed')
         return result.stdout
 
+    def is_recovery(self):
+        # This firmware retains ro.bootmode=normal in recovery. Neither a root
+        # shell nor that property proves that Android has stopped using eMMC.
+        state = self.command('get-state').strip()
+        service = self.command('shell','getprop','init.svc.recovery').strip()
+        if state == b'recovery' and service == b'running':
+            return True
+        if state != b'device' or service == b'running':
+            raise Blocked('not_android_recovery')
+        return False
+
     def facts(self, recovery=True):
         if recovery:
             if self.command('shell', 'id', '-u').strip() != b'0': raise Blocked('recovery_root_unavailable')
-            mode = self.command('shell','getprop','ro.bootmode').strip()
-            if mode != b'recovery': raise Blocked('not_android_recovery')
+            if not self.is_recovery(): raise Blocked('not_android_recovery')
             return parse_facts(self.command('shell', 'sh', '-c', quote(PROBE)))
-        if self.command('shell','su','0','id','-u').strip() != b'0':
-            raise Blocked('stock_root_unavailable')
-        data = parse_facts(self.command('shell', 'su', '0', 'sh', '-c', quote(PROBE)))
+        # A job may start in genuine recovery, where su is absent. Still collect
+        # and validate stock firmware properties before binding the checkpoint.
+        if self.is_recovery():
+            data = self.facts(recovery=True)
+        else:
+            if self.command('shell','su','0','id','-u').strip() != b'0':
+                raise Blocked('stock_root_unavailable')
+            data = parse_facts(self.command('shell', 'su', '0', 'sh', '-c', quote(PROBE)))
         for name, prop in [('android','ro.build.version.release'), ('product','ro.product.model'),
                            ('platform','ro.board.platform')]:
             data[name] = self.command('shell','getprop',prop).decode().strip()
@@ -384,8 +410,7 @@ def enroll_host_identity(adb, host_key, original, size, journal, geometry):
     target = MOUNT + '/cubby/recovery/private'
     script = f'''set -eu
  test -b {BLOCK}p2
- test ! -e {MOUNT}
- mkdir {MOUNT}
+ {staging_directory_script()}
  mount -t ext4 {BLOCK}p2 {MOUNT}
  trap 'umount {MOUNT}; rmdir {MOUNT}' 0
  test ! -L {MOUNT}/cubby
@@ -403,7 +428,7 @@ def enroll_host_identity(adb, host_key, original, size, journal, geometry):
     with host_key.open('rb') as stream: adb.stream(script, stream)
     # Fresh read-only remount verifies actual persisted key bytes, not an echo.
     verify_script = f'''set -eu
- mkdir {MOUNT}
+ {staging_directory_script()}
  mount -t ext4 -o ro {BLOCK}p2 {MOUNT}
  trap 'umount {MOUNT}; rmdir {MOUNT}' 0
  sha256sum {target}/ssh_host_ed25519_key
@@ -512,13 +537,12 @@ def run(args):
         # Verify a completed Linux target via pinned SSH rather than flashing again.
         if journal.state['stage'] in ('rebooting','commissioning_pending'):
             return reconnect(args,journal,original)
-        mode = adb.command('shell','getprop','ro.bootmode').strip()
-        if mode != b'recovery':
+        if not adb.is_recovery():
             stock = adb.facts(recovery=False); validate_stock(stock,args.profile); same_storage(original,stock)
             journal.save('entering_recovery')
             adb.command('reboot','recovery')
-            adb.command('wait-for-device',timeout=120)
-        adb.command('root'); adb.command('wait-for-device',timeout=120)
+            adb.command('wait-for-recovery',timeout=120)
+        adb.command('root'); adb.command('wait-for-recovery',timeout=120)
         facts = adb.facts(); validate_storage(facts,size); same_storage(original,facts)
         # Probe required recovery primitives before the first write.
         probe_recovery_tools(adb)
