@@ -55,6 +55,22 @@ release images have no CID or management key, and their release gate rejects
 bound/provisioned artifacts. A generic public image is unique **per build**;
 manual cloning is not the per-device fleet provisioning procedure.
 
+Each newly built bound image also contains a random serial (`CB-` followed by
+12 hexadecimal characters) and matching network hostname (`cubby-` followed by
+the same characters in lowercase). Both appear in the audited
+`/storage/cubby/image-provenance/device.json` as `network_identity`. Keep this
+record with the commissioning receipt so the physical unit and network name
+can be matched. Public images generate this record's network identity locally
+on first boot, rather than sharing a prebuilt network name.
+
+The standalone `/flash/cubby-device-identity` service runs after stock first-boot
+configuration but before networking. It sets ROCKNIX's native `system.hostname`
+setting and kernel hostname, which NetworkManager and Avahi use for DHCP/mDNS
+(`cubby-xxxxxxxxxxxx.local` on networks with mDNS). The identity is outside both
+release directories and customer state, so normal signed updates and clean
+handoff preserve it. An intentional full reflash creates a new identity. Do not
+clone a previously booted unit's disk or copy its provenance to another unit.
+
 For example, from the project root (replace the paths and commit):
 
 ```sh

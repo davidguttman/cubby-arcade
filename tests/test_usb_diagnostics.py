@@ -76,7 +76,7 @@ class DiagnosticsTests(unittest.TestCase):
             units = root/'run/systemd/system'
             units.mkdir(parents=True)
             (root/'model').write_bytes(b'Anbernic RG353V\0')
-            for name in ('usb-diagnostics', 'wifi-recovery', 'recovery-management'):
+            for name in ('usb-diagnostics', 'wifi-recovery', 'recovery-management', 'device-identity'):
                 destination = root/f'flash/cubby-{name}'
                 destination.mkdir(parents=True)
                 shutil.copyfile(ROOT/f'rocknix/device/cubby-{name}.service', destination/'service')
@@ -126,12 +126,21 @@ WantedBy=rocknix.target
                 'local-fs.target': '[Unit]\n',
                 'shutdown.target': '[Unit]\n',
                 'rescue.target': '[Unit]\n',
+                # Actual pinned hostname/config ordering: identity must not
+                # make sysinit wait on the later network or graphical targets.
+                'userconfig.service': '[Unit]\nDefaultDependencies=no\nAfter=systemd-tmpfiles-setup.service\n[Service]\nType=oneshot\nExecStart=/bin/sh\n',
+                'systemd-tmpfiles-setup.service': '[Unit]\nDefaultDependencies=no\nBefore=sysinit.target\n[Service]\nType=oneshot\nExecStart=/bin/sh\n',
+                'network-base.service': '[Unit]\nDefaultDependencies=no\nAfter=local-fs.target systemd-tmpfiles-setup.service userconfig.service\n[Service]\nType=oneshot\nExecStart=/bin/sh\n',
+                'NetworkManager.service': '[Unit]\nAfter=network-pre.target dbus.service iwd.service\nBefore=network.target network-online.target\n[Service]\nExecStart=/bin/sh\n',
+                'avahi-daemon.service': '[Unit]\n[Service]\nExecStart=/bin/sh\n',
             }
             for name, content in fixtures.items():
                 (units/name).write_text(content)
             wanted = units/'rocknix.target.wants'
             wanted.mkdir(exist_ok=True)
             (wanted/'rocknix-autostart.service').symlink_to('../rocknix-autostart.service')
+            for name in ('network-base', 'NetworkManager', 'avahi-daemon', 'userconfig'):
+                (wanted/(name + '.service')).symlink_to('../' + name + '.service')
             # Verification only checks executables exist; it never runs them.
             for executable in ('bin/bash', 'bin/sh', 'usr/bin/python3'):
                 path = root/executable
@@ -149,6 +158,7 @@ WantedBy=rocknix.target
             self.assertTrue((units/'multi-user.target.wants/cubby-wifi-recovery.service').is_file())
             self.assertTrue((units/'rocknix.target.wants/cubby-recovery-management.service').is_file())
             self.assertTrue((units/'sysinit.target.wants/cubby-boot-screen.service').is_file())
+            self.assertTrue((units/'sysinit.target.wants/cubby-device-identity.service').is_file())
 
     def test_startup_cooperates_with_native_boot_and_repeated_listener_starts(self):
         with tempfile.TemporaryDirectory() as directory:
