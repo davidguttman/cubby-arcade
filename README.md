@@ -306,7 +306,7 @@ Open the hub's gear tab, select the trash-can **Game saves** tile, and answer
 its adult math check. Choose a game, then **Delete saves** to confirm, or
 **Cancel** to keep its progress. This adult-only page also lists saved games
 that are no longer installed. It deletes the selected game's saves, not the
-game itself; other games, favorites, controls and token budgets stay unchanged.
+game itself; other games, favorites, controls and settings stay unchanged.
 
 This works with browser/device localStorage and desktop native saves. The
 published Line Cutter `linecutter_run` alias is included so old progress cannot
@@ -422,7 +422,7 @@ No Python, Node, administrator access or Developer Mode is needed to play or
 install games. There is no installer. This build is unsigned; no code-signing or
 Microsoft Store certification is claimed.
 
-Saves, downloaded games, settings and tokens live outside the extracted folder,
+Saves, downloaded games and settings live outside the extracted folder,
 normally under `%APPDATA%/CubbyArcade`. Existing recognized legacy profiles are
 preserved. Replacing the application folder does not reset that profile.
 Desktop game selectors use atomic regular files, with legacy Linux symlink
@@ -656,7 +656,7 @@ uv run python -m runtime.catalog --root path/to/games install https://cubby.davi
 Installation/update resolves the stable manifest at the time of the operation.
 Game launch accounting, automatic update scheduling, and child-facing
 install controls are separate from this publication protocol; publication and
-installation themselves never spend tokens.
+installation themselves are free.
 
 ### Library, discovery, and options
 
@@ -779,7 +779,7 @@ background. This is the same code on desktop, browser and handheld; a host only 
 to be able to install. Downloads may finish during gameplay, but activation waits
 until the host has returned to the hub. Previous releases and separate saves are
 retained; failed or offline checks leave the current game playable. Downloads
-and updates do not charge tokens. Native capabilities are optional, so the shared
+and updates are free. Native capabilities are optional, so the shared
 shell remains compatible with bridge-version-1 hosts that lack installation.
 
 Run the native archive regressions with:
@@ -796,72 +796,46 @@ with HTTPS fetch fixtures, without running a server. `CUBBY_ARCADE_SMOKE_DIR` ca
 retry/progress/installed/mobile screenshots. Keep fixture profiles separate from
 real player profiles; this smoke installs its demo and stages updates.
 
-### Launch tokens: one token per launch
+### Desktop play is unlimited
 
-The desktop's local test profile starts with **10 tokens once**. Starting an
-installed game spends one token after its main document loads successfully.
-There is no play timer: pause, resume, focus changes, and reloading the current
-game do not spend more. Returning to the hub ends that play; launching again
-spends another token. Downloads and updates are free. A missing game, failed
-load, or exhausted budget cannot spend a token. Rapid duplicate activation shares
-one launch. The native window also handles older cached UIs that navigate directly
-to a game; renderer-side localStorage cannot refill the native account.
+Desktop game launches are free and unlimited. The hub has no token counter,
+one-token Play decoration, exhausted-budget gate, or adult test-token refill.
+The native launcher still validates installed game entrypoints, shares duplicate
+activation, rejects game-frame launch IPC, and preserves session and save scope.
+Downloads, updates, profiles, and saved progress are unchanged.
 
-The hub displays countable coin pictures and a one-coin Play control. At zero,
-Play is disabled. Options → keyboard/person picture opens the separate **Adult
-setup** flow; **Add 10 test tokens** replenishes this profile. This deliberate
-adult entry is a test management flow, not parental authentication or a PIN lock.
-The browser/VM preview without native token capability remains a free demo and
-does not pretend to enforce this budget.
+Install a newly built desktop executable to remove the native token requirement;
+a cloud hub refresh alone cannot change an older executable's native budget.
+Existing `account.json` files are ignored and left untouched, including empty or
+corrupt accounts. No profile reset, balance migration, or token refill is needed.
+Browser and handheld behavior is unchanged.
 
-The native account lives in `account.json` under Electron's user-data directory,
-separate from game saves and installed releases. Atomic writes and a single
-application writer per profile preserve the balance across restarts. Corrupt or
-unreadable account data fails closed without silently issuing another ten tokens;
-preserve it for adult diagnosis. Charging happens only after a successful load,
-so an interrupted launch before completion does not lose a token. This trial has
-no server account, cross-device sync, real-money checkout, creator payouts, or
-anti-tampering guarantees against someone with access to the profile files.
+Run native launcher tests with `node --test tests/desktop_launch.cjs`. The isolated
+`--free-play-smoke` mode uses the checked-in historical Line Cutter ZIP through
+the verified installer, without a server or network access. It checks the real
+hub UI, more than ten launches with both zero and corrupt legacy accounts,
+duplicate activation, missing games, resume/reload, encoded direct navigation,
+save scope, and game-frame IPC rejection. Use a fresh `CUBBY_ARCADE_USER_DATA`,
+`CUBBY_ARCADE_SMOKE_SITE` pointing to a newly generated export, and optionally
+`CUBBY_ARCADE_SMOKE_DIR` for screenshots. Never use smoke modes with a real player
+profile.
 
-To try the token flow:
+To publish a game release to a local directory served by the configured HTTPS host:
 
-1. Build/install the new desktop executable once (`npm run desktop:build`), and
-   add `dist/CubbyArcade-linux-x64/CubbyArcade` as a non-Steam game. Existing native
-   executables need replacement for the new installer and token bridge.
-2. Children browse the Store, download games for free, and spend a token to play.
-3. Publish a new game/release to the directory served by the configured HTTPS
-   host:
+```sh
+uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby.david.app/
+```
 
-   ```sh
-   uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby.david.app/
-   ```
-
-   Existing installed games, on every host, check their stable manifest on hub entry, download
-   updates in the background, and activate only outside gameplay. Publishing
-   updates is independent of rebuilding the desktop. This command writes the
-   selected local served directory; it is not a remote uploader. An explicit
-   `web.py build` replaces its generated export, so include all desired packages
-   when rebuilding or use the incremental publishing command above.
+Installed games on every host check their stable manifest on hub entry, download
+updates in the background, and activate only outside gameplay. Publishing game
+updates is independent of rebuilding the desktop. This command writes the
+selected local served directory; it is not a remote uploader. An explicit
+`web.py build` replaces its generated export, so include all desired packages
+when rebuilding or use the incremental publishing command above.
 
 Versioning uses SemVer: new backward-compatible product/distribution capabilities
-are minor releases; fixes to an existing capability are patches; breaking runtime
-or install contracts require a major release. Game package versions are immutable:
-any changed bundled core or asset requires a distinct game version. Published
-versions are listed on the
-[GitHub Releases](https://github.com/davidguttman/cubby-arcade/releases) page.
-
-Run native budget tests with `node --test tests/launch_tokens.cjs`. The isolated
-`--token-smoke` executable mode verifies the actual pictorial UI, duplicate launch,
-10 → 9 → 8 spending, free resume/reload, failed launch, legacy navigation, zero
-balance, adult refill, and disk persistence. A fresh smoke profile first verifies
-an empty Library, then explicitly installs the first Store offer through the
-normal verified installer before the budget checks. Store download access is
-required even when `CUBBY_ARCADE_SMOKE_OFFLINE=1` disables cloud-shell refresh.
-Use a fresh `CUBBY_ARCADE_USER_DATA` profile,
-`CUBBY_ARCADE_SMOKE_SITE` pointing to a newly generated export, `CUBBY_ARCADE_SMOKE_OFFLINE=1`, and
-optional `CUBBY_ARCADE_SMOKE_DIR` for screenshots. A second run with the same profile and
-`CUBBY_ARCADE_TOKEN_RESTART_EXPECT=9` verifies persistence across actual process restarts.
-Never use smoke modes with a real player profile.
+are minor releases; fixes are patches; breaking runtime or install contracts
+require a major release. Game package versions are immutable.
 
 For game-owned, ZIP-free releases, see [the standalone manifest generator and
 single release workflow](docs/game-release-manifest.md#generate-in-the-games-repository).
@@ -966,7 +940,7 @@ publish those packages to Store routes only; they never preinstall them. Browser
 previews show discovery metadata; installation requires a capable native host.
 Native game updates resolve the publisher manifest independently on hub entry
 and activate outside gameplay. Updating Line Cutter does not require a Cubby
-launcher release. Existing game IDs, origins, storage keys and tokens are unchanged.
+launcher release. Existing game IDs, origins and storage keys are unchanged.
 
 Trail Mix owns its schema-2 releases at `https://trailmix.david.app`.
 The Store follows its stable `/arcade/manifest.json` pointer and uses
@@ -985,7 +959,7 @@ Production serving is Render Static Site CDN delivery; no Python is running ther
 Native game previews include a separate trash control. It opens a picture-only
 confirmation showing that game's cover. Cancel is initially selected; Back/Escape
 also cancels. Removing a game deletes its managed downloaded releases, not saves,
-favorites, settings, or tokens. The Store offers it for installation again, and
+favorites or settings. The Store offers it for installation again, and
 reinstallation picks up the retained saves. Removal is unavailable during a launch,
 an install/update, or gameplay. Discovery-only web and older native bridges do not
 show an unsupported uninstall control.

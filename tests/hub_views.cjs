@@ -1132,3 +1132,8 @@ test('starter pack resumes serially for the current player after switching durin
  assert.equal(host.querySelectorAll('.game-card').length,4);assert.ok(host.querySelector('.play-game'));assert.equal(host.querySelector('.retry-starter'),null);
  for(const id of starterPack)assert.equal(localStorage.getItem('cubby:starter:v1:'+id),'1');hub.dispose();
 });
+
+test('tokenless native launch uses the bridge without token UI or account calls',async()=>{
+ let launched=0,accounts=0;const {host}=mountedHub(games,[],{tokens:false},{launch:async()=>{if(++launched===1)throw Error('temporary launch failure');},account:async()=>{accounts++;throw Error('must not read account');}});await settle();
+ assert(host.querySelector('.token-budget').hidden);const play=host.querySelector('.play-game');assert(!play.disabled);assert.equal(play.getAttribute('aria-label'),'Play game');play.click();play.click();await settle();assert.equal(launched,1);play.click();await settle();assert.equal(launched,2);assert.equal(accounts,0);assert.equal(host.ownerDocument.defaultView.location.href,undefined);
+});

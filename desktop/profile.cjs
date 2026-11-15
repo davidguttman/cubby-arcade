@@ -1,4 +1,4 @@
-/* Keep existing desktop saves, installs, preferences and test budgets across branding. */
+/* Keep existing desktop saves, installs, preferences and legacy profile data across branding. */
 const fs=require('node:fs');
 const path=require('node:path');
 function userDataPath({appData,temp,smoke,override},exists=fs.existsSync){

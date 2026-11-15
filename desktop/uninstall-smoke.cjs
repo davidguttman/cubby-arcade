@@ -1,6 +1,6 @@
 /* Offline, isolated, self-terminating smoke using a checked-in historical ZIP. */
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
-async function run(win,installer,library,registry,store,account,options={}){
+async function run(win,installer,library,registry,store,options={}){
  const id='line-cutter',origin='https://uninstall-smoke.invalid';
  win.webContents.debugger.attach('1.3');await win.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled',{enabled:true});
  const bytes=await fs.readFile(options.package||path.join(__dirname,'../hosting/releases/line-cutter/0.2.1/line-cutter-0.2.1.game.zip'));
@@ -14,7 +14,7 @@ async function run(win,installer,library,registry,store,account,options={}){
  async function open(){await evaluate('document.querySelector(".uninstall-game").click()');assert(await evaluate('document.querySelector(".uninstall-confirm").open'));assert(await evaluate('document.activeElement.classList.contains("cancel-uninstall")'));assert(await evaluate('(()=>{const style=getComputedStyle(document.activeElement);return style.outlineStyle!=="none"&&parseFloat(style.outlineWidth)>=3;})()'));}
  async function key(code,repeat=false){await evaluate("window.dispatchEvent(new Event('focus'))");await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown',{code:${JSON.stringify(code)},repeat:${repeat}}));`);if(!repeat)await evaluate(`window.dispatchEvent(new KeyboardEvent('keyup',{code:${JSON.stringify(code)}}));`);}
  await installer.install(id);store.set(id,'uninstall-test',{level:9});await home();
- await evaluate('document.querySelector(".favorite").click()');const favorites=await evaluate('localStorage.getItem("handheld:favorites:v1")'),balance=account.balance;
+ await evaluate('document.querySelector(".favorite").click()');const favorites=await evaluate('localStorage.getItem("handheld:favorites:v1")');
  await capture('uninstall-detail-desktop');await open();assert(await evaluate('document.querySelector(".uninstall-picture img").getAttribute("src").includes("/games/line-cutter/")'));
  await capture('uninstall-confirm-desktop');
  await win.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await capture('uninstall-confirm-mobile');await win.webContents.debugger.sendCommand('Emulation.clearDeviceMetricsOverride');
@@ -27,13 +27,13 @@ async function run(win,installer,library,registry,store,account,options={}){
  await open();await evaluate('document.querySelector(".confirm-uninstall").click()');await wait(()=>evaluate('!!document.querySelector(".uninstall-error")'),'retry error');assert(await evaluate('document.activeElement.classList.contains("cancel-uninstall")'));await capture('uninstall-retry');disk.rmSync=remove;await evaluate('document.querySelector(".cancel-uninstall").click()');assert(!await evaluate('document.querySelector(".uninstall-game").disabled'));await open();
  // Navigate confirmation with the shared keyboard/controller action path.
  await key('ArrowRight');assert(await evaluate('document.activeElement.classList.contains("confirm-uninstall")'));await key('KeyZ');
- await wait(()=>evaluate('!document.querySelector(".uninstall-confirm").open'),'removed');assert.equal(library.entries().length,0);assert.equal(await fs.stat(path.join(library.games,id)).then(()=>true,()=>false),false);assert.deepEqual(store.get(id,'uninstall-test'),{level:9});assert.equal(account.balance,balance);assert.equal(await evaluate('localStorage.getItem("handheld:favorites:v1")'),favorites);
+ await wait(()=>evaluate('!document.querySelector(".uninstall-confirm").open'),'removed');assert.equal(library.entries().length,0);assert.equal(await fs.stat(path.join(library.games,id)).then(()=>true,()=>false),false);assert.deepEqual(store.get(id,'uninstall-test'),{level:9});assert.equal(await evaluate('localStorage.getItem("handheld:favorites:v1")'),favorites);
  assert(!await evaluate('!!document.querySelector(".play-game")'));await capture('uninstall-empty-library');
  await evaluate('document.querySelector("[aria-label=store]").click();document.querySelector(".game-card").click()');assert(await evaluate('!!document.querySelector(".download-game")'));assert(!await evaluate('!!document.querySelector(".uninstall-game")'));assert(!await evaluate('document.querySelector(".preview-media").getAttribute("src").startsWith("/games/")'));
  await evaluate('document.querySelector(".download-game").click()');await wait(()=>evaluate('!!document.querySelector(".play-game")'),'reinstalled');assert.deepEqual(store.get(id,'uninstall-test'),{level:9});
  await evaluate('document.querySelector(".play-game").click()');await wait(()=>win.webContents.getURL().includes('/games/line-cutter/'),'game');
  assert(await evaluate('HandheldPlatformOptions.bridge.uninstall("line-cutter").then(()=>false,()=>true)'));assert.equal(library.entries().length,1);
- const report={uninstall:true,cancelDefault:true,repeatSafe:true,backCancels:true,retry:true,reopenAfterFailure:true,libraryRefresh:true,storeRefresh:true,bytesRemoved:true,savesPreserved:true,favoritesPreserved:true,tokensPreserved:true,reinstall:true,gameIPCRejected:true};
+ const report={uninstall:true,cancelDefault:true,repeatSafe:true,backCancels:true,retry:true,reopenAfterFailure:true,libraryRefresh:true,storeRefresh:true,bytesRemoved:true,savesPreserved:true,favoritesPreserved:true,reinstall:true,gameIPCRejected:true};
  if(options.output)await fs.writeFile(path.join(options.output,'uninstall-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 }
 module.exports={run};
