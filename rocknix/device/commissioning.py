@@ -176,6 +176,27 @@ def readiness_value(probe, unavailable):
 def regular(path): return stat.S_ISREG(path.lstat().st_mode)
 
 
+def game_selector(entry, state):
+    """Only the installer's games/<id>/current -> releases/<version> link.
+
+    Check both target components with lstat, never resolve or walk a link.
+    rmtree unlinks this selector rather than traversing it during handoff.
+    """
+    parts = entry.relative_to(state).parts
+    if (len(parts) != 3 or parts[0] != 'games' or parts[2] != 'current'
+            or not re.fullmatch(r'[a-z0-9][a-z0-9.-]{0,79}', parts[1])
+            or '..' in parts[1]):
+        return False
+    target = os.readlink(entry)
+    if not re.fullmatch(r'releases/[a-z0-9][a-z0-9.-]{0,79}', target) or '..' in target:
+        return False
+    try:
+        return all(stat.S_ISDIR(component.lstat().st_mode)
+                   for component in (entry.parent/'releases', entry.parent/target))
+    except FileNotFoundError:
+        return False
+
+
 def safe_tree(path, boundary):
     for ancestor in [path, *path.parents]:
         if ancestor == boundary.parent: break
@@ -183,6 +204,8 @@ def safe_tree(path, boundary):
     if not path.is_dir(): raise ValueError('missing_state_directory')
     for entry in path.rglob('*'):
         mode = entry.lstat().st_mode
+        if stat.S_ISLNK(mode) and game_selector(entry, path):
+            continue
         if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
             raise ValueError('unsafe_state_entry')
 

@@ -65,6 +65,50 @@ class CommissionTests(unittest.TestCase):
                 stop.assert_not_called()
             self.assertEqual(outside.read_text(), 'safe')
 
+    def test_handoff_removes_normal_installed_game_selector(self):
+        from runtime.catalog import activate_release
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); target = native.Device(root, fixture=True)
+            state = root/'storage/cubby/state'
+            release = state/'games/trail-mix/releases/0.20.2'
+            release.mkdir(parents=True)
+            (release/'index.html').write_text('test game')
+            activate_release(state/'games', 'trail-mix', '0.20.2')
+            with patch.object(target, 'validate'), patch.object(target, 'stop'), \
+                 patch.object(target, 'start'):
+                self.assertTrue(target.handoff([])['clean'])
+            self.assertEqual(list(state.iterdir()), [])
+
+    def test_game_selector_rejects_unsafe_targets_before_stop(self):
+        cases = ('absolute', 'escape', 'normalized', 'dangling', 'release-link',
+                 'releases-link', 'wrong-location', 'nested-link', 'file-target')
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory); target = native.Device(root, fixture=True)
+                state = root/'storage/cubby/state'
+                game = state/'games/trail-mix'; release = game/'releases/0.20.2'
+                release.mkdir(parents=True)
+                outside = root/'outside'; outside.mkdir()
+                (outside/'keep').write_text('safe')
+                link = game/'current'; destination = 'releases/0.20.2'
+                if case == 'absolute': destination = str(release)
+                elif case == 'escape': destination = '../../../../outside'
+                elif case == 'normalized': destination = 'releases/../releases/0.20.2'
+                elif case == 'dangling': destination = 'releases/missing'
+                elif case == 'release-link':
+                    release.rmdir(); release.symlink_to(outside, target_is_directory=True)
+                elif case == 'releases-link':
+                    release.rmdir(); release.parent.rmdir()
+                    release.parent.symlink_to(outside, target_is_directory=True)
+                elif case == 'wrong-location': link = state/'current'
+                elif case == 'nested-link': (release/'unexpected').symlink_to(outside)
+                elif case == 'file-target': release.rmdir(); release.write_text('file')
+                link.symlink_to(destination)
+                with patch.object(target, 'validate'), patch.object(target, 'stop') as stop:
+                    with self.assertRaises(ValueError): target.handoff([])
+                    stop.assert_not_called()
+                self.assertEqual((outside/'keep').read_text(), 'safe')
+
     def test_unknown_cubby_profile_blocks_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             target = native.Device(Path(directory), fixture=True)
