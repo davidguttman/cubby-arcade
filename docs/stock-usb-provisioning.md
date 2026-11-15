@@ -275,3 +275,33 @@ signed trial/rollback and cannot certify those gates from source tests. The
 operator must retain separate actual-device evidence and finish those gates
 before customer handoff. It does not accept arbitrary operator flags to turn
 pending tests into passes.
+
+### Commissioning after a signed update
+
+The original install journal remains bound to the original image version, source
+commit and hash. Do not rewrite that binding to pretend an update was a reflash.
+Signed update manifests do not carry a source commit. After verifying the
+signature and publication provenance of an immutable release's `manifest.json`
+(app) or `update.json` (platform), supply that exact manifest explicitly:
+
+```sh
+uv run python -m rocknix.commission check \
+  --job /private/jobs/device-task --identity /private/operator \
+  --release-manifest /private/verified-release/update.json
+uv run python -m rocknix.commission handoff \
+  --job /private/jobs/device-task --identity /private/operator \
+  --release-manifest /private/verified-release/update.json
+```
+
+Use the manifest for the installed kind, not a different legacy/platform variant
+of the same version. This option does not download a manifest or verify its
+signature: independently authenticate the release bytes first. Native checks
+still require the original build provenance, CID binding and internal mounts,
+then compare the complete active manifest and every app file's inventory, size,
+mode and SHA256 before cleanup. Missing, extra, modified or symlinked app files
+block commissioning. Readiness checks use the active update version; receipts
+retain the original image `binding` and report `active_release` separately as
+version, sequence and SHA256 of sorted, compact JSON metadata. They never invent
+an active source commit. All trial, ownership and pending-acceptance guards
+continue to apply. Without this option, the original image-only behavior is
+unchanged.

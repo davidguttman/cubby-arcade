@@ -440,3 +440,110 @@ class CommissionTests(unittest.TestCase):
             with patch.object(target,'validate'), patch.object(target,'stop') as stop:
                 with self.assertRaisesRegex(ValueError,'update_trial'): target.handoff([])
                 stop.assert_not_called()
+
+
+class SignedReleaseCommissionTests(unittest.TestCase):
+    def fixture(self, root):
+        import hashlib
+        target = CommissionTests().native_readiness_fixture(root)
+        current = root/'storage/cubby/current'
+        (current/'image.json').unlink()
+        build = root/'storage/cubby/image-provenance/build.json'
+        build.write_text(json.dumps(dict(product_version='0.35.0', source_commit='a'*40)))
+        app = current/'app'; app.mkdir()
+        body = b'hello signed release'
+        (app/'file.txt').write_bytes(body); (app/'file.txt').chmod(0o644)
+        manifest = dict(version='0.56.0', sequence=560001,
+                        files={'file.txt':dict(sha256=hashlib.sha256(body).hexdigest(),size=len(body),mode=0o644)})
+        (current/'release.json').write_text(json.dumps(manifest))
+        target.expected['release_manifest'] = manifest
+        return target, current, manifest
+
+    def test_signed_release_retains_original_identity_without_inventing_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target, current, manifest = self.fixture(Path(directory))
+            result = target.validate()
+            self.assertEqual(result['version'], '0.35.0')
+            self.assertEqual(result['commit'], 'a'*40)
+            self.assertEqual(result['active_release']['version'], '0.56.0')
+            self.assertNotIn('commit', result['active_release'])
+            self.assertEqual(result['active_release'], commission.release_identity(manifest))
+
+    def test_altered_release_or_original_binding_blocks_before_cleanup(self):
+        for case in ('bytes', 'mode', 'extra', 'symlink', 'manifest', 'cid', 'provenance', 'path'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                target, current, manifest = self.fixture(Path(directory))
+                if case=='bytes': (current/'app/file.txt').write_text('corrupt')
+                elif case=='mode': (current/'app/file.txt').chmod(0o755)
+                elif case=='extra': (current/'app/extra').write_text('unexpected')
+                elif case=='symlink':
+                    (current/'app/file.txt').unlink(); (current/'app/file.txt').symlink_to('/etc/passwd')
+                elif case=='manifest': (current/'release.json').write_text('{}')
+                elif case=='cid': target.path('/sys/block/mmcblk0/device/cid').write_text('d'*32)
+                elif case=='provenance': target.path('/storage/cubby/image-provenance/build.json').write_text('{}')
+                elif case=='path':
+                    manifest['files']['../escape'] = manifest['files'].pop('file.txt')
+                    (current/'release.json').write_text(json.dumps(manifest))
+                with patch.object(target, 'stop') as stop:
+                    with self.assertRaises((ValueError, KeyError)): target.handoff([])
+                    stop.assert_not_called()
+
+    def test_host_rejects_signed_snapshot_without_exact_release_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target, _, manifest = self.fixture(Path(directory))
+            snapshot = CommissionTests().healthy_snapshot()
+            with self.assertRaises(commission.Blocked): commission.validate_snapshot(snapshot,target.expected)
+            snapshot['identity']['active_release'] = commission.release_identity(manifest)
+            commission.validate_snapshot(snapshot,target.expected)
+            snapshot['identity']['active_release']['version'] = 'wrong'
+            with self.assertRaises(commission.Blocked): commission.validate_snapshot(snapshot,target.expected)
+
+    def test_cli_manifest_opt_in_preserves_verified_install_binding(self):
+        import hashlib
+        from types import SimpleNamespace
+        from rocknix import updates
+        with tempfile.TemporaryDirectory() as directory:
+            job=Path(directory); job.chmod(0o700)
+            binding=dict(version='0.35.0',commit='a'*40,image_sha256='b'*64)
+            state=dict(binding=binding,storage=dict(cid='c'*32),stage='commissioning_pending')
+            for name,text in [('state.json',json.dumps(state)),('known_hosts','pin'),('key','private')]:
+                (job/name).write_text(text); (job/name).chmod(0o600)
+            names=('runtime/index.html','rocknix/server.py','rocknix/session.sh')
+            files={name:dict(size=0,mode=0o644,sha256=hashlib.sha256(b'').hexdigest()) for name in names}
+            manifest=dict(schema=1,product='cubby-rg353v',kind='app',channel='stable',
+                          architecture='aarch64',rocknix='20261101',supervisor_api=1,
+                          runtime_sha256=updates.RUNTIME, version='0.56.0',sequence=560001,files=files,
+                          archive=dict(url='https://example.test/app.zip',size=1,unpacked_size=1,sha256='f'*64))
+            # The schema requires unpacked size to equal its inventory.
+            files[names[0]]['size']=1
+            path=job/'manifest.json'; path.write_text(json.dumps(manifest))
+            args=SimpleNamespace(job=job,identity=job/'key',host='169.254.170.2',release_manifest=path)
+            actual, expected=commission.validate_args(args)
+            self.assertEqual(actual,binding)
+            self.assertEqual(expected['version'],'0.35.0')
+            self.assertEqual(expected['release_manifest'],manifest)
+            path.write_text('{}')
+            with self.assertRaisesRegex(commission.Blocked,'verified_release_manifest_required'):
+                commission.validate_args(args)
+
+    def test_receipt_reports_active_release_separately_from_original_binding(self):
+        identity=dict(version='0.56.0',sequence=560001,manifest_sha256='f'*64)
+        binding=dict(version='0.35.0',commit='a'*40,image_sha256='b'*64)
+        report=commission.receipt(dict(binding=binding,storage=dict(cid='c'*32)),
+                                  dict(identity=dict(active_release=identity)))
+        self.assertEqual(report['binding'],binding)
+        self.assertEqual(report['active_release'],identity)
+        self.assertFalse(report['customer_ready'])
+
+    def test_readiness_checks_active_version_not_image_version(self):
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as directory:
+            target, _, _ = self.fixture(Path(directory))
+            client=MagicMock(); client.__enter__.return_value=client; client.connect_ex.return_value=0
+            def command(*args): return 'success' if args[1]=='show' else ''
+            with patch.object(native.socket,'socket',return_value=client), \
+                 patch.object(target,'rpc',return_value=dict(installed='0.56.0',configured=True,phase='idle')), \
+                 patch.object(target,'command',side_effect=command):
+                result=target.snapshot()
+            self.assertTrue(all(result['checks'].values()))
+            commission.validate_snapshot(result,target.expected)
