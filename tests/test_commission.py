@@ -459,6 +459,52 @@ class SignedReleaseCommissionTests(unittest.TestCase):
         target.expected['release_manifest'] = manifest
         return target, current, manifest
 
+    def test_native_launcher_imports_preserve_exact_signed_inventory(self):
+        import hashlib
+        import os
+        import shlex
+        import sys
+        root = Path(__file__).resolve().parents[1]
+        for launcher, boundary in (('rocknix/device/chroot-run.sh', 'RELEASE=$1'),
+                                   ('rocknix/session.sh', 'cd /opt/cubby')):
+            with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as directory:
+                target, current, manifest = self.fixture(Path(directory))
+                app = current/'app'
+                source = app/'example.py'; source.write_text('value = 42\n'); source.chmod(0o644)
+                body = source.read_bytes()
+                manifest['files']['example.py'] = dict(size=len(body), mode=0o644,
+                                                        sha256=hashlib.sha256(body).hexdigest())
+                (current/'release.json').write_text(json.dumps(manifest))
+                # Execute the real launcher's environment prologue, then a real
+                # import. Do not rely on the test runner's bytecode policy.
+                prefix = (root/launcher).read_text().split(boundary, 1)[0]
+                env = dict(os.environ); env.pop('PYTHONDONTWRITEBYTECODE', None)
+                subprocess.run(['bash', '-c', prefix+'\nexec '+shlex.quote(sys.executable)
+                                + ' -c '+shlex.quote('import example; assert example.value == 42')],
+                               cwd=app, env=env, check=True, capture_output=True)
+                self.assertFalse(list(app.rglob('*.pyc')))
+                target.validate()
+
+    def test_existing_unsigned_bytecode_is_not_trusted(self):
+        import hashlib
+        import os
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            target, current, manifest = self.fixture(Path(directory))
+            app = current/'app'
+            source = app/'example.py'; source.write_text('value = 42\n'); source.chmod(0o644)
+            body = source.read_bytes()
+            manifest['files']['example.py'] = dict(size=len(body), mode=0o644,
+                                                    sha256=hashlib.sha256(body).hexdigest())
+            (current/'release.json').write_text(json.dumps(manifest))
+            target.validate()
+            env = dict(os.environ); env.pop('PYTHONDONTWRITEBYTECODE', None)
+            subprocess.run([sys.executable, '-c', 'import example'], cwd=app, env=env,
+                           check=True, capture_output=True)
+            self.assertTrue(list(app.rglob('*.pyc')))
+            with self.assertRaisesRegex(ValueError, 'active_release_file_mismatch'):
+                target.validate()
+
     def test_signed_release_retains_original_identity_without_inventing_commit(self):
         with tempfile.TemporaryDirectory() as directory:
             target, current, manifest = self.fixture(Path(directory))

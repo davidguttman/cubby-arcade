@@ -299,7 +299,10 @@ signature: independently authenticate the release bytes first. Native checks
 still require the original build provenance, CID binding and internal mounts,
 then compare the complete active manifest and every app file's inventory, size,
 mode and SHA256 before cleanup. Missing, extra, modified or symlinked app files
-block commissioning. Readiness checks use the active update version; receipts
+block commissioning. Native launchers disable Python bytecode writes so normal
+imports do not add unsigned caches to a fresh signed release. Existing unsigned
+`__pycache__` files remain a failed inventory check, not trusted release bytes.
+Readiness checks use the active update version; receipts
 retain the original image `binding` and report `active_release` separately as
 version, sequence and SHA256 of sorted, compact JSON metadata. They never invent
 an active source commit. All trial, ownership and pending-acceptance guards
