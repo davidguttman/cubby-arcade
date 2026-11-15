@@ -130,6 +130,10 @@ tests; confirm them with the stock/recovery daemon versions on the device.
    Require `blockdev --rereadpt /dev/block/mmcblk0` to succeed on the unmounted
    stock disk **before** writing, proving that this recovery/kernel supports
    the actual partition-table reread operation, not merely a help option.
+   Also create and remove the private `/tmp/cubby-provision-storage` staging
+   directory before writing, proving key-enrollment staging works without
+   assuming Android recovery has `/run`. An existing destination, symlinked
+   parent, or failed directory operation blocks before erasure.
    Unsupported recovery primitives block installation; they are not assumed
    to be available on every stock unit.
 4. Stream gzip through recovery's pipefail-protected `gzip | dd`, fsync, check

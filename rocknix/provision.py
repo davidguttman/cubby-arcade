@@ -21,7 +21,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BLOCK = '/dev/block/mmcblk0'
-MOUNT = '/run/cubby-provision-storage'
+MOUNT = '/tmp/cubby-provision-storage'
 PROFILE = 'rg353v-android11'
 MAX_RAW = 64 * 1024**3
 
@@ -107,14 +107,25 @@ def image_geometry(path):
     return {f'mmcblk0p{index}': tuple(part) for index, part in enumerate(parts, 1)}
 
 
+def staging_directory_script():
+    # Android recovery provides /tmp, but not necessarily /run. Never reuse an
+    # existing destination (including dangling symlinks) or a symlinked parent.
+    parent = quote(str(Path(MOUNT).parent))
+    target = quote(MOUNT)
+    return (f'test -d {parent}; test ! -L {parent}; '
+            f'test ! -e {target}; test ! -L {target}; '
+            f'umask 077; mkdir {target}; ')
+
+
 def probe_recovery_tools(adb):
     # Execute the actual ioctl on the unmounted stock table before destructive
     # writing. A listed binary/help option alone does not prove kernel support.
     adb.command('shell','sh','-c',quote(
         'set -o pipefail; set -eu; test -b /dev/block/mmcblk0; '
-        'for t in gzip dd sync mount umount sha256sum readlink blockdev; '
+        'for t in gzip dd sync mount umount sha256sum readlink blockdev mkdir rmdir chmod; '
         'do command -v "$t" >/dev/null; done; '
-        'blockdev --rereadpt /dev/block/mmcblk0'))
+        + staging_directory_script() + f'rmdir {quote(MOUNT)}; '
+        + 'blockdev --rereadpt /dev/block/mmcblk0'))
 
 
 PARTITION_PROBE = '''set -eu
@@ -399,8 +410,7 @@ def enroll_host_identity(adb, host_key, original, size, journal, geometry):
     target = MOUNT + '/cubby/recovery/private'
     script = f'''set -eu
  test -b {BLOCK}p2
- test ! -e {MOUNT}
- mkdir {MOUNT}
+ {staging_directory_script()}
  mount -t ext4 {BLOCK}p2 {MOUNT}
  trap 'umount {MOUNT}; rmdir {MOUNT}' 0
  test ! -L {MOUNT}/cubby
@@ -418,7 +428,7 @@ def enroll_host_identity(adb, host_key, original, size, journal, geometry):
     with host_key.open('rb') as stream: adb.stream(script, stream)
     # Fresh read-only remount verifies actual persisted key bytes, not an echo.
     verify_script = f'''set -eu
- mkdir {MOUNT}
+ {staging_directory_script()}
  mount -t ext4 -o ro {BLOCK}p2 {MOUNT}
  trap 'umount {MOUNT}; rmdir {MOUNT}' 0
  sha256sum {target}/ssh_host_ed25519_key

@@ -421,6 +421,7 @@ sys.exit(result.returncode)
             script = script.replace('test -b ', 'test -f ')
             return command(*args[:-1],script,**kwargs)
         with patch.object(self.adb,'command',side_effect=safe_command), \
+             patch.object(p,'MOUNT',str(self.root/'staging')), \
              patch.object(p,'write_verified') as write:
             with self.assertRaises(p.Blocked):
                 p.probe_recovery_tools(self.adb)
@@ -437,6 +438,41 @@ sys.exit(result.returncode)
 
 
 class EnrollmentTests(unittest.TestCase):
+    def staging_preflight(self, mount):
+        from unittest.mock import Mock
+        adb=Mock()
+        with patch.object(p,'MOUNT',str(mount)):
+            p.probe_recovery_tools(adb)
+        import shlex
+        script=shlex.split(adb.command.call_args.args[-1])[0]
+        # Exercise the actual remote script without any host block-device access.
+        script=script.replace('test -b /dev/block/mmcblk0', 'true')
+        script=script.replace('blockdev --rereadpt /dev/block/mmcblk0', 'true')
+        return subprocess.run(['bash','-c',script],capture_output=True)
+
+    def test_staging_preflight_works_without_run_and_cleans_probe(self):
+        self.assertEqual(p.MOUNT, '/tmp/cubby-provision-storage')
+        with tempfile.TemporaryDirectory() as directory:
+            mount=Path(directory)/'staging'
+            self.assertEqual(self.staging_preflight(mount).returncode,0)
+            self.assertFalse(mount.exists())
+
+    def test_staging_preflight_refuses_missing_parent_or_existing_destination(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            missing=root/'missing'/'staging'
+            self.assertNotEqual(self.staging_preflight(missing).returncode,0)
+            for kind in ('file','directory','dangling_symlink'):
+                with self.subTest(kind=kind):
+                    mount=root/kind
+                    if kind=='file': mount.write_text('preserve')
+                    elif kind=='directory': mount.mkdir()
+                    else: mount.symlink_to(root/'absent')
+                    self.assertNotEqual(self.staging_preflight(mount).returncode,0)
+                    self.assertTrue(mount.exists() or mount.is_symlink())
+            parent=root/'parent-link'; parent.symlink_to(root,target_is_directory=True)
+            self.assertNotEqual(self.staging_preflight(parent/'staging').returncode,0)
+
     def test_real_sysfs_probe_script_reads_both_extents(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
