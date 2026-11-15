@@ -140,6 +140,8 @@ def validate_binding(plan, *, public=False):
         validate_identity(plan['network_identity'])
         if cid is None:
             raise ValueError('Unbound images must generate network identity on the device')
+    elif cid is not None:
+        raise ValueError('Bound image lacks audited network identity')
     ids = plan.get('media_identities')
     if ids is not None:
         try:

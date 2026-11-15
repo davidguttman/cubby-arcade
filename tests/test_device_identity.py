@@ -62,6 +62,14 @@ class DeviceIdentityTests(unittest.TestCase):
                 with self.assertRaises(ValueError): identity.ensure_identity(record)
                 self.assertEqual(record.read_bytes(), before)
 
+    def test_bound_plan_requires_network_identity_even_with_matching_record_digest(self):
+        plan = production_image.bind_plan({'storage_files': {}}, 'b'*32, b'public key')
+        del plan['network_identity']
+        plan['storage_files']['cubby/image-provenance/device.json'] = production_image.digest(
+            json.dumps(image.media_identity_record(plan), sort_keys=True).encode())
+        with self.assertRaisesRegex(ValueError, 'network identity'):
+            production_image.validate_binding(plan)
+
     def test_service_orders_after_stock_config_and_before_hostname_and_dhcp(self):
         unit = (ROOT/'rocknix/device/cubby-device-identity.service').read_text()
         self.assertIn('DefaultDependencies=no', unit)
