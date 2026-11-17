@@ -718,9 +718,9 @@ test('host activation retries an unfocused hidden-prepared hub after the visible
 // Players in the shared hub: the real player rules and pictures, against this DOM adapter.
 const Profiles=require('../runtime/core/profiles.js'),Avatars=require('../runtime/core/avatars.js');
 function memory(entries=[]){const values=new Map(entries);return {values,get length(){return values.size;},key:i=>[...values.keys()][i]??null,getItem:k=>values.has(k)?values.get(k):null,setItem:(k,v)=>values.set(k,String(v)),removeItem:k=>values.delete(k)};}
-function playersHub({list,pin,overrides={},capabilities={},windowOverrides={},entries=[]}={}){
+function playersHub({list,active=list?.[0].id,pin,overrides={},capabilities={},windowOverrides={},entries=[]}={}){
  const localStorage=memory(entries),sessionStorage=memory(pin?[[Profiles.PIN_KEY,pin]]:[]),calls=[];
- if(list)localStorage.setItem(Profiles.REGISTRY_KEY,JSON.stringify({profiles:list,active:list[0].id}));
+ if(list)localStorage.setItem(Profiles.REGISTRY_KEY,JSON.stringify({profiles:list,active}));
  const mounted=mountedHub(games,[],{profiles:true,...capabilities},{useProfile:async id=>{calls.push(['use',id]);},removeProfile:async id=>{calls.push(['remove',id]);},savedGames:async id=>{calls.push(['saved',id]);return ['one'];},resetGameSaves:async(id,player)=>{calls.push(['reset',id,player]);},...overrides},
   {localStorage,sessionStorage,HandheldProfiles:Profiles,HandheldAvatars:Avatars,...windowOverrides});
  return {...mounted,localStorage,sessionStorage,calls};
@@ -755,15 +755,35 @@ test('settings omit unsupported advanced actions without displacing everyday def
  assert.equal(device.host.ownerDocument.activeElement.getAttribute('aria-label'),'Wi-Fi settings');device.hub.dispose();
 });
 const picker=host=>host.querySelector('.player-picker');
-test('with players, Cubby asks who is playing on start; the first pick has no way around it',async()=>{
- const {host,action,calls,sessionStorage}=playersHub({list:three});await settle();
- assert.equal(picker(host).hidden,false);assert.equal(host.querySelector('.picker-back'),null);
+test('startup resumes the last player; the picture opens switching and Back keeps that player',async()=>{
+ const {host,action,calls,sessionStorage,localStorage,hub}=playersHub({list:three,active:'p_fixture1'});await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-button').dataset.avatar,'fox');
+ host.querySelector('.player-button').click();assert.ok(host.querySelector('.picker-back'));
  assert.deepEqual(host.querySelectorAll('.picker-face').map(face=>face.dataset.profile),[...three.map(p=>p.id),undefined],'Every player, then +');
- assert.equal(host.ownerDocument.activeElement.dataset.profile,Profiles.FIRST,'Focus starts on the last player');
- for(const a of ['back','exit','nextView','select'])action(a);assert.equal(picker(host).hidden,false);
- host.querySelectorAll('.picker-face')[1].focus();action('confirm');await settle();
- assert.equal(picker(host).hidden,true);assert.deepEqual(calls,[['use','p_fixture1']]);assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),'p_fixture1');
- const button=host.querySelector('.player-button');assert.equal(button.hidden,false);assert.equal(button.dataset.avatar,'fox');
+ assert.equal(host.ownerDocument.activeElement.dataset.profile,'p_fixture1','Focus starts on the last player');
+ action('back');assert.equal(picker(host).hidden,true);assert.deepEqual(calls,[]);
+ host.querySelector('.player-button').click();action('exit');assert.equal(picker(host).hidden,true);
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[2].focus();action('confirm');await settle();
+ assert.equal(picker(host).hidden,true);assert.deepEqual(calls,[['use','p_fixture2']]);assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),'p_fixture2');
+ assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).active,'p_fixture2');
+ hub.dispose();
+ const restarted=playersHub({windowOverrides:{localStorage}});await settle();
+ assert.equal(restarted.sessionStorage.getItem(Profiles.PIN_KEY),null,'A new startup has no tab pin');
+ assert.equal(picker(restarted.host).hidden,true);assert.equal(restarted.host.querySelector('.player-button').dataset.avatar,'frog');
+ restarted.hub.dispose();
+});
+test('a resumed player supplies favorites, feeds and the host identity before launch',async()=>{
+ const order=[];
+ const {host,hub}=playersHub({list:three,active:'p_fixture1',entries:[['handheld:favorites:v1','["one"]'],['cubby:profile:p_fixture1:handheld:favorites:v1','["two"]']],
+  overrides:{setFeedProfile:id=>order.push('feed '+id),useProfile:async id=>order.push('use '+id),launch:async id=>order.push('launch '+id)}});await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(hub.state.isFavorite('two'),true);assert.equal(hub.state.isFavorite('one'),false);
+ assert.deepEqual(order,['feed p_fixture1']);host.querySelector('.play-game').click();await settle();
+ assert.deepEqual(order,['feed p_fixture1','use p_fixture1','launch one']);hub.dispose();
+});
+test('a missing remembered player falls back to the first player without a startup picker',async()=>{
+ const {host,hub}=playersHub({list:three,active:'p_removed',pin:'p_removed'});await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-button').dataset.avatar,'bear');
+ host.querySelector('.player-button').click();assert.ok(host.querySelector('.picker-back'));hub.dispose();
 });
 test('coming back to the hub keeps the player; the picture reopens the picker and Back keeps them',async()=>{
  const {host,action,hub}=playersHub({list:three,pin:'p_fixture2'});await settle();
@@ -803,6 +823,7 @@ test('a device lists the players page among its tiles, and a host without player
 test('a child sees their own name under their face and beside it on the hub',async()=>{
  const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'}];
  const {host}=playersHub({list});await settle();
+ host.querySelector('.player-button').click();
  assert.deepEqual(host.querySelectorAll('.face-name').map(n=>n.textContent),['Theo','Fox',undefined],'Names, and a nameless +');
  assert.deepEqual(host.querySelectorAll('.picker-face').map(f=>f.getAttribute('aria-label')),['Theo','Fox','New player']);
  host.querySelectorAll('.picker-face')[0].click();await settle();
@@ -890,6 +911,7 @@ test('adults rename, re-picture and remove players behind the gear question; the
 test('player screens show no words but players’ names and keyboard letters',async()=>{
  const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog',name:'Josephine'}],names=new Set(['Theo','Fox','Josephine','Cubby']);
  const {host,hub,action}=playersHub({list,windowOverrides:device});await settle();
+ host.querySelector('.player-button').click();
  const shown=[];
  function collect(screen){const walk=e=>{if(typeof e.textContent==='string'&&e.textContent&&!e.children?.length)shown.push([screen,e.textContent,!!e.parent?.classList.contains('cubby-keyboard')]);(e.children||[]).forEach(walk);};walk(host.querySelector('.player-picker'));walk(host.querySelector('.brand'));walk(host.querySelector('.player-management'));const saves=host.querySelector('.save-management');if(saves.querySelector('.choose-player'))walk(saves);}
  collect('picker');host.querySelectorAll('.picker-face')[0].click();await settle();collect('hub');
