@@ -433,7 +433,7 @@ function mount(host){
  feedDialog.addEventListener('cancel',e=>{e.preventDefault();feedBack();});
  // The child's side of players: their face and name at the top of the hub, and a picker
  // of faces. A child's own name is the one word the child hub shows (AGENTS.md); nothing
- // needs reading. With one player neither exists, so the hub looks as it always did.
+ // needs reading. The chip opens switching whenever the child wants another player.
  const playerButton=element(host.querySelector('.brand'),'button','player-button');playerButton.type='button';playerButton.hidden=true;playerButton.addEventListener('click',()=>openPicker());
  const playerDisc=element(playerButton,'span','player-disc'),playerLabel=element(playerButton,'span','player-label');
  function renderPlayer(){
@@ -450,11 +450,10 @@ function mount(host){
  function openPicker(){
   if(!profiles||adult||picking)return;picking=true;pausePreview();renderFaces();
  }
- // Faces, and + while an animal is free. The first pick after Cubby starts can't be
- // skipped; after that Back keeps the player.
+ // Faces, and + while an animal is free. Back always keeps the current player.
  function renderFaces(){
   picker.replaceChildren();kidBoard=null;kidSave=null;
-  if(profiles.pinned()||!manyPlayers())button(picker,'back','Keep player',closePicker,'picker-back');
+  button(picker,'back','Keep player',closePicker,'picker-back');
   const faces=element(picker,'div','picker-faces'),list=profiles.list(),more=profiles.freeAvatars().length>0;faces.dataset.count=String(list.length+(more?1:0));
   for(const p of list){const face=element(faces,'button','picker-face');face.type='button';face.dataset.profile=p.id;face.setAttribute('aria-label',p.name);element(face,'span','face-disc').innerHTML=faceArt(p.avatar,Avatars);element(face,'span','face-name').textContent=p.name;face.addEventListener('click',()=>choose(p.id));}
   if(more){const plus=element(faces,'button','picker-face picker-plus');plus.type='button';plus.setAttribute('aria-label','New player');element(plus,'span','face-disc').innerHTML=icon('plus');element(plus,'span','face-name');plus.addEventListener('click',kidAnimal);}
@@ -914,7 +913,7 @@ function mount(host){
  const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(picking){const nodes=Array.from(picker.querySelectorAll('button')).filter(b=>!b.disabled);
   // In a child's +, Back is ✕; on the name keys a shoulder changes case and Start is ✓.
   const step=picker.querySelector('.kid-cancel,.name-entry');
-  if(a==='back'||a==='exit'){if(step)renderFaces();else if(profiles.pinned()||!manyPlayers())closePicker();}
+  if(a==='back'||a==='exit'){if(step)renderFaces();else closePicker();}
   else if(kidBoard&&(a==='nextView'||a==='previousView'))kidBoard.toggleCase();
   else if(kidSave&&a==='pause')kidSave();
   else if(a==='confirm'||a==='pause')(nodes.includes(doc.activeElement)?doc.activeElement:picker.querySelector('.picker-face'))?.click();
@@ -981,9 +980,8 @@ function mount(host){
  let shortcutHeld=0,shortcutFired=false;
  const shortcutTimer=win.setInterval?.(()=>{if(disposed)return;let pad=null;try{pad=[...(win.navigator?.getGamepads?.()||[])].find(p=>p?.connected);}catch{}
   if(pad?.buttons[4]?.pressed&&pad?.buttons[5]?.pressed&&pad?.buttons[9]?.pressed){const now=Date.now();if(!shortcutHeld)shortcutHeld=now;if(now-shortcutHeld>2000&&!shortcutFired){shortcutFired=true;win.location.hash='options';}}else{shortcutHeld=0;shortcutFired=false;}},100);
- // Who is playing is asked once each time Cubby starts; coming back from a game or an
- // adult page keeps the player.
- renderPlayer();if(manyPlayers()&&!profiles.pinned()&&win.location?.hash!=='#options')openPicker();
+ // Resume the remembered player immediately; their chip remains available to switch.
+ renderPlayer();
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose,refreshCatalog};
 }
