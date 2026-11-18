@@ -173,6 +173,32 @@ game feed and the player's adult adds it once on the device.
 ]
 ```
 
+### Optional marketing metadata
+
+Listings may also include these independent, optional fields. Existing feeds
+need no changes, and omitted values remain omitted in the exported JSON:
+
+- `tagline`: one short, nonempty line describing the game (up to 160 characters).
+- `teaches`: a short, nonempty phrase naming the skill (up to 120 characters),
+  such as `counting` or `letters and sounds`. This is the primary marketing
+  lead; use a concrete skill, not a slogan.
+- `ages`: an inclusive age range as a string, such as `"3–5"` (hyphen `"3-5"`
+  also accepted). Bounds are whole ages from 0 to 99 in ascending order.
+- `web_url`: an absolute HTTPS address where the game or app can be played in
+  a browser. Omit it when there is no browser version.
+- `kind`: `"game"` or `"app"`. Marketing consumers can exclude apps from game
+  lists without hard-coding IDs. This does not remove apps from Cubby's Store.
+- `added`: a real calendar date as a `"YYYY-MM-DD"` string, recording when the
+  listing joined **this feed**, not its latest release or deployment. Keep it
+  unchanged on updates; consumers can use it for new badges and post planning.
+
+For example, add `"teaches": "counting"`, `"ages": "3–5"`,
+`"kind": "game"`, and `"added": "2026-11-18"` to a listing. In YAML,
+**quote dates** (`added: "2026-11-18"`) so they remain JSON-compatible strings.
+Do not guess age guidance or invent teaching claims: omit unknown values.
+These fields are adult-facing discovery data, not words shown in the child's
+launcher. They do not change game manifests, installation, or save data.
+
 `attract` (trailer) is optional; every URL is HTTPS. The feed holds the stable
 manifest URL and discovery media; the game owns its release manifest and files.
 Later releases update that stable manifest, not the feed. Browsing does not
