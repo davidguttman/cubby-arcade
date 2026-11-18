@@ -350,7 +350,7 @@ without them (an older desktop app under a newer cloud hub) keeps one player.
 uv run python web.py build
 ```
 
-The public browser app and package registry use https://cubby.david.app .
+The public browser app and package registry use https://play.cubbyarcade.com .
 For a local preview, the repo's compose file serves the export with a Python
 static server; put it behind HTTPS to test browser installs. Re-run the build
 after editing shared code/package sources.
@@ -595,7 +595,7 @@ see [Game-owned releases](docs/game-release-manifest.md) for the contract and
 single-release workflow. Schema-1 ZIP releases below remain compatible.
 
 `web.py build` exports both the playable web preview and a hosted registry. The
-public root defaults to `https://cubby.david.app`; override it
+public root defaults to `https://play.cubbyarcade.com`; override it
 with `--base-url https://your-host.example/`. All advertised media, manifests,
 and ZIP archives are written into the selected export, not just referenced.
 
@@ -614,7 +614,7 @@ The stable `/store/<id>/manifest.json` describes the currently offered release:
   "runtime": "web",
   "entrypoint": "play.html",
   "package": {
-    "url": "https://cubby.david.app/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
+    "url": "https://play.cubbyarcade.com/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
     "size": 12345,
     "sha256": "<64 lowercase hexadecimal characters>"
   }
@@ -631,7 +631,7 @@ arbitrary executable installer or cryptographic publisher-authentication scheme.
 To add or update a game on the existing generated host:
 
 ```sh
-uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://cubby.david.app/
+uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://play.cubbyarcade.com/
 ```
 
 This command validates before publishing, creates immutable versioned archive
@@ -649,8 +649,8 @@ The existing management CLI accepts either this registry or the legacy schema-1
 inline catalog without breaking old callers:
 
 ```sh
-uv run python -m runtime.catalog list https://cubby.david.app/catalog
-uv run python -m runtime.catalog --root path/to/games install https://cubby.david.app/catalog line-cutter
+uv run python -m runtime.catalog list https://play.cubbyarcade.com/catalog
+uv run python -m runtime.catalog --root path/to/games install https://play.cubbyarcade.com/catalog line-cutter
 ```
 
 Installation/update resolves the stable manifest at the time of the operation.
@@ -717,7 +717,7 @@ The shared-origin catalog continues to require trusted developer game packages.
 ### Cloud-backed desktop launcher
 
 The desktop executable is a thin, sandboxed shell. On launch it requests
-`https://cubby.david.app/hub-manifest.json`, downloads the small
+`https://play.cubbyarcade.com/hub-manifest.json`, downloads the small
 launcher UI/core snapshot (with a fallback catalog), verifies its size/hash
 inventory, and caches it coherently before opening the hub. Rebuilding/publishing the web export is
 all that is needed to deliver launcher/store UI changes on the next app launch.
@@ -752,7 +752,7 @@ The HTTPS cloud host is trusted to supply launcher JavaScript, but never gets
 Node access or arbitrary filesystem/native bridge access. `bridge_version: 1`
 is the compatibility gate; future native-runtime changes still require a new
 executable. The default browser preview/catalog host is
-https://cubby.david.app.
+https://play.cubbyarcade.com.
 `CUBBY_ARCADE_CLOUD_ORIGIN` can select another HTTPS root for adult deployment/testing.
 For the built-executable offline smoke only, `CUBBY_ARCADE_SMOKE_OFFLINE=1` simulates a
 network failure while keeping the same origin/profile and cache.
@@ -823,7 +823,7 @@ profile.
 To publish a game release to a local directory served by the configured HTTPS host:
 
 ```sh
-uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby.david.app/
+uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://play.cubbyarcade.com/
 ```
 
 Installed games on every host check their stable manifest on hub entry, download
@@ -843,77 +843,100 @@ The desktop and adult catalog CLI accept schema-2 per-file manifests while
 retaining compatibility with existing ZIP releases.
 
 
-### Public website and game-author specifications
+### Separate marketing and interactive sites
 
-The adult-facing landing page at `https://cubby.david.app/` links to the
-[game-author guide](docs/game-authoring.md), the
-[file release specification](docs/game-release-manifest.md), browsable HTML
-copies, and a downloadable standalone generator. The wordless launcher remains
-separate; `/play` is the free browser demo on the public deployment.
+The production sites are two **Render Static Sites** built from this repository:
 
-`web.py build` exports website assets under `site/`, documentation under `docs/`,
-and `tools/cubby_manifest.py`. Its physical `index.html` remains the native hub,
-with an identical `native/index.html` transport alias. `hosting/build.py` makes
-the production root `index.html` the landing page; the native transport file stays
-unchanged. Render Static Site rewrites `/play` and `/play/` to that physical native
-file, while `/` and `/index.html` serve the landing page directly. Do not replace the native
-shell inventory with landing-page bytes. The current desktop fetches that native
-route first, verifies its inventory hash, and falls back to `/index.html` only for
-legacy hosts. Older desktop clients that request the now-public `/index.html`
-reject its mismatching hash and use their previously verified cache or bundle;
-they never install the landing page as the launcher. Browser demo return-to-home
-returns to the browser hub at `/play`; the native app returns to its wordless hub.
-A local or VM preview may still show the hub at its root; this does not change
-the installed launcher or children's UI.
+- `https://cubbyarcade.com/` and `https://www.cubbyarcade.com/` contain marketing,
+  waitlist signup and download links only.
+- `https://play.cubbyarcade.com/` opens the wordless Cubby Buddy browser demo.
+  All technical documentation lives under `/docs/` there, with the standalone
+  manifest generator at `/tools/cubby_manifest.py`. The native launcher,
+  catalogs, retained packages, and phone companion (`/parents/`) also live there.
+- Keep legacy `cubby.david.app` attached to the interactive service, with its
+  CNAME targeting that service. Existing installed clients fetch feeds from
+  that origin and **reject redirected feeds**; a redirect is not compatibility.
+  New client defaults use `https://play.cubbyarcade.com/catalog` and `/beta/catalog`.
+  Existing saved feed settings, cached catalogs and installed-game source pins
+  retain their original URLs; no custom or legacy feed is silently rewritten.
 
-## Source-hosted cloud deployment and independent game updates
-
-Production hosting is a Render **Static Site**,
-managed through the Render dashboard/API, not a repository Blueprint. Configure
-branch **main** and auto-deploy **On Commit**. Website deploys do not wait for
-GitHub release checks; platform publication and device-feed verification remain
-separate gates described in [Cubby releases](docs/releases.md). The static build is:
+Build/publish settings (Python runs only at build time):
 
 ```sh
-uv run python hosting/build.py
-# Render build: python3 -m pip install -r requirements.txt && python3 hosting/build.py
-# Render Static Site publish directory: .cache/web
-# No start command or runtime server
+# Marketing service: publish .cache/marketing
+python3 -m pip install -r requirements.txt && python3 hosting/build.py --surface marketing
+# Interactive service: publish .cache/play
+python3 -m pip install -r requirements.txt && python3 hosting/build.py --surface play
+# Local equivalents:
+uv run python hosting/build.py --surface marketing
+uv run python hosting/build.py --surface play
 ```
 
-The build uses pinned PyYAML for the hand-authored Store catalog and fetches/verifies the historical pinned upstream archive, exports
-the launcher with an empty Library, and lists only Line Cutter and Trail Mix in
-the Store. It keeps all immutable previously published releases (including the
-unlisted Little Camp) for existing clients. `hosting/releases/` contains the exact historical distribution
-archives, not editable game source. Their size/hash/provenance inventory is
-`hosting/releases.json`; old package and media URLs remain byte-identical.
-Render serves `.cache/web` from its Static Site CDN. Maintain these routes and
-headers in the dashboard/API alongside the `cubby.david.app` custom domain:
+The marketing build does not fetch games or export the native runtime, catalogs,
+technical docs, tools, phone companion, or play page. The interactive export
+contains no waitlist page/scripts or marketing SDK; its root is the same photo
+wrapper as `/site/play.html`, embedding `/native/index.html` on the same origin.
+The native inventory still hashes the native shell as `/index.html`; never
+replace those inventory bytes with the root wrapper. The browser worker caches
+both root aliases and `/play` aliases for offline use on the interactive origin.
+New browsers have separate origin storage; previous browser saves do not migrate
+automatically across domains. Installed desktop/device storage is unchanged.
 
-- Rewrite `/play` and `/play/` to `/native/index.html` (not redirects).
-- On `/*`, set `Access-Control-Allow-Origin: *` and
-  `X-Content-Type-Options: nosniff` (not a blanket cache rule).
-- On `/catalog`, `/beta/catalog`, `/library`, and `/hub-manifest.json`, set
+Configure the play service with these **rewrites**, before any catch-all:
+
+- `/play` and `/play/` → `/site/play.html`.
+- Preserve any existing game-owned phone-companion rewrites (for example
+  `/parents/good-bribes-only/*`) with their existing destinations.
+- Physical `/`, `/index.html`, `/native/index.html`, `/parents/`, `/docs/*`,
+  `/tools/*`, `/runtime/*`, `/store/*`, `/catalog`, `/beta/catalog`, `/library`,
+  `/version.json`, `/hub-manifest.json`, and `/cubby-worker.js` serve directly.
+
+On the marketing service, use **301 redirects** to `https://play.cubbyarcade.com`
+for the following exact routes/prefixes. Preserve query strings and wildcard
+suffixes, and verify those properties on the deployed provider:
+
+- Before `/parents/*`, serve `/parents/worker.js` directly from the marketing
+  export (an exact same-path rewrite may exempt it from the wildcard redirect).
+  This retirement script and `/cubby-worker.js` require `Cache-Control: no-cache`;
+  neither may redirect cross-origin.
+- `/play` and `/play/` → `https://play.cubbyarcade.com/`.
+- `/site/play.html` → `https://play.cubbyarcade.com/`.
+- `/docs/*`, `/tools/*`, `/native/*`, `/runtime/*`, `/parents/*`, `/store/*`,
+  `/beta/*`, and `/games/*` → the same path on the play origin.
+- `/catalog`, `/library`, `/version.json`, `/hub-manifest.json` → the same path
+  on the play origin.
+
+Do not retain an old `/play` rewrite or a broad SPA fallback on marketing.
+The marketing export includes minimal retirement scripts at `/cubby-worker.js`
+and `/parents/worker.js`. Serve them directly, never redirect them cross-origin,
+with `Cache-Control: no-cache`. Each unregisters its old worker and refreshes
+scoped windows onto the network routes,
+and leaves caches, installed games and saved data untouched. Cutover verification
+must include an existing browser profile as well as a fresh profile. An offline
+profile cannot receive retirement until it reconnects.
+
+Both services track `main` with auto-deploy **On Commit** after integration.
+During rollout the default `python3 hosting/build.py` remains the legacy combined
+export at `.cache/web`, so an existing service is not silently cut over before
+its domains and redirects are configured. The repository is not a Render
+Blueprint; manage the service settings through the Render API/dashboard.
+Website deployments do not require a platform version bump; platform release
+gates remain in [Cubby releases](docs/releases.md).
+
+On the interactive service, preserve existing CORS, JSON and cache headers:
+
+- On `/*`, `Access-Control-Allow-Origin: *` and
+  `X-Content-Type-Options: nosniff`.
+- On `/catalog`, `/beta/catalog`, `/library`, `/hub-manifest.json`,
   `Content-Type: application/json; charset=utf-8`.
-- Set `Cache-Control: public, max-age=0, must-revalidate, no-transform` on the
-  mutable paths `/`, `/index`, `/index.html`, `/play`, `/play/`, `/native/*`,
-  `/runtime/*`, `/site/*`, `/docs/*`, `/catalog`, `/beta/catalog`, `/library`,
-  `/hub-manifest.json`, and `/browser-sw.js`. Apply the same policy separately
-  to each exact stable `/store/<game>/manifest.json` path, including
-  `/store/line-cutter/manifest.json` and `/store/little-camp/manifest.json`.
-- Set `Cache-Control: public, max-age=31536000, immutable, no-transform` on the
-  retained `/store/line-cutter/0.2.0/*`, `/store/line-cutter/0.2.1/*`,
-  `/store/line-cutter/0.3.0/*`, and `/store/little-camp/0.1.0/*` artifacts.
-  These paths do not overlap the mutable rules. Do not add a blanket `/*`
-  cache override or cache stable manifests as immutable. Keep `no-transform`
-  in both classes so CDN transformations do not change byte-verified assets
-  such as PNGs.
-
-Python runs only at build time. There is no runtime start command, request-time
-process, cold-starting web service or API server. `hosting/serve.py` remains a
-local development/test adapter, not the production host. Repository tests check
-the exported artifact; verify the managed routes and response headers on the
-deployed site separately.
+- Mutable root aliases, `/play`, `/play/`, `/native/*`, `/runtime/*`, `/site/*`,
+  `/docs/*`, `/tools/*`, `/catalog`, `/beta/catalog`, `/library`,
+  `/hub-manifest.json`, `/version.json`, and `/cubby-worker.js` use
+  `Cache-Control: public, max-age=0, must-revalidate, no-transform`.
+- Apply the mutable cache policy separately to stable `/store/<game>/manifest.json`
+  endpoints. Retained versioned `/store/<game>/<version>/*` artifacts use
+  `Cache-Control: public, max-age=31536000, immutable, no-transform`.
+  Never apply a blanket cache override or cache stable manifests as immutable.
 
 New exports advertise Line Cutter's independent stable manifest:
 `https://linecutter.david.app/store/line-cutter/manifest.json`. The previous Cubby

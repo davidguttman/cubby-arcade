@@ -138,14 +138,17 @@ class MarketingSignup(unittest.TestCase):
         page.set_viewport_size({'width': 1440, 'height': 1000})
         page.screenshot(path=str(shots / 'desktop.png'), full_page=True)
 
-    def test_exported_docs_and_landing_use_only_public_cdn_sdk(self):
+    def test_only_marketing_landing_loads_public_cdn_sdk(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
             (output / 'index.html').write_text('native fixture')
             public_site.build(output)
             for path in ('site/index.html', 'docs/game-authoring.html', 'docs/game-release-manifest.html'):
                 content = (output / path).read_text()
-                self.assertIn(SDK, content)
+                if path == 'site/index.html':
+                    self.assertIn(SDK, content)
+                else:
+                    self.assertNotIn(SDK, content)
                 self.assertNotIn('saasco', content.lower())
 
 

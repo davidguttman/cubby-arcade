@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {createPlatform}=require('../runtime/core/platform.js'),Profiles=require('../runtime/core/profiles.js'),Feeds=require('../runtime/core/game-feeds.js');
-const A=Feeds.DEFAULT_URL,B='https://cubby.david.app/beta/catalog';
+const A=Feeds.DEFAULT_URL,B='https://play.cubbyarcade.com/beta/catalog';
 const config=(beta=false)=>({schema:1,feeds:[{url:A,name:'Cubby',enabled:true},{url:B,name:'Beta',enabled:beta}]});
 const game=id=>({id,title:id,manifest_url:`https://games.test/${id}/manifest.json`,artwork:`https://games.test/${id}/cover.png`});
 function fixture(saved=null){let disk=saved,games=[];const writes=[],installs=[];const values=new Map([[Profiles.REGISTRY_KEY,JSON.stringify({profiles:[{id:'p_first',avatar:'fox'},{id:'p_kid',avatar:'frog'}],active:'p_first'})]]);const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v)};const bridge={readFeedState:async()=>structuredClone(disk),writeFeedState:async v=>{disk=structuredClone(v);writes.push(v);},fetchCatalog:async url=>[game(url===A?'stable':'early')],library:async()=>structuredClone(games),install:async(id)=>{installs.push(id);games.push(game(id));}};return {storage,bridge,writes,installs,disk:()=>disk,games};}

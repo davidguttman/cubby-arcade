@@ -138,7 +138,7 @@ class GameUpdates(unittest.TestCase):
             self.assertEqual(run('replace')[0]['version'], '9')
         restarted = State(ROOT, self.state.data)
         saved = restarted.read_feed_state()
-        self.assertEqual(saved['sources']['demo']['feed_url'], 'https://cubby.david.app/catalog')
+        self.assertEqual(saved['sources']['demo']['feed_url'], 'https://play.cubbyarcade.com/catalog')
 
     def test_new_release_replaces_the_installed_one(self):
         self.publisher.publish('1.0.0')

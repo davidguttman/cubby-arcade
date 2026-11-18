@@ -69,7 +69,7 @@ test('the desktop host updates through its real preload bridge',async()=>{
  const options={...exposed,fetch:async()=>({ok:true,json:async()=>offers})};
  options.bridge={...options.bridge,library:async()=>installed};
  await sweepGameUpdates(createPlatform(options));
- assert.deepEqual(invoked.filter(([channel])=>channel==='hub:update').map(([channel,id,options])=>[channel,id,options.offer._source.feed_url]),wanted.map(id=>['hub:update',id,'https://cubby.david.app/catalog']));
+ assert.deepEqual(invoked.filter(([channel])=>channel==='hub:update').map(([channel,id,options])=>[channel,id,options.offer._source.feed_url]),wanted.map(id=>['hub:update',id,'https://play.cubbyarcade.com/catalog']));
 });
 // tests/browser_store.cjs drives the browser host's real downloads through the same core.
 test('the browser host never reinstalls a game removed before its update starts',async()=>{

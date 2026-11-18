@@ -16,7 +16,7 @@ test('desktop staging includes the native feed adapter and its shared policy dep
     const io=new FeedIO(path.join(options.dir,'smoke-feeds.json'));
     assert.equal(await io.read(),null);
     await assert.rejects(io.catalog('http://insecure.test/feed'),/HTTPS/);
-    assert.equal(DEFAULT_URL,'https://cubby.david.app/catalog');checked=true;
+    assert.equal(DEFAULT_URL,'https://play.cubbyarcade.com/catalog');checked=true;
     return [options.dir];
    }};
    if(name==='node:child_process')return {execFileSync(){}};

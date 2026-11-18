@@ -5,7 +5,7 @@ test('optional media derivatives preserve descriptors and reject unbounded or in
  assert.deepEqual(Feeds.validateEntries([offer]),[offer]);
  for(const media of [[],{bad:item},{thumbnail:{...item,size:true}},{thumbnail:{...item,size:65537}},{thumbnail:{...item,sha256:'bad'}},{thumbnail:{...item,url:'http://cdn.example/a.jpg'}},{thumbnail:{...item,source_sha256:null}}])assert.throws(()=>Feeds.validateEntries([{...offer,media}]));
 });
-const A='https://cubby.david.app/catalog',B='https://other.example/catalog';
+const A='https://play.cubbyarcade.com/catalog',B='https://other.example/catalog';
 const config=feeds=>({schema:1,feeds});
 const feed=(url,name='Feed',enabled=true)=>({url,name,enabled});
 const game=(id,host='games.example')=>({id,title:id,manifest_url:`https://${host}/${id}/manifest.json`,artwork:`https://${host}/${id}/cover.png`});
