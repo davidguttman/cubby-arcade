@@ -124,3 +124,22 @@ only the splash-loader stanza was added to the existing hook.
   hook wrote the framebuffer. Cubby, USB NCM and SSH came back normally.
 
 The 16-bit format has not been run on hardware.
+
+## Browser boot screen
+
+`website/play.html` uses this exact `preview.png`, exported as `/site/boot.png`.
+Its transparent `/site/boot.webp` overlay is generated from the native `Star`
+renderer and timing above, not a separately drawn approximation. The progress
+bar uses the same geometry/color with a shorter browser startup estimate; the
+hub's actual mount (or storage error) dismisses it immediately, with no minimum
+animation duration. Reduced-motion shows only the original still artwork.
+
+After changing the artwork or native twinkle renderer, regenerate and verify:
+
+```sh
+uv run scripts/build-browser-boot.py
+```
+
+This maintainer-only command pins Pillow, checks the PNG against the native raw
+raster and verifies decoded WebP frames against native-rendered bytes. Normal
+site builds only copy the checked-in animation and need no imaging dependency.

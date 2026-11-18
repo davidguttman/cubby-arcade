@@ -103,6 +103,24 @@ with tempfile.TemporaryDirectory() as tmp:
             self.assertIn('/runtime/core/hub.js', settings['shellPaths'])
             self.assertTrue(all('\\' not in name for name in settings['shellPaths']))
 
+    def test_browser_boot_uses_real_handheld_art_and_caches_both_motion_states(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = web.build(Path(tmp) / 'site')
+            self.assertEqual((output / 'site/boot.png').read_bytes(),
+                             (web.HERE / 'rocknix/splash/preview.png').read_bytes())
+            motion = (output / 'site/boot.webp').read_bytes()
+            self.assertTrue(motion.startswith(b'RIFF'))
+            self.assertIn(b'ANIM', motion)
+            page = (output / 'site/play.html').read_text()
+            self.assertIn('/site/boot.webp', page)
+            self.assertIn('/site/boot.png', page)
+            self.assertNotIn('boot-dots', page)
+            worker = (output / 'cubby-worker.js').read_text()
+            settings = json.loads(worker.split('attachWorker(self,', 1)[1].removesuffix(');\n'))
+            self.assertTrue({'/site/boot.png', '/site/boot.webp'}.issubset(settings['shellPaths']))
+            inventory = json.loads((output / 'hub-manifest.json').read_text())['files']
+            self.assertFalse(any(name.startswith('/site/boot') for name in inventory))
+
     def test_browser_play_alias_resolves_cubby_buddy_page_not_site_landing(self):
         # /play is the Cubby Buddy page; it frames the hub at /native/index.html.
         handler = object.__new__(web.PreviewHandler)
