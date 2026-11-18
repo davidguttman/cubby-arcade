@@ -56,6 +56,14 @@ class StaticHosting(unittest.TestCase):
             worker = (root / 'cubby-worker.js').read_text()
             self.assertIn('"/"', worker)
             self.assertIn('"/index.html"', worker)
+            settings = json.loads(worker.split('attachWorker(self,', 1)[1].removesuffix(');\n'))
+            aliases = {'/': 'index.html', '/play': 'site/play.html', '/play/': 'site/play.html'}
+            for path in settings['shellPaths']:
+                self.assertTrue((root / aliases.get(path, path.lstrip('/'))).is_file(), path)
+            self.assertEqual((root / 'site/boot.png').read_bytes(),
+                             (web.HERE / 'rocknix/splash/preview.png').read_bytes())
+            self.assertEqual((root / 'site/boot.webp').read_bytes(),
+                             (web.HERE / 'website/boot.webp').read_bytes())
             native = (root / 'native/index.html').read_bytes()
             manifest = json.loads((root / 'hub-manifest.json').read_text())
             self.assertEqual(manifest['files']['/index.html']['sha256'], hashlib.sha256(native).hexdigest())
