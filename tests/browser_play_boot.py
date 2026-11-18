@@ -32,6 +32,12 @@ async def exercise(cdp, origin, screenshots):
                     await script_release.wait()
                     await route.continue_()
 
+                async def boot_asset(route):
+                    name = route.request.url.rsplit('/', 1)[-1]
+                    path = ROOT / ('rocknix/splash/preview.png' if name == 'boot.png' else 'website/boot.webp')
+                    await route.fulfill(path=str(path), content_type='image/png' if name == 'boot.png' else 'image/webp')
+
+                await page.route('**/site/boot.*', boot_asset)
                 # Use the exact source wrapper; the real native shell, storage,
                 # worker and shared hub still load from the supplied HTTPS site.
                 await page.route(origin + '/site/play.html', lambda route: route.fulfill(
@@ -43,6 +49,13 @@ async def exercise(cdp, origin, screenshots):
                 boot = page.locator('#boot')
                 await boot.wait_for(state='visible')
                 assert await boot.inner_text() == ''
+                await page.locator('#boot-art').evaluate('(img) => img.decode()')
+                assert await page.locator('#boot-art').evaluate('(img) => img.naturalWidth') == 640
+                await page.locator('#boot-stars img').evaluate('(img) => img.decode()')
+                # Native-rendered stars must really animate, not just show the poster.
+                first = await page.locator('#boot-stars').screenshot()
+                await page.wait_for_timeout(700)
+                assert first != await page.locator('#boot-stars').screenshot()
                 screenshots.mkdir(parents=True, exist_ok=True)
                 await page.screenshot(path=str(screenshots / f'boot-{width}.png'))
                 native_release.set()
@@ -66,10 +79,17 @@ async def exercise(cdp, origin, screenshots):
             page = await context.new_page()
             await page.route(origin + '/site/play.html', lambda route: route.fulfill(
                 path=str(ROOT / 'website/play.html'), content_type='text/html'))
+            await page.route('**/site/boot.png', lambda route: route.fulfill(
+                path=str(ROOT / 'rocknix/splash/preview.png'), content_type='image/png'))
             await page.route('**/native/index.html?*', lambda route: route.abort())
             await page.goto(origin + '/site/play.html')
-            assert await page.locator('#boot svg').evaluate('(el) => getComputedStyle(el).animationName') == 'none'
-            assert await page.locator('.boot-dots i').first.evaluate('(el) => getComputedStyle(el).animationName') == 'none'
+            await page.locator('#boot-art').evaluate('(img) => img.decode()')
+            assert await page.locator('#boot-art').evaluate('(img) => img.currentSrc.endsWith("/site/boot.png")')
+            assert not await page.locator('#boot-stars').is_visible()
+            assert await page.locator('.boot-fill').evaluate('(el) => getComputedStyle(el).animationName') == 'none'
+            first = await page.locator('#boot').screenshot()
+            await page.wait_for_timeout(700)
+            assert first == await page.locator('#boot').screenshot()
             print('Reduced motion: static boot picture')
         finally:
             await context.close()

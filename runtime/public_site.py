@@ -92,6 +92,8 @@ LOGO = ('<svg class="logo" viewBox="0 0 48 48" aria-hidden="true">'
 def build(output):
     output = Path(output)
     shutil.copytree(HERE / 'website', output / 'site')
+    # The browser uses the handheld's exact boot art, not a second composition.
+    shutil.copyfile(HERE / 'rocknix/splash/preview.png', output / 'site/boot.png')
     (output / 'native').mkdir()
     shutil.copyfile(output / 'index.html', output / 'native/index.html')
     (output / 'docs').mkdir()

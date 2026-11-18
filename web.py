@@ -57,7 +57,7 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
 
         # Browser worker has its own explicit offline shell; native hosts bypass it.
         # Hash the shell bytes so independently deployed builds never share caches.
-        browser_paths = ['/play', '/play/', '/site/play.html', '/site/cubby-buddy.webp', '/native/index.html', '/catalog', '/beta/catalog',
+        browser_paths = ['/play', '/play/', '/site/play.html', '/site/cubby-buddy.webp', '/site/boot.png', '/site/boot.webp', '/native/index.html', '/catalog', '/beta/catalog',
                          *['/' + p.relative_to(site).as_posix() for p in sorted((site / 'runtime/core').glob('*')) if p.is_file()]]
         browser_hash = hashlib.sha256(b''.join(
             (site / name.lstrip('/')).read_bytes() for name in browser_paths
