@@ -90,7 +90,7 @@ class StaticHosting(unittest.TestCase):
             self.assertFalse((root / 'games').exists())
             legacy = json.loads((root / 'store/little-camp/manifest.json').read_text())
             self.assertEqual(legacy['package']['url'],
-                             'https://cubby.david.app/store/little-camp/1/little-camp-1.game.zip')
+                             'https://play.cubbyarcade.com/store/little-camp/1/little-camp-1.game.zip')
             self.assertEqual((root / 'store/little-camp/1/little-camp-1.game.zip').read_bytes(),
                              historical.read_bytes())
 

@@ -11,7 +11,7 @@ from runtime import publishing, public_site, catalog
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE / '.cache/web'
-DEFAULT_ORIGIN = 'https://cubby.david.app'
+DEFAULT_ORIGIN = 'https://play.cubbyarcade.com'
 
 
 def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, registry=None, *, browser_root=False):

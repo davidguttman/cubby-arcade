@@ -97,7 +97,7 @@ def build(output=None, *, surface='combined'):
     urls = web.default_manifest_urls()
     snapshots = legacy_manifests(urls)
     result = web.build(output, [*retained_archives(), current],
-                       base_url=PLAY_ORIGIN if surface == 'play' else 'https://cubby.david.app',
+                       base_url=PLAY_ORIGIN,
                        manifest_urls=urls, registry=web.default_registry(),
                        browser_root=surface == 'play')
     for game, document in snapshots.items():

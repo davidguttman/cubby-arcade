@@ -350,7 +350,7 @@ without them (an older desktop app under a newer cloud hub) keeps one player.
 uv run python web.py build
 ```
 
-The public browser app and package registry use https://cubby.david.app .
+The public browser app and package registry use https://play.cubbyarcade.com .
 For a local preview, the repo's compose file serves the export with a Python
 static server; put it behind HTTPS to test browser installs. Re-run the build
 after editing shared code/package sources.
@@ -595,7 +595,7 @@ see [Game-owned releases](docs/game-release-manifest.md) for the contract and
 single-release workflow. Schema-1 ZIP releases below remain compatible.
 
 `web.py build` exports both the playable web preview and a hosted registry. The
-public root defaults to `https://cubby.david.app`; override it
+public root defaults to `https://play.cubbyarcade.com`; override it
 with `--base-url https://your-host.example/`. All advertised media, manifests,
 and ZIP archives are written into the selected export, not just referenced.
 
@@ -614,7 +614,7 @@ The stable `/store/<id>/manifest.json` describes the currently offered release:
   "runtime": "web",
   "entrypoint": "play.html",
   "package": {
-    "url": "https://cubby.david.app/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
+    "url": "https://play.cubbyarcade.com/store/line-cutter/0.2.0/line-cutter-0.2.0.game.zip",
     "size": 12345,
     "sha256": "<64 lowercase hexadecimal characters>"
   }
@@ -631,7 +631,7 @@ arbitrary executable installer or cryptographic publisher-authentication scheme.
 To add or update a game on the existing generated host:
 
 ```sh
-uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://cubby.david.app/
+uv run python -m runtime.publishing path/to/new-version.game.zip --output .cache/web --base-url https://play.cubbyarcade.com/
 ```
 
 This command validates before publishing, creates immutable versioned archive
@@ -649,8 +649,8 @@ The existing management CLI accepts either this registry or the legacy schema-1
 inline catalog without breaking old callers:
 
 ```sh
-uv run python -m runtime.catalog list https://cubby.david.app/catalog
-uv run python -m runtime.catalog --root path/to/games install https://cubby.david.app/catalog line-cutter
+uv run python -m runtime.catalog list https://play.cubbyarcade.com/catalog
+uv run python -m runtime.catalog --root path/to/games install https://play.cubbyarcade.com/catalog line-cutter
 ```
 
 Installation/update resolves the stable manifest at the time of the operation.
@@ -717,7 +717,7 @@ The shared-origin catalog continues to require trusted developer game packages.
 ### Cloud-backed desktop launcher
 
 The desktop executable is a thin, sandboxed shell. On launch it requests
-`https://cubby.david.app/hub-manifest.json`, downloads the small
+`https://play.cubbyarcade.com/hub-manifest.json`, downloads the small
 launcher UI/core snapshot (with a fallback catalog), verifies its size/hash
 inventory, and caches it coherently before opening the hub. Rebuilding/publishing the web export is
 all that is needed to deliver launcher/store UI changes on the next app launch.
@@ -752,7 +752,7 @@ The HTTPS cloud host is trusted to supply launcher JavaScript, but never gets
 Node access or arbitrary filesystem/native bridge access. `bridge_version: 1`
 is the compatibility gate; future native-runtime changes still require a new
 executable. The default browser preview/catalog host is
-https://cubby.david.app.
+https://play.cubbyarcade.com.
 `CUBBY_ARCADE_CLOUD_ORIGIN` can select another HTTPS root for adult deployment/testing.
 For the built-executable offline smoke only, `CUBBY_ARCADE_SMOKE_OFFLINE=1` simulates a
 network failure while keeping the same origin/profile and cache.
@@ -823,7 +823,7 @@ profile.
 To publish a game release to a local directory served by the configured HTTPS host:
 
 ```sh
-uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://cubby.david.app/
+uv run python -m runtime.publishing new-release.game.zip --output .cache/web --base-url https://play.cubbyarcade.com/
 ```
 
 Installed games on every host check their stable manifest on hub entry, download
@@ -856,6 +856,9 @@ The production sites are two **Render Static Sites** built from this repository:
 - Keep legacy `cubby.david.app` attached to the interactive service, with its
   CNAME targeting that service. Existing installed clients fetch feeds from
   that origin and **reject redirected feeds**; a redirect is not compatibility.
+  New client defaults use `https://play.cubbyarcade.com/catalog` and `/beta/catalog`.
+  Existing saved feed settings, cached catalogs and installed-game source pins
+  retain their original URLs; no custom or legacy feed is silently rewritten.
 
 Build/publish settings (Python runs only at build time):
 

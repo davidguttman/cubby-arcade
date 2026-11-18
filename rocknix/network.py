@@ -24,7 +24,7 @@ import time
 import urllib.request
 import uuid
 
-CATALOG = 'https://cubby.david.app/catalog'
+CATALOG = 'https://play.cubbyarcade.com/catalog'
 SOCKET = '/run/cubby-network/socket'
 BSSID = re.compile(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}')
 ERRORS = {'invalid_request', 'connection_failed', 'busy', 'unavailable', 'unsupported_network'}
