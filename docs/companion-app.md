@@ -1,6 +1,6 @@
 # Cubby for grown-ups
 
-The phone companion lives at `https://cubbyarcade.com/parents/`. It is a separate
+The phone companion lives at `https://play.cubbyarcade.com/parents/`. It is a separate
 installable web app, not the wordless player at `/play/`.
 
 ## Ownership and discovery

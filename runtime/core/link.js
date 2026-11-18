@@ -24,7 +24,7 @@
   const DEFAULT_RELAY = 'https://gbo-link-relay.onrender.com';
   // Where a phone lands after scanning: Cubby's grown-ups app (parents/), which loads this same file.
   // The dashboard discovers game-owned companion URLs from the paired Cubby's installed manifests.
-  const DEFAULT_COMPANION = 'https://cubbyarcade.com/parents/';
+  const DEFAULT_COMPANION = 'https://play.cubbyarcade.com/parents/';
   const MAX_MESSAGE = 180000, MAX_HELD = 200, SEEN_IDS = 300;
   const PENDING_PAIRING_MS = 10 * 60 * 1000, NEGOTIATION_MS = 15000;
   const GAME_ID = /^[a-z0-9][a-z0-9-]{0,79}$/;

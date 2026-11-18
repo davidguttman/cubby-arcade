@@ -10,7 +10,7 @@
   // trusted Cubby link instead; never navigate to a pasted arbitrary URL.
   win.CubbyParsePairingLink = function (text) {
     const url = new URL(String(text).trim());
-    const allowed = [win.location.origin, 'https://cubbyarcade.com', 'https://cubby.david.app'];
+    const allowed = [win.location.origin, 'https://play.cubbyarcade.com', 'https://cubbyarcade.com', 'https://cubby.david.app'];
     if (!allowed.includes(url.origin) || url.username || url.password || url.pathname !== '/parents/' || url.search) throw Error('Not a Cubby pairing link');
     const values = new URLSearchParams(url.hash.slice(1)), pair = values.get('pair'), via = values.get('relay');
     if (!pair || !/^[A-Za-z0-9_-]{22}$/.test(pair) || !win.CubbyLinkAPI.validCode(pair)) throw Error('Invalid pairing code');

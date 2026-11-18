@@ -1,6 +1,7 @@
 """The production artifact needs no request-time process or repository Blueprint."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,6 +13,53 @@ from hosting import build as hosting_build
 
 
 class StaticHosting(unittest.TestCase):
+    def test_marketing_export_excludes_interactive_and_technical_content(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(hosting_build.vm, 'fetch_games') as fetch:
+            root = hosting_build.build(Path(tmp) / 'marketing', surface='marketing')
+            fetch.assert_not_called()
+            self.assertEqual(set(p.name for p in root.iterdir()),
+                             {'.handheld-web-export', 'index.html', 'favicon.ico', 'site', 'cubby-worker.js', 'parents'})
+            retirement = (root / 'cubby-worker.js').read_text()
+            self.assertEqual(set(p.name for p in (root / 'parents').iterdir()), {'worker.js'})
+            self.assertEqual((root / 'parents/worker.js').read_text(), retirement)
+            self.assertIn('registration.unregister()', retirement)
+            self.assertIn('clients.claim()', retirement)
+            self.assertIn('client.navigate(client.url)', retirement)
+            for forbidden in ('importScripts', 'caches.delete', 'indexedDB.deleteDatabase', 'localStorage.clear'):
+                self.assertNotIn(forbidden, retirement)
+            self.assertFalse((root / 'site/play.html').exists())
+            landing = (root / 'index.html').read_text()
+            self.assertIn('href="https://play.cubbyarcade.com/"', landing)
+            self.assertIn('https://play.cubbyarcade.com/docs/game-authoring.md', landing)
+            self.assertIn('href="https://play.cubbyarcade.com/docs/game-authoring.html"', landing)
+            for source in (root / 'index.html', root / 'site/style.css'):
+                for path in re.findall(r"(?:src=|href=|url\()[\"']?(/[^\"'\s)>]+)", source.read_text()):
+                    self.assertTrue((root / ('index.html' if path == '/' else path.lstrip('/'))).is_file(), path)
+
+
+    def test_play_export_has_wrapper_root_docs_and_verified_native_shell(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            temporary = Path(tmp)
+            game = archive(temporary, 'line-cutter')
+            with patch.object(hosting_build, 'retained_archives', return_value=[]), \
+                 patch.object(hosting_build.vm, 'fetch_games'), \
+                 patch.object(hosting_build.vm, 'build_example', return_value=game), \
+                 patch.object(hosting_build, 'legacy_manifests', return_value={}):
+                root = hosting_build.build(temporary / 'play', surface='play')
+            self.assertEqual((root / 'index.html').read_bytes(), (root / 'site/play.html').read_bytes())
+            self.assertFalse((root / 'site/index.html').exists())
+            self.assertFalse((root / 'site/waitlist.js').exists())
+            self.assertTrue((root / 'parents/worker.js').is_file())
+            self.assertTrue((root / 'tools/cubby_manifest.py').is_file())
+            for path in ('docs/game-authoring.html', 'docs/game-release-manifest.html'):
+                self.assertNotIn('superstruct-marketing.onrender.com/sdk.js', (root / path).read_text())
+            worker = (root / 'cubby-worker.js').read_text()
+            self.assertIn('"/"', worker)
+            self.assertIn('"/index.html"', worker)
+            native = (root / 'native/index.html').read_bytes()
+            manifest = json.loads((root / 'hub-manifest.json').read_text())
+            self.assertEqual(manifest['files']['/index.html']['sha256'], hashlib.sha256(native).hexdigest())
+
     def test_render_settings_are_not_managed_by_a_repository_blueprint(self):
         self.assertFalse((web.HERE / 'render.yaml').exists())
 
