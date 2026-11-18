@@ -896,7 +896,8 @@ for the following exact routes/prefixes. Preserve query strings and wildcard
 suffixes, and verify those properties on the deployed provider:
 
 - Before `/parents/*`, serve `/parents/worker.js` directly from the marketing
-  export (an exact same-path rewrite may exempt it from the wildcard redirect).
+  export (an exact rewrite to `/cubby-worker.js` exempts it from the wildcard
+  redirect; both files contain the same retirement script).
   This retirement script and `/cubby-worker.js` require `Cache-Control: no-cache`;
   neither may redirect cross-origin.
 - `/play` and `/play/` → `https://play.cubbyarcade.com/`.
