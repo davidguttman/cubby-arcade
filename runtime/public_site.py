@@ -92,6 +92,8 @@ LOGO = ('<svg class="logo" viewBox="0 0 48 48" aria-hidden="true">'
 def build(output):
     output = Path(output)
     shutil.copytree(HERE / 'website', output / 'site')
+    # The browser uses the handheld's exact boot art, not a second composition.
+    shutil.copyfile(HERE / 'rocknix/splash/preview.png', output / 'site/boot.png')
     (output / 'native').mkdir()
     shutil.copyfile(output / 'index.html', output / 'native/index.html')
     (output / 'docs').mkdir()
@@ -105,7 +107,6 @@ def build(output):
                 '<title>' + title + ' — Cubby Arcade</title>'
                 '<link rel="stylesheet" href="/site/style.css">'
                 '<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/site/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/site/apple-touch-icon.png">'
-                '<script src="https://superstruct-marketing.onrender.com/sdk.js" defer></script>'
                 '<meta name="theme-color" content="#2a1f3d"></head><body>'
                 '<header><a class="brand" href="/">' + LOGO + '<span>Cubby Arcade</span></a>'
                 '<nav aria-label="Documentation">'

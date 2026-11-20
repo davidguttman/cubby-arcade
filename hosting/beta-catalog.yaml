@@ -1,5 +1,9 @@
 # Opt-in early-release discovery pointers. Keep unfinished games out of catalog.yaml.
 - id: line-cutter
+  tagline: Compete in a barebow archery tournament.
+  kind: game
+  web_url: https://linecutter.cubbyarcade.com/
+  added: "2026-11-02"
   title: Line Cutter
   manifest_url: https://linecutter.cubbyarcade.com/store/line-cutter/manifest.json
   moved_from:

@@ -5,10 +5,7 @@ function save(operation,game,key,value){
 }
 contextBridge.exposeInMainWorld('HandheldPlatformOptions',{
   kind:'desktop',bridge:{
-    account:()=>ipcRenderer.invoke('hub:account'),
-    refillTokens:()=>ipcRenderer.invoke('hub:refill'),
     launch:id=>ipcRenderer.invoke('hub:launch',id),
-    onAccountState:callback=>{const listener=(_event,state)=>callback(state);ipcRenderer.on('hub:account-state',listener);return ()=>ipcRenderer.removeListener('hub:account-state',listener);},
     savedGames:profile=>ipcRenderer.invoke('hub:saved-games',profile),
     resetGameSaves:(id,profile)=>ipcRenderer.invoke('hub:reset-game-saves',id,profile),
     useProfile:profile=>ipcRenderer.invoke('hub:profile',profile),

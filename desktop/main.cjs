@@ -4,22 +4,22 @@ const path=require('node:path');
 const {CloudHub}=require('./cloud.cjs');
 const {GameInstaller}=require('./installer.cjs');
 const {FeedIO}=require('./feeds.cjs');
-const {TokenAccount,GameLauncher}=require('./tokens.cjs');
+const {GameLauncher}=require('./launcher.cjs');
 const {assetName,assetPath,gameScope,requireHubFrame,ProfileSaves,GameLibrary}=require('./host.cjs');
 const {FIRST}=require('../runtime/core/profiles.js');
 protocol.registerSchemesAsPrivileged([{scheme:'hub',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
-const tokenSmoke=process.argv.includes('--token-smoke');
+const freePlaySmoke=process.argv.includes('--free-play-smoke');
 const installSmoke=process.argv.includes('--install-smoke');
 const uninstallSmoke=process.argv.includes('--uninstall-smoke');
 const playersSmoke=process.argv.includes('--players-smoke');
-const smoke=process.argv.includes('--smoke')||installSmoke||tokenSmoke||uninstallSmoke||playersSmoke;
+const smoke=process.argv.includes('--smoke')||installSmoke||freePlaySmoke||uninstallSmoke||playersSmoke;
 let explicitSmokeExit=false;
 function exitSmoke(code){explicitSmokeExit=true;app.exit(code);}
 const env=name=>process.env['CUBBY_ARCADE_'+name]??process.env['HUB_'+name];
 const {userDataPath}=require('./profile.cjs');
 app.setName('Cubby Arcade');
 app.setPath('userData',userDataPath({appData:app.getPath('appData'),temp:app.getPath('temp'),packaged:app.isPackaged,smoke,override:env('USER_DATA')}));
-// One writer per local profile keeps its test budget and game selectors coherent.
+// One writer per local profile keeps its saves and game selectors coherent.
 if(!app.requestSingleInstanceLock())exitSmoke(0);
 app.whenReady().then(async()=>{
   const site=smoke&&env('SMOKE_SITE')?path.resolve(env('SMOKE_SITE')):app.isPackaged?path.join(process.resourcesPath,'web'):path.join(__dirname,'../.cache/web');
@@ -27,17 +27,16 @@ app.whenReady().then(async()=>{
   // hub, so a running game keeps the player it launched with.
   const saves=new ProfileSaves(app.getPath('userData'));let player=FIRST;
   const library=new GameLibrary(site,env('GAMES_DIR')?path.resolve(env('GAMES_DIR')):path.join(app.getPath('userData'),'games'));
-  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),requiredFiles:['/runtime/core/game-feeds.js'],...(uninstallSmoke||(smoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
+  const cloud=new CloudHub(path.join(app.getPath('userData'),'hub-cache'),{origin:env('CLOUD_ORIGIN'),requiredFiles:['/runtime/core/game-feeds.js'],...(uninstallSmoke||freePlaySmoke||(smoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke network offline');}}:{})});
   await cloud.refresh();
   console.log('Hub shell: '+cloud.source);
   let hubActive=true,win,launcher,servedDocuments=new Set();
-  const account=new TokenAccount(path.join(app.getPath('userData'),'account.json'));
   const installer=new GameInstaller(library,{canActivate:()=>hubActive&&!launcher?.pending,onChange:states=>{
     if(win&&!win.isDestroyed()&&hubActive)win.webContents.send('hub:install-state',states);
   }});
   // Isolate fixture smokes before the first hub navigation can start discovery.
   // A live startup response arriving after setCatalog would erase its offers.
-  const feeds=new FeedIO(path.join(app.getPath('userData'),'game-feeds.json'),uninstallSmoke||(installSmoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke feed offline');}}:{});
+  const feeds=new FeedIO(path.join(app.getPath('userData'),'game-feeds.json'),uninstallSmoke||freePlaySmoke||(installSmoke&&env('SMOKE_OFFLINE')==='1')?{fetch:async()=>{throw Error('Smoke feed offline');}}:{});
   let registry=JSON.parse((await cloud.read('/catalog')||await fs.readFile(path.join(site,'catalog'))).toString('utf8'));
   installer.setCatalog(registry);
   protocol.handle('hub',async request=>{
@@ -87,14 +86,12 @@ app.whenReady().then(async()=>{
   });
   win=new BrowserWindow({show:!smoke,width:960,height:640,fullscreen:!smoke,autoHideMenuBar:true,backgroundColor:'#101614',
     webPreferences:{offscreen:smoke,preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
-  launcher=new GameLauncher(account,library,{navigate:async url=>{
+  launcher=new GameLauncher(library,{navigate:async url=>{
     servedDocuments.clear();hubActive=false;await win.loadURL(url);
     if(!servedDocuments.has(assetName(url)))throw Error('Game document unavailable');
-  },onChange:state=>{if(hubActive&&!win.isDestroyed())win.webContents.send('hub:account-state',state);}});
+  }});
   async function launchGame(id){try{return await launcher.launch(id);}catch(error){if(!hubActive&&!win.isDestroyed())await win.loadURL('hub://app/');throw error;}}
   function authorizeHub(event){requireHubFrame(event);if(event.sender!==win.webContents)throw Error('Unknown hub window');}
-  ipcMain.handle('hub:account',event=>{authorizeHub(event);return launcher.status();});
-  ipcMain.handle('hub:refill',event=>{authorizeHub(event);const state=account.refill();win.webContents.send('hub:account-state',state);return state;});
   ipcMain.handle('hub:launch',(event,id)=>{authorizeHub(event);return launchGame(id);});
   ipcMain.handle('hub:saved-games',(event,profile)=>{authorizeHub(event);return saves.store(profile??player).savedGames();});
   ipcMain.handle('hub:reset-game-saves',(event,id,profile)=>{authorizeHub(event);if(!hubActive||launcher.pending)throw Error('Game active');saves.store(profile??player).resetGameSaves(id);});
@@ -138,7 +135,7 @@ app.whenReady().then(async()=>{
         if(['/', '/index.html'].includes(source)){const entry=library.entries().find(game=>assetName('hub://app'+game.entrypoint)===pathname);if(entry)setImmediate(()=>launchGame(entry.id).catch(()=>{}));}
       }else{
         // Keep browser-relative assets and the shared system shell on the same
-        // canonical URL as disk identity, without starting/charging a session.
+        // canonical URL as disk identity, without starting a new session.
         const canonical=new URL(url);canonical.pathname=pathname.split('/').map(encodeURIComponent).join('/');
         if(canonical.href!==url){event.preventDefault();setImmediate(()=>win.loadURL(canonical.href).catch(()=>{}));}
       }
@@ -152,8 +149,12 @@ app.whenReady().then(async()=>{
   win.on('blur',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.pause()); window.handheldAudio?.suspend();').catch(()=>{}));
   win.on('focus',()=>win.webContents.executeJavaScript('document.querySelectorAll("video").forEach(v=>v.play().catch(()=>{})); window.handheldAudio?.resume().catch(()=>{});').catch(()=>{}));
   await win.loadURL('hub://app/');
+  if(freePlaySmoke){
+    try{await require('./free-play-smoke.cjs').run(win,launcher,installer,feeds,app.getPath('userData'),{output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
+    catch(error){console.error(error);exitSmoke(1);}return;
+  }
   if(uninstallSmoke){
-    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,saves.store(FIRST),account,{cloud,feeds,output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
+    try{await require('./uninstall-smoke.cjs').run(win,installer,library,registry,saves.store(FIRST),{cloud,feeds,output:env('SMOKE_DIR'),package:env('SMOKE_UNINSTALL_PACKAGE')});exitSmoke(0);}
     catch(error){console.error(error);exitSmoke(1);}return;
   }
   if(installSmoke){
@@ -179,10 +180,6 @@ app.whenReady().then(async()=>{
       }
       if(playersSmoke){
         await require('./players-smoke.cjs').run(win,launcher,installer.library,app.getPath('userData'),{output});
-        exitSmoke(0);return;
-      }
-      if(tokenSmoke){
-        await require('./token-smoke.cjs').run(win,launcher,account,installer.library,{output});
         exitSmoke(0);return;
       }
       const hub=await require('./hub-smoke.cjs').checkHub(win,output);

@@ -16,6 +16,8 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rocknix.provision import Blocked, Journal
+from rocknix.device.commissioning import release_identity
+from rocknix.updates import validate_manifest
 
 PENDING = ['physical_controls', 'audible_speaker', 'sleep_wake', 'game_save_persistence',
            'signed_update_rollback']
@@ -60,7 +62,8 @@ class Remote:
 def receipt(state, snapshot, handoff=None):
     return dict(schema=1, binding=state['binding'], cid=state['storage']['cid'],
                 automated=snapshot, bench=state.get('commissioning',{}).get('bench'),
-                handoff=handoff, pending=list(PENDING), customer_ready=False)
+                handoff=handoff, active_release=snapshot.get('identity',{}).get('active_release'),
+                pending=list(PENDING), customer_ready=False)
 
 
 def wait_ready(remote, expected, *, old_boot=None, timeout=240):
@@ -107,6 +110,8 @@ def validate_snapshot(snapshot, expected):
             or any(not isinstance(expected.get(key),str) or not expected[key]
                    or identity.get(key)!=expected[key] for key in ('version','commit','cid'))
             or identity.get('bound_cid')!=expected['cid']
+            or ('release_manifest' in expected and identity.get('active_release')
+                != release_identity(expected['release_manifest']))
             or identity.get('flash')!='/dev/mmcblk0p1'
             or identity.get('storage')!='/dev/mmcblk0p2'):
         raise Blocked('commissioning_native_failed')
@@ -147,7 +152,16 @@ def validate_args(args):
             or not re.fullmatch('[a-f0-9]{32}',storage['cid'])
             or state.get('stage')!='commissioning_pending'):
         raise Blocked('verified_install_checkpoint_required')
-    return binding,dict(version=binding['version'],commit=binding['commit'],cid=storage['cid'])
+    expected=dict(version=binding['version'],commit=binding['commit'],cid=storage['cid'])
+    manifest_path=getattr(args,'release_manifest',None)
+    if manifest_path is not None:
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise Blocked('verified_release_manifest_required')
+        try:
+            expected['release_manifest']=validate_manifest(json.loads(manifest_path.read_text()))
+        except (ValueError,KeyError,TypeError):
+            raise Blocked('verified_release_manifest_required') from None
+    return binding,expected
 
 
 def run(args):
@@ -213,6 +227,8 @@ def main():
     parser.add_argument('--job',type=Path,required=True)
     parser.add_argument('--identity',type=Path,required=True)
     parser.add_argument('--host',default='169.254.170.2')
+    parser.add_argument('--release-manifest',type=Path,
+                        help='Previously signature-verified immutable active release manifest; preserves original image binding')
     args=parser.parse_args()
     try: print(json.dumps(run(args),indent=2))
     except Exception as error:

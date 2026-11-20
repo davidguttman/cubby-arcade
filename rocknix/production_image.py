@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 from rocknix import image
 from rocknix.boot_splash import payload
 from rocknix.device.management import valid_keys
+from rocknix.device.identity import new_identity, validate_identity
 from release_automation import package_version
 
 
@@ -111,6 +112,10 @@ def source_plan(root, expected_version=None):
                            ('wifi-recovery.py','cubby-wifi-recovery/recover.py'),
                            ('cubby-wifi-recovery.service','cubby-wifi-recovery/service')]:
         flash[target] = digest((root/'rocknix/device'/source).read_bytes())
+    for source, target in [('identity.py', 'identity.py'),
+                           ('device-identity-start.sh', 'start.sh'),
+                           ('cubby-device-identity.service', 'service')]:
+        flash['cubby-device-identity/' + target] = digest((root/'rocknix/device'/source).read_bytes())
     identity = image.image_update_identity({'version': version, **info})
     release_id = 'image-' + version + '-' + info['source_commit'][:12]
     identity_files = {'cubby/releases/' + release_id + '/image.json': identity,
@@ -131,6 +136,12 @@ def validate_binding(plan, *, public=False):
         raise ValueError('Invalid device CID binding')
     if public and cid is not None:
         raise ValueError('Public image contains a device CID binding')
+    if 'network_identity' in plan:
+        validate_identity(plan['network_identity'])
+        if cid is None:
+            raise ValueError('Unbound images must generate network identity on the device')
+    elif cid is not None:
+        raise ValueError('Bound image lacks audited network identity')
     ids = plan.get('media_identities')
     if ids is not None:
         try:
@@ -160,6 +171,7 @@ def bind_plan(plan, device_cid, keys):
         if not isinstance(device_cid, str) or not re.fullmatch('[a-f0-9]{32}', device_cid):
             raise ValueError('Invalid device CID binding')
         plan['device_cid'] = device_cid
+        plan['network_identity'] = new_identity()
     plan['media_identities'] = image.media_identities()
     record = image.media_identity_record(plan)
     plan['storage_files']['cubby/image-provenance/device.json'] = digest(

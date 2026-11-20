@@ -118,7 +118,9 @@ function mount(host){
  let profile=profiles?.current(),profileLoad=0;
  if(profile)platform.setFeedProfile?.(profile);
  const state=createState(profiles?profiles.storageFor(profile):storage);
- const starterGame=win.HandheldPlatformOptions?.starterGame;let starterPending=!!starterGame,starterFailed=false;
+ const starterOptions=win.HandheldPlatformOptions;
+ const starterGames=[...new Set((Array.isArray(starterOptions?.starterGames)?starterOptions.starterGames:[starterOptions?.starterGame]).filter(Boolean))];
+ const starterGame=starterGames[0];let starterPending=!!starterGame,starterRunning=false,starterFailed=false,starterCurrent=starterGame;
  let account=null,launchBusy=false,featured=null,initialViewPending=true,requested=null;
  const gameReturn='cubby:game-return';let returningGame=null;try{returningGame=win.sessionStorage.getItem(gameReturn);win.sessionStorage.removeItem(gameReturn);}catch{}
  let installStates={},library=[],catalog=[],loading={library:true,store:true},failed={library:false,store:false},adult=false,draft=null,cancelCapture=null,disposed=false;
@@ -136,7 +138,7 @@ function mount(host){
   if(account?.available&&account.balance>0){budget.style.setProperty('--coins',account.balance);for(let i=0;i<account.balance;i++){const coin=element(budget,'span','coin');coin.innerHTML=icon('token');}}else{budget.style.removeProperty('--coins');budget.innerHTML=icon(account?.available?'token':'alert');}refreshOwnership();}
  async function readAccount(){try{account=await platform.account();}catch{account={available:false};}if(!disposed)renderAccount();}
  // A game runs as the player chosen here: the host has to agree before it starts.
- async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;pausePreview();try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.capabilities?.tokens){if(profiles){launchBusy=true;try{await profiles.enter(profile);}catch{queuePreview();return;}finally{launchBusy=false;}}win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{if(profiles)await profiles.enter(profile);await platform.launch(id);launched=true;}catch{await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(!launched&&!detail.hidden&&state.detail?.id===id)queuePreview();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
+ async function launch(id){if(launchBusy)return;const latest=library.find(game=>game.id===id);if(!latest)return;pausePreview();try{win.sessionStorage.setItem(gameReturn,id);}catch{}if(!platform.launch){if(profiles){launchBusy=true;try{await profiles.enter(profile);}catch{queuePreview();return;}finally{launchBusy=false;}}win.location.href=latest.entrypoint;return;}const opener=doc.activeElement;let launched=false;launchBusy=true;refreshOwnership();try{if(profiles)await profiles.enter(profile);await platform.launch(id);launched=true;}catch{if(platform.capabilities?.tokens)await readAccount();}finally{launchBusy=false;if(!disposed){refreshOwnership();if(!launched&&!detail.hidden&&state.detail?.id===id)queuePreview();if(launched&&doc.activeElement===opener&&state.view==='library'&&state.detail?.id===id)focusView();}}}
  const unsubscribeAccount=platform.onAccountState?.(value=>{account=value;if(!disposed)renderAccount();});
  if(platform.capabilities?.tokens)readAccount();
  const controllerDialog=element(host,'dialog','controller-setup');controllerDialog.setAttribute('aria-label','Adult controller setup');controllerDialog.tabIndex=-1;
@@ -431,7 +433,7 @@ function mount(host){
  feedDialog.addEventListener('cancel',e=>{e.preventDefault();feedBack();});
  // The child's side of players: their face and name at the top of the hub, and a picker
  // of faces. A child's own name is the one word the child hub shows (AGENTS.md); nothing
- // needs reading. With one player neither exists, so the hub looks as it always did.
+ // needs reading. The chip opens switching whenever the child wants another player.
  const playerButton=element(host.querySelector('.brand'),'button','player-button');playerButton.type='button';playerButton.hidden=true;playerButton.addEventListener('click',()=>openPicker());
  const playerDisc=element(playerButton,'span','player-disc'),playerLabel=element(playerButton,'span','player-label');
  function renderPlayer(){
@@ -448,11 +450,10 @@ function mount(host){
  function openPicker(){
   if(!profiles||adult||picking)return;picking=true;pausePreview();renderFaces();
  }
- // Faces, and + while an animal is free. The first pick after Cubby starts can't be
- // skipped; after that Back keeps the player.
+ // Faces, and + while an animal is free. Back always keeps the current player.
  function renderFaces(){
   picker.replaceChildren();kidBoard=null;kidSave=null;
-  if(profiles.pinned()||!manyPlayers())button(picker,'back','Keep player',closePicker,'picker-back');
+  button(picker,'back','Keep player',closePicker,'picker-back');
   const faces=element(picker,'div','picker-faces'),list=profiles.list(),more=profiles.freeAvatars().length>0;faces.dataset.count=String(list.length+(more?1:0));
   for(const p of list){const face=element(faces,'button','picker-face');face.type='button';face.dataset.profile=p.id;face.setAttribute('aria-label',p.name);element(face,'span','face-disc').innerHTML=faceArt(p.avatar,Avatars);element(face,'span','face-name').textContent=p.name;face.addEventListener('click',()=>choose(p.id));}
   if(more){const plus=element(faces,'button','picker-face picker-plus');plus.type='button';plus.setAttribute('aria-label','New player');element(plus,'span','face-disc').innerHTML=icon('plus');element(plus,'span','face-name');plus.addEventListener('click',kidAnimal);}
@@ -712,11 +713,22 @@ function mount(host){
   }
   if(card&&!hoverPreview)revealCard(card);
  }
- function renderGrid(){shelfObserver?.disconnect();shelfObserver?.observe(shelf);cards=[];selectableCards=[];cardsById=new Map();cardIndexes=new Map();gamesById=new Map(entries().map(game=>[game.id,game]));copiesById=new Map();shelfGeometry=new Map();markedCard=null;shelfCycle=0;shelf.classList.remove('is-looping');shelf.replaceChildren();const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'';body.classList.toggle('is-status',!!status);
+ function updateStarterProgress(box){
+  let progress=box.querySelector('.install-progress');
+  if(state.view!=='library'||!starterGame||!starterPending){progress?.remove();return;}
+  if(!progress){progress=element(box,'progress','install-progress');progress.setAttribute('aria-label','Download progress');}
+  const job=installStates[starterCurrent];if(job?.total){progress.max=job.total;progress.value=job.received||0;}else progress.removeAttribute('value');
+ }
+ function renderGrid(){
+ const status=loading[state.view]?'loading':failed[state.view]?'error':!entries().length?'empty':'',previous=shelf.querySelector('.shelf-status');
+ // Download events and catalog refreshes must not remount the spinner/dots:
+ // replacing their nodes restarts the CSS animations before a full rotation.
+ if(status==='loading'&&previous?.classList.contains('loading')&&previous.dataset.view===state.view){updateStarterProgress(previous);return;}
+ shelfObserver?.disconnect();shelfObserver?.observe(shelf);cards=[];selectableCards=[];cardsById=new Map();cardIndexes=new Map();gamesById=new Map(entries().map(game=>[game.id,game]));copiesById=new Map();shelfGeometry=new Map();markedCard=null;shelfCycle=0;shelf.classList.remove('is-looping');shelf.replaceChildren();body.classList.toggle('is-status',!!status);
  const store=state.view==='store',offer=store?catalog.find(g=>!ownedInStore(g.id)):null;body.classList.toggle('all-owned',store&&!status&&!offer);
- if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');if(state.view==='library'&&starterGame){
-  if(starterPending){const progress=element(box,'progress','install-progress');progress.setAttribute('aria-label','Download progress');const job=installStates[starterGame];if(job?.total){progress.max=job.total;progress.value=job.received||0;}else progress.removeAttribute('value');}
-  if(starterFailed)button(box,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
+ if(status){hideDetail();const box=element(shelf,'div','shelf-status '+status);box.dataset.view=state.view;box.setAttribute('role','status');box.setAttribute('aria-label',status==='loading'?'Loading':status==='error'?'Unable to load games':'No games');box.innerHTML='<span class="status-art">'+icon(status)+'</span>'+(status==='loading'?'<span class="status-dots"><i></i><i></i><i></i></span>':'');if(state.view==='library'&&starterGame){
+  updateStarterProgress(box);
+  if(starterFailed&&!starterPending)button(box,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  }
  feature(null);return;}
  for(const game of store?[...catalog].sort((a,b)=>ownedInStore(a.id)-ownedInStore(b.id)):entries()){
@@ -726,11 +738,11 @@ function mount(host){
  // Only actual pointer movement may override the keyboard/gamepad selection.
  card.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')previewHovered(gamesById.get(game.id));});card.addEventListener('focus',()=>{if(state.detail?.id===game.id&&!detail.hidden)revealCard(card);else preview(gamesById.get(game.id));});
  }
- if(state.view==='library'&&starterFailed)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
+ if(state.view==='library'&&starterFailed&&!starterPending)button(shelf,'retry','Retry download',()=>loadStarterLibrary(),'retry-starter');
  indexShelf();layoutShelf();
  // Library always starts with a selection and keeps it through refreshes.
  const keep=entries().find(g=>g.id===(state.detail?.id||(state.view==='library'?returningGame:null)||featured?.id));
- if(state.view==='library'){returningGame=null;preview(keep||entries()[0]);markSelection();return;}
+ if(state.view==='library'){returningGame=null;preview(keep||entries().find(g=>g.id===starterGame)||entries()[0]);markSelection();return;}
  // Store keeps a valid offer or opens its first; with none left it rests on a covered check.
  if(store&&!state.detail){if(offer)preview(keep&&!ownedInStore(keep.id)?keep:offer);else{hideDetail();feature(entries()[0]);}return;}
  feature(keep||entries()[0]);}
@@ -826,7 +838,7 @@ function mount(host){
   }else{const focusedId=doc.activeElement?.classList.contains('game-card')?doc.activeElement.dataset.gameId:null;renderGrid();if(focusedId)(selectedCard()||tabs.library).focus();}
  }refreshOwnership();}catch{/* Keep the installed library usable on a failed refresh. */}}
  function reloadPlayerGames(){
-  const generation=++profileLoad;library=[];catalog=[];starterPending=false;requested=null;returningGame=null;hideDetail();initialViewPending=false;loading.library=loading.store=true;failed.library=failed.store=false;catalogChecking=null;if(state.view!=='options')renderGrid();
+  const generation=++profileLoad;library=[];catalog=[];starterPending=starterRunning;requested=null;returningGame=null;hideDetail();initialViewPending=false;loading.library=loading.store=true;failed.library=failed.store=false;catalogChecking=null;if(state.view!=='options')renderGrid();
   for(const [view,request] of [['library',platform.library()],['store',platform.catalog()]])request.then(entries=>{
    if(disposed||generation!==profileLoad)return;
    if(view==='library')library=entries;else catalog=entries;
@@ -901,7 +913,7 @@ function mount(host){
  const input=win.HandheldInput.createInput({repeat:true,navigationShoulders:true,onAction:event=>{const a=event.action;if(picking){const nodes=Array.from(picker.querySelectorAll('button')).filter(b=>!b.disabled);
   // In a child's +, Back is ✕; on the name keys a shoulder changes case and Start is ✓.
   const step=picker.querySelector('.kid-cancel,.name-entry');
-  if(a==='back'||a==='exit'){if(step)renderFaces();else if(profiles.pinned()||!manyPlayers())closePicker();}
+  if(a==='back'||a==='exit'){if(step)renderFaces();else closePicker();}
   else if(kidBoard&&(a==='nextView'||a==='previousView'))kidBoard.toggleCase();
   else if(kidSave&&a==='pause')kidSave();
   else if(a==='confirm'||a==='pause')(nodes.includes(doc.activeElement)?doc.activeElement:picker.querySelector('.picker-face'))?.click();
@@ -928,18 +940,34 @@ function mount(host){
  win.addEventListener('pagehide',dispose);
  win.addEventListener('blur',pausePreview);win.addEventListener('focus',resumePreview);
  async function loadStarterLibrary(){
+  // Pending starts before this function runs; a separate lock also rejects
+  // queued clicks on a Retry control removed by a progress rerender.
+  if(starterRunning||disposed)return;
+  starterRunning=true;
   const generation=profileLoad;
+  try{
+  if(state.view==='library'&&state.detail&&!returningGame)returningGame=state.detail.id;
   starterPending=true;starterFailed=false;loading.library=true;failed.library=false;if(state.view==='library')renderGrid();
-  try{await gameUpdates.idle();const seeded=await prepareStarter(platform,{id:starterGame,storage});if(disposed||generation!==profileLoad)return;
-   // First preparation selects its game, but never overrides a game return or
-   // navigation/selection the user made while the verified install was pending.
-   if((seeded==='installed'||seeded==='present')&&initialViewPending&&state.view==='library'&&!returningGame&&!state.detail) returningGame=starterGame;
-  }
-  catch{if(disposed||generation!==profileLoad)return;starterFailed=true;}
+  try{await gameUpdates.idle();if(disposed||generation!==profileLoad)return;
+  for(const id of starterGames){
+   starterCurrent=id;
+   try{const seeded=await prepareStarter(platform,{id,storage});if(disposed||generation!==profileLoad)return;
+    // First preparation selects its first game, but never overrides a return or
+    // navigation/selection made while the verified installs were pending.
+    if((seeded==='installed'||seeded==='present')&&initialViewPending&&state.view==='library'&&!returningGame&&!state.detail) returningGame=id;
+   }
+   catch{if(disposed||generation!==profileLoad)return;starterFailed=true;}
+  }}catch{if(disposed||generation!==profileLoad)return;starterFailed=true;}
   try{const entries=await platform.library();if(disposed||generation!==profileLoad)return;library=entries;failed.library=starterFailed&&!entries.length;}
   catch{if(disposed||generation!==profileLoad)return;failed.library=true;}
   if(disposed||generation!==profileLoad)return;starterPending=false;loading.library=false;initialViewPending=false;
   if(state.view==='library')renderGrid();refreshOwnership();finishTabFocus('library');
+  }finally{
+   starterRunning=false;
+   // Player changes invalidate this run's view data, not device preparation.
+   // Resume only after its install settles, skipping independently marked games.
+   if(!disposed&&generation!==profileLoad)loadStarterLibrary();
+  }
  }
  if(starterGame)loadStarterLibrary();
  // Only initial discovery may choose Store; explicit navigation always wins.
@@ -952,9 +980,8 @@ function mount(host){
  let shortcutHeld=0,shortcutFired=false;
  const shortcutTimer=win.setInterval?.(()=>{if(disposed)return;let pad=null;try{pad=[...(win.navigator?.getGamepads?.()||[])].find(p=>p?.connected);}catch{}
   if(pad?.buttons[4]?.pressed&&pad?.buttons[5]?.pressed&&pad?.buttons[9]?.pressed){const now=Date.now();if(!shortcutHeld)shortcutHeld=now;if(now-shortcutHeld>2000&&!shortcutFired){shortcutFired=true;win.location.hash='options';}}else{shortcutHeld=0;shortcutFired=false;}},100);
- // Who is playing is asked once each time Cubby starts; coming back from a game or an
- // adult page keeps the player.
- renderPlayer();if(manyPlayers()&&!profiles.pinned()&&win.location?.hash!=='#options')openPicker();
+ // Resume the remembered player immediately; their chip remains available to switch.
+ renderPlayer();
  win.fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:'picker',errors:[]})}).catch(()=>{});
  return {state,show,dispose,refreshCatalog};
 }

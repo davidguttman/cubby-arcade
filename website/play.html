@@ -3,6 +3,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Cubby Arcade</title>
+<link rel="preload" as="image" href="/site/boot.webp" media="(prefers-reduced-motion:no-preference)" fetchpriority="high">
+<link rel="preload" as="image" href="/site/boot.png" fetchpriority="high">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#d9d3c9">
@@ -20,6 +22,16 @@ html,body{margin:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-se
   filter:drop-shadow(0 calc(var(--dw,360px)*.03) calc(var(--dw,360px)*.04) #0005)}
 .screen{position:absolute;left:11.983%;top:7.848%;width:76.446%;aspect-ratio:4/3;overflow:hidden;background:#000}
 .screen iframe{position:absolute;left:0;top:0;width:640px;height:480px;border:0;transform-origin:0 0;transform:scale(var(--ss,1));background:#000}
+/* The handheld's actual space/sunset boot art and native-rendered twinkling stars. */
+#boot{position:absolute;inset:0;z-index:1;background:#061b2b;pointer-events:none}
+#boot[hidden]{display:none}
+#boot img{display:block;width:100%;height:100%}
+#boot-stars{position:absolute;inset:0}
+/* Native boot-screen.py bar: (170,450), 300x8 on the 640x480 artwork. */
+.boot-track{position:absolute;left:26.5625%;top:93.75%;width:46.875%;height:1.6667%;border-radius:1px;background:#061b2baa;overflow:hidden}
+.boot-fill{height:100%;width:0;background:#ffbb45;animation:boot-progress 30s linear forwards}
+@keyframes boot-progress{0%{width:0}16.667%{width:90%}100%{width:99%}}
+@media(prefers-reduced-motion:reduce){#boot-stars{display:none}.boot-fill{animation:none;width:0}}
 .hit{position:absolute;border:0;padding:0;margin:0;background:transparent;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
 .hit.round{clip-path:circle(50%)}
 .hit.pressed,.pad.on{background:radial-gradient(circle,#0000004d 0 55%,#0000 72%)}
@@ -31,7 +43,13 @@ html,body{margin:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-se
 </style>
 <div id="wrap">
   <div class="dev">
-    <div class="screen"><iframe id="hub" title="Cubby Arcade" allow="autoplay; gamepad; fullscreen"></iframe></div>
+    <div class="screen"><iframe id="hub" title="Cubby Arcade" allow="autoplay; gamepad; fullscreen"></iframe>
+      <div id="boot" role="status" aria-label="Cubby Arcade is starting">
+        <img id="boot-art" src="/site/boot.png" width="640" height="480" alt="" fetchpriority="high">
+        <picture id="boot-stars"><source media="(prefers-reduced-motion:reduce)" srcset="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="><img src="/site/boot.webp" width="640" height="480" alt=""></picture>
+        <div class="boot-track" aria-hidden="true"><div class="boot-fill"></div></div>
+      </div>
+    </div>
     <div class="pad" id="dpad"></div><div class="pad" id="lstick"></div>
     <button class="hit ba" data-b="a" aria-label="A"></button><button class="hit bb" data-b="b" aria-label="B"></button>
     <button class="hit st" data-b="start" aria-label="Start"></button><button class="hit round mn" data-b="select" aria-label="Menu"></button>
@@ -43,6 +61,27 @@ html,body{margin:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-se
   const TYPE = 'cubby:embed:v1', origin = location.origin, frame = document.getElementById('hub');
   // The embedded hub binds itself to this page's origin; its games come back to /native/index.html.
   frame.src = '/native/index.html?embed=handheld&parentOrigin=' + encodeURIComponent(origin);
+  // The embed's 'ready' only means its controls can receive messages, not that
+  // storage or the shared hub is ready. Observe the real same-origin UI instead;
+  // this keeps the native shell/integrity inventory unchanged. A storage failure
+  // must also be revealed so the boot picture cannot hide the retry notice.
+  const boot = document.getElementById('boot');
+  let bootObserver;
+  function watchBoot() {
+    if (boot.hidden) return;
+    bootObserver?.disconnect();
+    const doc = frame.contentDocument;
+    if (!doc?.documentElement) return;
+    const painted = () => {
+      if (!doc.querySelector('#hub .view-tab, #hub .browser-storage-error')) return;
+      bootObserver?.disconnect();
+      requestAnimationFrame(() => requestAnimationFrame(() => { boot.hidden = true; }));
+    };
+    bootObserver = new MutationObserver(painted);
+    bootObserver.observe(doc.documentElement, { childList: true, subtree: true });
+    painted();
+  }
+  frame.addEventListener('load', watchBoot);
   const send = data => frame.contentWindow && frame.contentWindow.postMessage({ type: TYPE, ...data }, origin);
   const active = () => !document.hidden;
   const held = new Set();
@@ -52,7 +91,7 @@ html,body{margin:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-se
   function setActive() { const on = active(); if (!on) held.clear(); send({ event: 'active', active: on }); }
   addEventListener('message', e => {
     if (e.origin !== origin || e.source !== frame.contentWindow || !e.data || e.data.type !== TYPE) return;
-    if (e.data.event === 'ready') { setActive(); fit(); }
+    if (e.data.event === 'ready') { setActive(); fit(); watchBoot(); }
     // Escape inside the screen: Cubby's own menu, like the round button.
     else if (e.data.event === 'exit') tap('select');
   });

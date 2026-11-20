@@ -16,8 +16,9 @@
   const bridge=win.HandheldBrowserStore.createBridge();await bridge.ready();
   // The settings tab's version label, as on the handheld; the site build writes it.
   bridge.version=()=>win.fetch('/version.json',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(Error('No version')));
-  const starterGame=win.CubbyHandheldEmbed&&new URLSearchParams(win.location?.search).get('starter')==='line-cutter'?'line-cutter':undefined;
-  win.HandheldPlatformOptions={kind:'web',bridge,starterGame};
+  const starterAllowlist=['line-cutter','fox-barrister','owl-the-way-home','spell-castle'];
+  const starterGames=win.CubbyHandheldEmbed?[...new Set(new URLSearchParams(win.location?.search).getAll('starter').filter(id=>starterAllowlist.includes(id)))]:[];
+  win.HandheldPlatformOptions={kind:'web',bridge,starterGame:starterGames[0],starterGames};
   let hub;
   function mount(){hub?.dispose();hub=win.HandheldHub.mount(host);win.CubbyUIReady?.();}
   mount();

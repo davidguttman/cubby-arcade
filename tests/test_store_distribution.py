@@ -41,12 +41,12 @@ class StoreDistribution(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         web.default_registry()
 
-    def test_default_fallback_has_six_offers_but_no_payloads(self):
+    def test_default_fallback_has_seven_offers_but_no_payloads(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = web.build(Path(tmp) / 'site', registry=web.default_registry())
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle'])
+                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle', 'waddle-wars'])
             beta = json.loads((site / 'beta/catalog').read_text())
             self.assertEqual([e['id'] for e in beta], ['line-cutter'])
             self.assertEqual(beta[0], {
@@ -82,8 +82,8 @@ class StoreDistribution(unittest.TestCase):
         # stable or beta catalog, which the shared core searches for starters.
         import re
         source = Path('runtime/core/browser-bootstrap.js').read_text()
-        starters = set(re.findall(r"get\('starter'\)==='([a-z0-9-]+)'", source))
-        self.assertEqual(starters, {'line-cutter'})
+        starters = set(re.findall(r"'([a-z0-9-]+)'", re.search(r"starterAllowlist=\[([^]]+)\]", source).group(1)))
+        self.assertEqual(starters, {'line-cutter', 'fox-barrister', 'owl-the-way-home', 'spell-castle'})
         offered = {e['id'] for e in web.default_registry() + web.default_beta_registry()}
         self.assertLessEqual(starters, offered)
 
@@ -100,7 +100,7 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertFalse((site / 'games').exists())
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle'])
+                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle', 'waddle-wars'])
             self.assertEqual([e['id'] for e in json.loads((site / 'beta/catalog').read_text())],
                              ['line-cutter'])
             self.assertEqual((site / 'store/little-camp/1/little-camp-1.game.zip').read_bytes(), old.read_bytes())

@@ -105,3 +105,49 @@ the drain measurements:
 When testing, cap `max_wake_seconds`: a fake battery that never drains backs off for
 hours, and the device looks dead. The kernel refuses to overwrite an armed wake alarm
 without clearing it first.
+
+### Bounded maintainer probe
+
+`rocknix/device/sleep_probe.py` is an explicitly invoked, stdlib-only native test,
+not a background service. Copy the reviewed script to `/tmp` on the pinned target
+and run `python3 /tmp/sleep_probe.py preflight` first. Preflight does not suspend,
+change settings, or arm an alarm: it checks deep sleep, a clear writable RTC alarm,
+awake display/audio/Cog, and exactly one power-capable kernel input. It opens that
+input and verifies `KEY_POWER` with the kernel before any suspend. The characterized
+input is named **`rk805 pwrkey`**; `rk805_pwrkey/input0` is its physical path, not its
+name. Never assume an event number or match only that old underscore spelling.
+
+Run `python3 /tmp/sleep_probe.py run` in a detached **systemd transient unit**, not
+an SSH-dependent foreground session or the Cubby session's process group. For
+example, after checking that the unit and output paths are not already in use:
+
+```sh
+systemd-run --unit=cubby-sleep-probe /bin/sh -c \
+  'python3 /tmp/sleep_probe.py run > /tmp/cubby-sleep-probe.json 2> /tmp/cubby-sleep-probe.log'
+```
+
+The run repeats preflight, proves the RTC can arm/clear an alarm, creates an
+exclusive temporary `power.json` (refusing any existing file or link), and restarts
+Cubby to load a 15-second wake interval with a 30-second cap. It confirms the power
+helper loaded the test settings before requesting suspend. A local process checks
+`CLOCK_BOOTTIME - CLOCK_MONOTONIC` for actual suspension, then injects a power-key
+press through its already-open input during the RTC wake. It requires fresh power
+log restoration evidence plus lit display, unmuted speaker and running Cog. Its
+90-second boottime budget includes suspension, but like any userspace timeout it
+can act only when the CPU resumes. It does not claim a hard recovery guarantee if
+hardware fails to wake.
+
+On success, ordinary failure, SIGINT or SIGTERM, it removes only its exact,
+unchanged settings file and verifies restart with normal defaults. If another
+actor replaces/changes that file, the probe preserves it and fails. SIGKILL, power
+loss or a kernel that never resumes cannot execute userspace cleanup: recover
+pinned access, inspect the exact settings and receipt, and restore only the
+probe-owned state before handoff. Never reset unrelated settings or update state.
+
+Read `/tmp/cubby-sleep-probe.json` and inspect the actual screen after reconnecting.
+A passing receipt verifies automatic RTC wake and the injected kernel power-key
+path, **not physical switch actuation**, speaker acoustics, or USB recovery.
+Check USB and Wi-Fi independently with pinned identity; an unreachable SSH address
+alone proves neither that the unit is asleep nor that a human power press is
+needed. Preserve the receipt, relevant power log and post-wake screenshot, then
+verify both recovery transports and clean customer state separately.

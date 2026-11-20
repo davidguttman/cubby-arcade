@@ -1,6 +1,7 @@
 """Adult/developer catalog management. Hashes verify bytes, not publisher identity."""
 import argparse
 import concurrent.futures
+import datetime
 import hashlib
 import json
 import os
@@ -125,6 +126,33 @@ def validate(document, developer=False):
     return games
 
 
+def validate_marketing_metadata(entry):
+    """Optional adult-facing discovery copy; never a child-facing UI contract."""
+    for key, maximum in (('tagline', 160), ('teaches', 120)):
+        if key in entry:
+            value = entry[key]
+            if (not isinstance(value, str) or not value.strip() or len(value) > maximum
+                    or any(not char.isprintable() for char in value)):
+                raise ValueError(f'Invalid catalog {key}')
+    if 'ages' in entry:
+        value = entry['ages']
+        match = re.fullmatch(r'([0-9]{1,2})[–-]([0-9]{1,2})', value) if isinstance(value, str) else None
+        if not match or int(match[1]) > int(match[2]):
+            raise ValueError('Invalid catalog ages')
+    if 'web_url' in entry:
+        check_url(entry['web_url'])
+    if 'kind' in entry and entry['kind'] not in ('game', 'app'):
+        raise ValueError('Invalid catalog kind')
+    if 'added' in entry:
+        value = entry['added']
+        if not isinstance(value, str) or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', value):
+            raise ValueError('Invalid catalog added date')
+        try:
+            datetime.date.fromisoformat(value)
+        except ValueError as error:
+            raise ValueError('Invalid catalog added date') from error
+
+
 def validate_registry(document, developer=False):
     """Browsing validates discovery metadata only; it never follows manifest URLs."""
     if not isinstance(document, list) or len(document) > 1000:
@@ -136,6 +164,7 @@ def validate_registry(document, developer=False):
         seen.add(entry['id'])
         if not isinstance(entry.get('title'), str) or not 1 <= len(entry['title']) <= 120:
             raise ValueError('Invalid adult registry title')
+        validate_marketing_metadata(entry)
         for key in ('manifest_url', 'artwork'):
             check_url(entry.get(key), developer)
         if 'attract' in entry:

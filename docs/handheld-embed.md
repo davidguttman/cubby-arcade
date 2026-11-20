@@ -12,14 +12,18 @@ deck in this mode; the embedding handheld supplies its controls. Direct pointer
 interaction with the real hub and games remains possible. Desktop/native and
 ordinary browser play do not opt into this behavior.
 
-## Optional starter game
+## Optional starter games
 
 An embedding page may add `&starter=line-cutter` to the valid handheld embed URL.
+Repeat `starter` to request a pack: `line-cutter`, `fox-barrister`,
+`owl-the-way-home`, and `spell-castle` are the allowed browser-embed IDs. Unknown
+IDs are ignored, duplicates are removed, and request order is preserved.
 This is a configuration opt-in, not a second launcher: the shared hub prepares the
 starter through the host's ordinary verified installer, then selects its actual
 Library entry. Ordinary `/play` (even with `starter` alone), desktop and native
 hosts keep their existing empty-library/Store behavior. A host may also configure
-`HandheldPlatformOptions.starterGame` to opt the same shared hub policy in.
+`HandheldPlatformOptions.starterGames` (an ordered array), or the legacy
+`starterGame` string, to opt the same shared hub policy in.
 
 The starter does not depend on what the player browses. The shared feed policy
 finds its offer in the player's enabled feeds first, then in their other feeds and
@@ -34,16 +38,18 @@ player picks up the handheld, the iframe remains hidden
 and inactive under the protocol below; downloading/storage can proceed while
 animation and audio stay suspended. An immediate cold pickup can still wait for
 the first network download. The hub stays on Library with pictorial download
-progress, then selects Line Cutter without starting gameplay. Physical A opens
+progress, then selects the first prepared game without starting gameplay. Physical A opens
 Play and a second A launches the game; no Store or Download action is needed.
 
-`cubby:starter:v1:line-cutter` in the host's localStorage records only successful
+`cubby:starter:v1:<game-id>` in the host's localStorage independently records successful
 preparation, after the verified entry exists. Existing installs are recorded
 without reinstalling. Later mounts do not reseed an intentional uninstall, never
 clear saves, and normal shared update policy remains in force. Browser storage
 eviction/clearing (including its marker) creates a fresh profile. Failed attempts
 leave no success marker, free the Library, and offer a pictorial retry; a later
-mount retries as well. Other installed games remain usable on seed failure.
+mount retries as well. Other games are still attempted after a failure. Prepared games remain usable,
+and retry skips each successful marker. A profile with Line Cutter already installed
+can gain the rest of the pack without reinstalling it or changing its saves.
 
 ## Protocol, version 1
 

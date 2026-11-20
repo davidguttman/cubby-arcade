@@ -1,6 +1,8 @@
 #!/bin/bash
 # Runs inside the WPE rootfs. ROCKNIX owns Sway, input and PulseAudio/PipeWire.
 set -euo pipefail
+# Also cover sessions launched without the native chroot wrapper.
+export PYTHONDONTWRITEBYTECODE=1
 cd /opt/cubby
 export XDG_RUNTIME_DIR=/run/host-runtime
 export XDG_DATA_HOME=/var/lib/handheld/profile

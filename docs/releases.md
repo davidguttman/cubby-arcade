@@ -114,8 +114,8 @@ Outside game makers use their own feeds ([game authoring guide](game-authoring.m
 ### Release to beta first
 
 Cubby has two independent discovery lists: `hosting/catalog.yaml` publishes to
-https://cubby.david.app/catalog (stable), and `hosting/beta-catalog.yaml` publishes
-to https://cubby.david.app/beta/catalog (beta). The beta list starts empty. Add
+https://play.cubbyarcade.com/catalog (stable), and `hosting/beta-catalog.yaml` publishes
+to https://play.cubbyarcade.com/beta/catalog (beta). The beta list starts empty. Add
 an early game to beta using the listing shape in the game authoring guide,
 then build/deploy the static site normally (`uv run python web.py build`). Every
 export includes both catalogs and validates their metadata before replacing the

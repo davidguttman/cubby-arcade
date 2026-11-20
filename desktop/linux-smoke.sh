@@ -6,7 +6,7 @@ uv run python "$root/desktop/smoke-fixture.py" "$state/fixture"
 export CUBBY_ARCADE_SMOKE_INSTALL_DIR="$state/fixture"
 export CUBBY_ARCADE_SMOKE_UNINSTALL_PACKAGE="$root/hosting/releases/line-cutter/0.2.1/line-cutter-0.2.1.game.zip"
 export CUBBY_ARCADE_SMOKE_OFFLINE=1
-for mode in install uninstall; do
+for mode in install uninstall free-play; do
     export CUBBY_ARCADE_USER_DATA="$state/$mode-profile"
     export CUBBY_ARCADE_SMOKE_DIR="$root/dist/linux-smoke/$mode"
     mkdir -p "$CUBBY_ARCADE_SMOKE_DIR"
@@ -26,8 +26,10 @@ from pathlib import Path
 import sys
 mode, folder = sys.argv[1], Path(sys.argv[2])
 report = json.loads((folder / (mode + '-report.json')).read_text())
-checks = ('nativeInstall retry progress play fileManifest unchangedFilesReused fileGamePlayable deferredUpdate corruptPreserved offlinePlayable' if mode == 'install' else 'uninstall cancelDefault repeatSafe backCancels retry bytesRemoved savesPreserved favoritesPreserved tokensPreserved reinstall gameIPCRejected').split()
+checks = ('tokenUIAbsent tokenBridgeAbsent freshAccountAbsent zeroAccountIgnored corruptAccountPreserved duplicateActivation gameIPCRejected resumeReload encodedNavigation savesPreserved missingLaunchRejected' if mode == 'free-play' else 'nativeInstall retry progress play fileManifest unchangedFilesReused fileGamePlayable deferredUpdate corruptPreserved offlinePlayable' if mode == 'install' else 'uninstall cancelDefault repeatSafe backCancels retry bytesRemoved savesPreserved favoritesPreserved reinstall gameIPCRejected').split()
 assert all(report.get(key) is True for key in checks), report
+if mode == 'free-play':
+    assert report['unlimitedLaunches'] > 10, report
 if mode == 'install':
     assert {'id': 'demo', 'version': '3'} in report['versions'], report
 assert len(list(folder.glob('*.png'))) >= 2, 'Missing smoke screenshots'

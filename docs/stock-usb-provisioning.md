@@ -9,11 +9,12 @@ Cubby/SD installation proves this stock-device path works end to end.
 
 The explicit `rg353v-android11` profile means the operator has independently
 identified the physical handheld as the characterized RG353V. Its shared stock
-Android firmware reports model `RG353P`, Android 11, and platform `rk3566`.
+Android firmware reports model `RG353P`, Android 11, and platform `rk3566` or
+`rk356x` on the characterized units.
 **Those Android strings alone do not distinguish the physical RG353V/RG353P.**
-The characterized unit used V1.20E, rooted `su 0`, root ADB recovery, and a
-non-removable BJTD4R eMMC with 61,071,360 sectors. The tool intentionally rejects
-other MMC names/capacities rather than guessing compatibility. A present SD
+The characterized units used V1.20E, rooted `su 0`, root ADB recovery, and a
+non-removable BJTD4R eMMC with exactly 61,071,360 or 61,079,552 sectors. The tool
+intentionally rejects other MMC names/capacities rather than guessing compatibility. A present SD
 card, unauthorized/multiple ADB devices, mounted internal partitions, battery
 below 30%, unknown battery level, or missing recovery primitives stop the job.
 The supported fingerprint is not a claim that every factory shipment exposes
@@ -54,6 +55,22 @@ actual identifiers and boot references, not just the declared record. Public
 release images have no CID or management key, and their release gate rejects
 bound/provisioned artifacts. A generic public image is unique **per build**;
 manual cloning is not the per-device fleet provisioning procedure.
+
+Each newly built bound image also contains a random serial (`CB-` followed by
+12 hexadecimal characters) and matching network hostname (`cubby-` followed by
+the same characters in lowercase). Both appear in the audited
+`/storage/cubby/image-provenance/device.json` as `network_identity`. Keep this
+record with the commissioning receipt so the physical unit and network name
+can be matched. Public images generate this record's network identity locally
+on first boot, rather than sharing a prebuilt network name.
+
+The standalone `/flash/cubby-device-identity` service runs after stock first-boot
+configuration but before networking. It sets ROCKNIX's native `system.hostname`
+setting and kernel hostname, which NetworkManager and Avahi use for DHCP/mDNS
+(`cubby-xxxxxxxxxxxx.local` on networks with mDNS). The identity is outside both
+release directories and customer state, so normal signed updates and clean
+handoff preserve it. An intentional full reflash creates a new identity. Do not
+clone a previously booted unit's disk or copy its provenance to another unit.
 
 For example, from the project root (replace the paths and commit):
 
@@ -103,9 +120,20 @@ tests; confirm them with the stock/recovery daemon versions on the device.
    hash, version/commit, selected public key, and the actual eMMC CID.
 3. Enter root Android recovery; re-probe identity, mounts (including by-name
    aliases), battery, capacity, absence of an SD card, and required tools.
+   Recovery requires both ADB state `recovery` and `init.svc.recovery=running`;
+   `ro.bootmode` may incorrectly remain `normal`. Transitions wait specifically
+   for ADB's recovery state, then revalidate shell-v2 and root. A job may start
+   in this verified recovery without `su`: direct root probes still collect and
+   validate Android model/version/platform and eMMC identity before binding.
+   The installer does not automatically unmount internal filesystems; a mounted
+   recovery target still blocks writing.
    Require `blockdev --rereadpt /dev/block/mmcblk0` to succeed on the unmounted
    stock disk **before** writing, proving that this recovery/kernel supports
    the actual partition-table reread operation, not merely a help option.
+   Also create and remove the private `/tmp/cubby-provision-storage` staging
+   directory before writing, proving key-enrollment staging works without
+   assuming Android recovery has `/run`. An existing destination, symlinked
+   parent, or failed directory operation blocks before erasure.
    Unsupported recovery primitives block installation; they are not assumed
    to be available on every stock unit.
 4. Stream gzip through recovery's pipefail-protected `gzip | dd`, fsync, check
@@ -247,3 +275,36 @@ signed trial/rollback and cannot certify those gates from source tests. The
 operator must retain separate actual-device evidence and finish those gates
 before customer handoff. It does not accept arbitrary operator flags to turn
 pending tests into passes.
+
+### Commissioning after a signed update
+
+The original install journal remains bound to the original image version, source
+commit and hash. Do not rewrite that binding to pretend an update was a reflash.
+Signed update manifests do not carry a source commit. After verifying the
+signature and publication provenance of an immutable release's `manifest.json`
+(app) or `update.json` (platform), supply that exact manifest explicitly:
+
+```sh
+uv run python -m rocknix.commission check \
+  --job /private/jobs/device-task --identity /private/operator \
+  --release-manifest /private/verified-release/update.json
+uv run python -m rocknix.commission handoff \
+  --job /private/jobs/device-task --identity /private/operator \
+  --release-manifest /private/verified-release/update.json
+```
+
+Use the manifest for the installed kind, not a different legacy/platform variant
+of the same version. This option does not download a manifest or verify its
+signature: independently authenticate the release bytes first. Native checks
+still require the original build provenance, CID binding and internal mounts,
+then compare the complete active manifest and every app file's inventory, size,
+mode and SHA256 before cleanup. Missing, extra, modified or symlinked app files
+block commissioning. Native launchers disable Python bytecode writes so normal
+imports do not add unsigned caches to a fresh signed release. Existing unsigned
+`__pycache__` files remain a failed inventory check, not trusted release bytes.
+Readiness checks use the active update version; receipts
+retain the original image `binding` and report `active_release` separately as
+version, sequence and SHA256 of sorted, compact JSON metadata. They never invent
+an active source commit. All trial, ownership and pending-acceptance guards
+continue to apply. Without this option, the original image-only behavior is
+unchanged.

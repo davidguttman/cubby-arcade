@@ -718,9 +718,9 @@ test('host activation retries an unfocused hidden-prepared hub after the visible
 // Players in the shared hub: the real player rules and pictures, against this DOM adapter.
 const Profiles=require('../runtime/core/profiles.js'),Avatars=require('../runtime/core/avatars.js');
 function memory(entries=[]){const values=new Map(entries);return {values,get length(){return values.size;},key:i=>[...values.keys()][i]??null,getItem:k=>values.has(k)?values.get(k):null,setItem:(k,v)=>values.set(k,String(v)),removeItem:k=>values.delete(k)};}
-function playersHub({list,pin,overrides={},capabilities={},windowOverrides={},entries=[]}={}){
+function playersHub({list,active=list?.[0].id,pin,overrides={},capabilities={},windowOverrides={},entries=[]}={}){
  const localStorage=memory(entries),sessionStorage=memory(pin?[[Profiles.PIN_KEY,pin]]:[]),calls=[];
- if(list)localStorage.setItem(Profiles.REGISTRY_KEY,JSON.stringify({profiles:list,active:list[0].id}));
+ if(list)localStorage.setItem(Profiles.REGISTRY_KEY,JSON.stringify({profiles:list,active}));
  const mounted=mountedHub(games,[],{profiles:true,...capabilities},{useProfile:async id=>{calls.push(['use',id]);},removeProfile:async id=>{calls.push(['remove',id]);},savedGames:async id=>{calls.push(['saved',id]);return ['one'];},resetGameSaves:async(id,player)=>{calls.push(['reset',id,player]);},...overrides},
   {localStorage,sessionStorage,HandheldProfiles:Profiles,HandheldAvatars:Avatars,...windowOverrides});
  return {...mounted,localStorage,sessionStorage,calls};
@@ -755,15 +755,35 @@ test('settings omit unsupported advanced actions without displacing everyday def
  assert.equal(device.host.ownerDocument.activeElement.getAttribute('aria-label'),'Wi-Fi settings');device.hub.dispose();
 });
 const picker=host=>host.querySelector('.player-picker');
-test('with players, Cubby asks who is playing on start; the first pick has no way around it',async()=>{
- const {host,action,calls,sessionStorage}=playersHub({list:three});await settle();
- assert.equal(picker(host).hidden,false);assert.equal(host.querySelector('.picker-back'),null);
+test('startup resumes the last player; the picture opens switching and Back keeps that player',async()=>{
+ const {host,action,calls,sessionStorage,localStorage,hub}=playersHub({list:three,active:'p_fixture1'});await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-button').dataset.avatar,'fox');
+ host.querySelector('.player-button').click();assert.ok(host.querySelector('.picker-back'));
  assert.deepEqual(host.querySelectorAll('.picker-face').map(face=>face.dataset.profile),[...three.map(p=>p.id),undefined],'Every player, then +');
- assert.equal(host.ownerDocument.activeElement.dataset.profile,Profiles.FIRST,'Focus starts on the last player');
- for(const a of ['back','exit','nextView','select'])action(a);assert.equal(picker(host).hidden,false);
- host.querySelectorAll('.picker-face')[1].focus();action('confirm');await settle();
- assert.equal(picker(host).hidden,true);assert.deepEqual(calls,[['use','p_fixture1']]);assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),'p_fixture1');
- const button=host.querySelector('.player-button');assert.equal(button.hidden,false);assert.equal(button.dataset.avatar,'fox');
+ assert.equal(host.ownerDocument.activeElement.dataset.profile,'p_fixture1','Focus starts on the last player');
+ action('back');assert.equal(picker(host).hidden,true);assert.deepEqual(calls,[]);
+ host.querySelector('.player-button').click();action('exit');assert.equal(picker(host).hidden,true);
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[2].focus();action('confirm');await settle();
+ assert.equal(picker(host).hidden,true);assert.deepEqual(calls,[['use','p_fixture2']]);assert.equal(sessionStorage.getItem(Profiles.PIN_KEY),'p_fixture2');
+ assert.equal(JSON.parse(localStorage.getItem(Profiles.REGISTRY_KEY)).active,'p_fixture2');
+ hub.dispose();
+ const restarted=playersHub({windowOverrides:{localStorage}});await settle();
+ assert.equal(restarted.sessionStorage.getItem(Profiles.PIN_KEY),null,'A new startup has no tab pin');
+ assert.equal(picker(restarted.host).hidden,true);assert.equal(restarted.host.querySelector('.player-button').dataset.avatar,'frog');
+ restarted.hub.dispose();
+});
+test('a resumed player supplies favorites, feeds and the host identity before launch',async()=>{
+ const order=[];
+ const {host,hub}=playersHub({list:three,active:'p_fixture1',entries:[['handheld:favorites:v1','["one"]'],['cubby:profile:p_fixture1:handheld:favorites:v1','["two"]']],
+  overrides:{setFeedProfile:id=>order.push('feed '+id),useProfile:async id=>order.push('use '+id),launch:async id=>order.push('launch '+id)}});await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(hub.state.isFavorite('two'),true);assert.equal(hub.state.isFavorite('one'),false);
+ assert.deepEqual(order,['feed p_fixture1']);host.querySelector('.play-game').click();await settle();
+ assert.deepEqual(order,['feed p_fixture1','use p_fixture1','launch one']);hub.dispose();
+});
+test('a missing remembered player falls back to the first player without a startup picker',async()=>{
+ const {host,hub}=playersHub({list:three,active:'p_removed',pin:'p_removed'});await settle();
+ assert.equal(picker(host).hidden,true);assert.equal(host.querySelector('.player-button').dataset.avatar,'bear');
+ host.querySelector('.player-button').click();assert.ok(host.querySelector('.picker-back'));hub.dispose();
 });
 test('coming back to the hub keeps the player; the picture reopens the picker and Back keeps them',async()=>{
  const {host,action,hub}=playersHub({list:three,pin:'p_fixture2'});await settle();
@@ -803,6 +823,7 @@ test('a device lists the players page among its tiles, and a host without player
 test('a child sees their own name under their face and beside it on the hub',async()=>{
  const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'}];
  const {host}=playersHub({list});await settle();
+ host.querySelector('.player-button').click();
  assert.deepEqual(host.querySelectorAll('.face-name').map(n=>n.textContent),['Theo','Fox',undefined],'Names, and a nameless +');
  assert.deepEqual(host.querySelectorAll('.picker-face').map(f=>f.getAttribute('aria-label')),['Theo','Fox','New player']);
  host.querySelectorAll('.picker-face')[0].click();await settle();
@@ -890,6 +911,7 @@ test('adults rename, re-picture and remove players behind the gear question; the
 test('player screens show no words but players’ names and keyboard letters',async()=>{
  const list=[{id:Profiles.FIRST,avatar:'bear',name:'Theo'},{id:'p_fixture1',avatar:'fox'},{id:'p_fixture2',avatar:'frog',name:'Josephine'}],names=new Set(['Theo','Fox','Josephine','Cubby']);
  const {host,hub,action}=playersHub({list,windowOverrides:device});await settle();
+ host.querySelector('.player-button').click();
  const shown=[];
  function collect(screen){const walk=e=>{if(typeof e.textContent==='string'&&e.textContent&&!e.children?.length)shown.push([screen,e.textContent,!!e.parent?.classList.contains('cubby-keyboard')]);(e.children||[]).forEach(walk);};walk(host.querySelector('.player-picker'));walk(host.querySelector('.brand'));walk(host.querySelector('.player-management'));const saves=host.querySelector('.save-management');if(saves.querySelector('.choose-player'))walk(saves);}
  collect('picker');host.querySelectorAll('.picker-face')[0].click();await settle();collect('hub');
@@ -1043,4 +1065,97 @@ test('profile switches clear both shelves immediately and discard an older profi
 test('adult feeds show the active player face and name',async()=>{
  const {host,hub}=playersHub({list:three,pin:'p_fixture1',overrides:{feedConfig:async()=>Feeds.defaultConfig(),setFeedConfig:async next=>next}});await settle();const dialog=await openFeedsPage(host,hub);
  assert.equal(dialog.querySelector('.feed-player-name').textContent,'Fox');assert.ok(dialog.querySelector('.feed-player').querySelector('.player-face'));assert.deepEqual(feedNames(dialog),['Cubby Arcade','Cubby Beta']);assert.equal(dialog.querySelectorAll('.feed-toggle')[1].getAttribute('aria-checked'),'false');hub.dispose();
+});
+
+const starterPack=['line-cutter','fox-barrister','owl-the-way-home','spell-castle'];
+test('starter progress keeps its loading animation mounted through events and catalog refresh',async()=>{
+ let onInstall,finish;const installed=[];
+ const {host,hub}=mountedHub([],[],{install:true},{library:async()=>installed,onInstallState:fn=>{onInstall=fn;},install:async id=>{await new Promise(resolve=>{finish=resolve;});installed.push({id,artwork:'/cover',entrypoint:'/'+id});}},{HandheldPlatformOptions:{starterGame:'line-cutter'}});
+ await settle();const loading=host.querySelector('.shelf-status'),progress=host.querySelector('.install-progress');assert.ok(loading);assert.ok(progress);
+ for(let received=1;received<=5;received++){
+  onInstall({'line-cutter':{phase:'downloading',received,total:10}});
+  assert.equal(host.querySelector('.shelf-status'),loading,'progress must not replace the animated loading subtree');
+  assert.equal(host.querySelector('.install-progress'),progress);assert.equal(progress.value,received);assert.equal(progress.max,10);
+ }
+ await hub.refreshCatalog();assert.equal(host.querySelector('.shelf-status'),loading,'catalog completion must not restart the same loading animation');
+ onInstall({'line-cutter':{phase:'verifying'}});assert.equal(host.querySelector('.shelf-status'),loading);assert.equal(progress.getAttribute('value'),null);
+ finish();await settle();assert.equal(host.querySelector('.shelf-status'),null);assert.ok(host.querySelector('.play-game'));hub.dispose();
+});
+function starterPackHub({present=[],marked=[],fail=null}={}){
+ const values=new Map(marked.map(id=>['cubby:starter:v1:'+id,'1'])),calls=[];let installed=present.map(id=>({id,artwork:'/cover',entrypoint:'/'+id})),failed=false;
+ values.set('saved-game','keep');
+ const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)};
+ const result=mountedHub([],[],{install:true},{library:async()=>installed,install:async(id,options)=>{calls.push(id);assert.equal(options.starter,true);if(id===fail&&!failed){failed=true;throw Error('offline');}installed.push({id,artwork:'/cover',entrypoint:'/'+id});}},{HandheldPlatformOptions:{starterGames:starterPack},localStorage:storage});
+ return {...result,values,calls,ids:()=>installed.map(g=>g.id)};
+}
+test('starter pack installs all four through verified shared installation with independent markers',async()=>{
+ const e=starterPackHub();await settle();assert.deepEqual(e.calls,starterPack);assert.deepEqual(e.ids(),starterPack);assert.equal(e.hub.state.detail.id,'line-cutter');for(const id of starterPack)assert.equal(e.values.get('cubby:starter:v1:'+id),'1');assert.equal(e.values.get('saved-game'),'keep');
+});
+test('cached starter pack defaults to its first requested game, not alphabetical shelf order',async()=>{
+ const ordered=['fox-barrister','line-cutter','owl-the-way-home','spell-castle'];
+ const e=starterPackHub({present:ordered,marked:starterPack});await settle();
+ assert.deepEqual(e.calls,[]);assert.equal(e.hub.state.detail.id,'line-cutter');
+ e.host.querySelector('[data-game-id="owl-the-way-home"]').focus();e.refresh();await settle();
+ assert.equal(e.hub.state.detail.id,'owl-the-way-home','refresh preserves an explicit pick');e.hub.dispose();
+});
+test('a deliberately removed default starter is not selected or reinstalled',async()=>{
+ const e=starterPackHub({present:['fox-barrister','owl-the-way-home','spell-castle'],marked:starterPack});await settle();
+ assert.deepEqual(e.calls,[]);assert.equal(e.hub.state.detail.id,'fox-barrister');e.hub.dispose();
+});
+test('starter pack adds games to an existing profile without reinstalling a present or deliberately removed starter',async()=>{
+ const e=starterPackHub({present:['line-cutter'],marked:['fox-barrister']});await settle();assert.deepEqual(e.calls,['owl-the-way-home','spell-castle']);assert.deepEqual(e.ids(),['line-cutter','owl-the-way-home','spell-castle']);
+});
+test('starter pack continues after partial failure; retry skips prepared games and preserves selection',async()=>{
+ const e=starterPackHub({fail:'fox-barrister'});await settle();assert.deepEqual(e.calls,starterPack);assert.deepEqual(e.ids(),['line-cutter','owl-the-way-home','spell-castle']);assert.ok(e.host.querySelector('.play-game'));assert.ok(e.host.querySelector('.retry-starter'));assert.equal(e.values.has('cubby:starter:v1:fox-barrister'),false);
+ e.host.querySelector('[data-game-id="owl-the-way-home"]').focus();e.host.querySelector('.retry-starter').click();await settle();assert.deepEqual(e.calls,[...starterPack,'fox-barrister']);assert.equal(e.hub.state.detail.id,'owl-the-way-home');assert.equal(e.host.querySelector('.retry-starter'),null);
+});
+test('starter pack progress after a failure cannot expose or start an overlapping retry',async()=>{
+ const values=new Map(),calls=[],installed=[];let onInstall,finishOwl,finishFox,foxFailed=false;
+ const storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)};
+ const {host,hub}=mountedHub([],[],{install:true},{library:async()=>installed,onInstallState:fn=>{onInstall=fn;},install:async(id,options)=>{
+  calls.push(id);assert.equal(options.starter,true);
+  if(id==='fox-barrister'&&!foxFailed){foxFailed=true;throw Error('offline');}
+  if(id==='owl-the-way-home')await new Promise(resolve=>{finishOwl=resolve;});
+  if(id==='fox-barrister')await new Promise(resolve=>{finishFox=resolve;});
+  installed.push({id,artwork:'/cover',entrypoint:'/'+id});
+ }},{HandheldPlatformOptions:{starterGames:starterPack},localStorage:storage});
+ await settle();assert.deepEqual(calls,starterPack.slice(0,3));
+ onInstall({'owl-the-way-home':{phase:'downloading',received:1,total:2}});
+ assert.ok(host.querySelector('.install-progress'));assert.equal(host.querySelector('.retry-starter'),null,'a failed earlier game must not expose Retry while the next install is pending');
+ finishOwl();await settle();assert.deepEqual(calls,starterPack);
+ host.querySelector('[data-game-id="owl-the-way-home"]').focus();
+ const retry=host.querySelector('.retry-starter');assert.ok(retry);retry.click();await settle();
+ assert.deepEqual(calls,[...starterPack,'fox-barrister']);
+ onInstall({'fox-barrister':{phase:'downloading',received:1,total:2}});
+ assert.equal(host.querySelector('.retry-starter'),null);
+ retry.click();await settle();assert.deepEqual(calls,[...starterPack,'fox-barrister'],'even a queued click on a retired Retry control cannot run a second pack');
+ finishFox();await settle();assert.deepEqual(calls,[...starterPack,'fox-barrister']);
+ assert.equal(hub.state.detail.id,'owl-the-way-home');assert.equal(host.querySelector('.retry-starter'),null);
+ for(const id of starterPack)assert.equal(values.get('cubby:starter:v1:'+id),'1');hub.dispose();
+});
+test('starter pack resumes serially for the current player after switching during an install',async()=>{
+ const installs=[],installed=[];let finishLine,finishOwl,onInstall;
+ const {host,hub,localStorage}=playersHub({list:three,pin:Profiles.FIRST,capabilities:{install:true},windowOverrides:{HandheldPlatformOptions:{starterGames:starterPack}},overrides:{
+  library:async()=>installed,onInstallState:fn=>{onInstall=fn;},install:async id=>{
+   installs.push(id);
+   if(id==='line-cutter')await new Promise(resolve=>{finishLine=resolve;});
+   if(id==='owl-the-way-home')await new Promise(resolve=>{finishOwl=resolve;});
+   installed.push({id,artwork:'/cover',entrypoint:'/'+id});
+  }
+ }});
+ await settle();assert.deepEqual(installs,['line-cutter']);
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[1].click();await settle();
+ assert.equal(host.querySelector('.player-button').dataset.avatar,'fox');assert.deepEqual(installs,['line-cutter'],'player reload must not overlap the unfinished install');
+ onInstall({'line-cutter':{phase:'downloading',received:1,total:2}});
+ finishLine();await settle();assert.deepEqual(installs,starterPack.slice(0,3),'remaining starters must resume after the previous generation settles');
+ host.querySelector('.player-button').click();host.querySelectorAll('.picker-face')[2].click();await settle();
+ assert.equal(host.querySelector('.player-button').dataset.avatar,'frog');assert.deepEqual(installs,starterPack.slice(0,3));
+ finishOwl();await settle();assert.deepEqual(installs,starterPack);assert.deepEqual(installed.map(game=>game.id),starterPack);
+ assert.equal(host.querySelectorAll('.game-card').length,4);assert.ok(host.querySelector('.play-game'));assert.equal(host.querySelector('.retry-starter'),null);
+ for(const id of starterPack)assert.equal(localStorage.getItem('cubby:starter:v1:'+id),'1');hub.dispose();
+});
+
+test('tokenless native launch uses the bridge without token UI or account calls',async()=>{
+ let launched=0,accounts=0;const {host}=mountedHub(games,[],{tokens:false},{launch:async()=>{if(++launched===1)throw Error('temporary launch failure');},account:async()=>{accounts++;throw Error('must not read account');}});await settle();
+ assert(host.querySelector('.token-budget').hidden);const play=host.querySelector('.play-game');assert(!play.disabled);assert.equal(play.getAttribute('aria-label'),'Play game');play.click();play.click();await settle();assert.equal(launched,1);play.click();await settle();assert.equal(launched,2);assert.equal(accounts,0);assert.equal(host.ownerDocument.defaultView.location.href,undefined);
 });

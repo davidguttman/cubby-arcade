@@ -1,7 +1,7 @@
 # Cubby Arcade name and deployment migration
 
 The product is **Cubby Arcade**, repository `davidguttman/cubby-arcade`.
-Public web/catalog origin: https://cubby.david.app .
+Public web/catalog origin: https://play.cubbyarcade.com .
 Development VM state lives outside the checkout (`CUBBY_ARCADE_VM_DIR`).
 The desktop build is `dist/CubbyArcade-linux-x64/CubbyArcade`.
 

@@ -14,6 +14,44 @@ import vm
 import web
 from runtime import catalog
 
+PLAY_ORIGIN = 'https://play.cubbyarcade.com'
+
+
+def marketing_build(output):
+    """An independent static artifact: no launcher, feeds, tools or docs."""
+    output = output.resolve()
+    if output == ROOT or ROOT.is_relative_to(output):
+        raise ValueError('Output cannot replace the source tree')
+    if output.exists() and not (output / '.handheld-web-export').is_file():
+        raise ValueError('Refusing to replace an unrelated output directory')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent, prefix='.marketing-') as tmp:
+        stage = Path(tmp) / 'site'
+        stage.mkdir()
+        # Keep this explicit: adding an interactive page to website must never
+        # accidentally publish it on the marketing origin.
+        assets = ('index.html', 'style.css', 'desktop-download.js', 'waitlist.js',
+                  'favicon.ico', 'favicon.svg', 'apple-touch-icon.png',
+                  'og-cubby-buddy.jpg', 'trail-mix-poster.png',
+                  'spell-castle-cover.jpg', 'waddle-wars-cover.jpg')
+        (stage / 'site').mkdir()
+        for name in assets:
+            shutil.copyfile(ROOT / 'website' / name, stage / 'site' / name)
+        shutil.copyfile(stage / 'site/index.html', stage / 'index.html')
+        shutil.copyfile(stage / 'site/favicon.ico', stage / 'favicon.ico')
+        # A cross-origin redirect is invalid for service-worker updates. Serve a
+        # same-origin retirement script so previously cached /play stops running.
+        shutil.copyfile(ROOT / 'hosting/retire-worker.js', stage / 'cubby-worker.js')
+        # The companion owns a second worker scoped to /parents/. It needs its
+        # own same-origin retirement response before the /parents/* redirect.
+        (stage / 'parents').mkdir()
+        shutil.copyfile(ROOT / 'hosting/retire-worker.js', stage / 'parents/worker.js')
+        (stage / '.handheld-web-export').write_text('generated\n')
+        if output.exists():
+            shutil.rmtree(output)
+        stage.rename(output)
+    return output
+
 
 def retained_archives():
     archives = []
@@ -46,24 +84,39 @@ def legacy_manifests(urls):
     return result
 
 
-def build(output=None):
-    output = Path(output) if output is not None else ROOT / '.cache/web'
+def build(output=None, *, surface='combined'):
+    if surface not in ('combined', 'marketing', 'play'):
+        raise ValueError('Unknown hosting surface')
+    output = Path(output) if output is not None else ROOT / '.cache' / {
+        'combined': 'web', 'marketing': 'marketing', 'play': 'play'}[surface]
+    if surface == 'marketing':
+        return marketing_build(output)
     # Build/cache outputs stay in this checkout, not the development VM's state.
     vm.fetch_games()
     current = vm.build_example(ROOT / '.cache/packages')
     urls = web.default_manifest_urls()
     snapshots = legacy_manifests(urls)
     result = web.build(output, [*retained_archives(), current],
-                       base_url='https://cubby.david.app', manifest_urls=urls,
-                       registry=web.default_registry())
+                       base_url=PLAY_ORIGIN,
+                       manifest_urls=urls, registry=web.default_registry(),
+                       browser_root=surface == 'play')
     for game, document in snapshots.items():
         destination = result / 'store' / game / 'manifest.json'
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(json.dumps(document, sort_keys=True) + '\n')
     # Native cache keys remain /index.html, but native transport is a distinct
     # physical file. Root becomes the adult landing page with no runtime router.
-    shutil.copyfile(result / 'site/index.html', result / 'index.html')
+    shutil.copyfile(result / ('site/play.html' if surface == 'play' else 'site/index.html'),
+                    result / 'index.html')
     shutil.copyfile(result / 'site/favicon.ico', result / 'favicon.ico')
+    if surface == 'play':
+        # Interactive pages retain only their own website assets, never the
+        # marketing landing page, tracking SDK or waitlist submission script.
+        keep = {'play.html', 'cubby-buddy.webp', 'boot.png', 'boot.webp', 'style.css', 'favicon.ico',
+                'favicon.svg', 'apple-touch-icon.png'}
+        for asset in (result / 'site').iterdir():
+            if asset.name not in keep:
+                asset.unlink()
     # web.build includes only the generic phone dashboard and install assets.
     # Game-owned companions come from installed manifests, never per-game rewrites.
 
@@ -73,4 +126,6 @@ def build(output=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('--output', type=Path)
-    print(build(parser.parse_args().output))
+    parser.add_argument('--surface', choices=('combined', 'marketing', 'play'), default='combined')
+    args = parser.parse_args()
+    print(build(args.output, surface=args.surface))

@@ -11,10 +11,10 @@ from runtime import publishing, public_site, catalog
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE / '.cache/web'
-DEFAULT_ORIGIN = 'https://cubby.david.app'
+DEFAULT_ORIGIN = 'https://play.cubbyarcade.com'
 
 
-def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, registry=None):
+def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, registry=None, *, browser_root=False):
     archives = list(archives)
     output = Path(output).resolve()
     if output == HERE or HERE.is_relative_to(output):
@@ -57,11 +57,15 @@ def build(output, archives=(), base_url=DEFAULT_ORIGIN, manifest_urls=None, regi
 
         # Browser worker has its own explicit offline shell; native hosts bypass it.
         # Hash the shell bytes so independently deployed builds never share caches.
-        browser_paths = ['/play', '/play/', '/site/play.html', '/site/cubby-buddy.webp', '/native/index.html', '/catalog', '/beta/catalog',
+        browser_paths = ['/play', '/play/', '/site/play.html', '/site/cubby-buddy.webp', '/site/boot.png', '/site/boot.webp', '/native/index.html', '/catalog', '/beta/catalog',
                          *['/' + p.relative_to(site).as_posix() for p in sorted((site / 'runtime/core').glob('*')) if p.is_file()]]
         browser_hash = hashlib.sha256(b''.join(
             (site / name.lstrip('/')).read_bytes() for name in browser_paths
             if name not in ('/play', '/play/'))).hexdigest()
+        if browser_root:
+            # The production play surface serves site/play.html at root too.
+            # Do not put native index.html bytes in that root's offline cache.
+            browser_paths = ['/', '/index.html', *browser_paths]
         (site / 'cubby-worker.js').write_text(
             "importScripts('/runtime/core/link.js','/runtime/core/browser-store.js');\n" +
             'HandheldBrowserStore.attachWorker(self,' + json.dumps({

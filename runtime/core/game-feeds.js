@@ -11,7 +11,9 @@
   else root.HandheldGameFeeds=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const DEFAULT_URL='https://cubby.david.app/catalog',BETA_URL='https://cubby.david.app/beta/catalog',MAX_FEEDS=16;
+  const DEFAULT_URL='https://play.cubbyarcade.com/catalog',BETA_URL='https://play.cubbyarcade.com/beta/catalog',MAX_FEEDS=16;
+  // Persisted feed URLs are source identities, not aliases to rewrite.
+  const LEGACY_URL='https://cubby.david.app/catalog',LEGACY_BETA_URL='https://cubby.david.app/beta/catalog';
   const FIRST='p_first',profileId=value=>{if(typeof value!=='string'||!/^p_[a-z0-9]{1,24}$/.test(value))throw Error('Invalid player');return value;};
   const ID=/^[a-z0-9][a-z0-9-]{0,79}$/;
   const copy=value=>JSON.parse(JSON.stringify(value));
@@ -96,8 +98,11 @@
   // Old installs only ever came from the built-in catalog. Do not let a newly
   // added custom feed claim one just because it has the same short game ID.
   function legacySource(id,cache){
-    const entry=(cache[DEFAULT_URL]||[]).find(entry=>entry.id===id);
-    return entry?{feed_url:DEFAULT_URL,manifest_url:feedURL(entry.manifest_url)}:null;
+    for(const url of [LEGACY_URL,DEFAULT_URL]){
+      const entry=(cache[url]||[]).find(entry=>entry.id===id);
+      if(entry)return {feed_url:url,manifest_url:feedURL(entry.manifest_url)};
+    }
+    return null;
   }
   function waitFor(pending,signal){
     if(!signal)return pending;
@@ -141,7 +146,8 @@
           // Snapshot everyone who existed before profile-scoped feeds. Later
           // players start with defaults, never another player's beta choices.
           const migrated=copy(config);
-          if(migrated.feeds.length&&migrated.feeds.length<MAX_FEEDS&&!migrated.feeds.some(feed=>feed.url===BETA_URL))migrated.feeds.push({url:BETA_URL,name:'Cubby Beta',enabled:false});
+          const beta=migrated.feeds.some(feed=>feed.url===LEGACY_URL)?LEGACY_BETA_URL:BETA_URL;
+          if(migrated.feeds.length&&migrated.feeds.length<MAX_FEEDS&&!migrated.feeds.some(feed=>feed.url===BETA_URL||feed.url===LEGACY_BETA_URL))migrated.feeds.push({url:beta,name:'Cubby Beta',enabled:false});
           for(const id of options.profileIds?.()||[FIRST])profiles[profileId(id)]=copy(migrated);
         }
         state={schema:1,config,profiles,cache,sources};

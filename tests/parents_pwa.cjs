@@ -74,6 +74,7 @@ test('installed app can consume a pasted trusted pairing link, rejecting arbitra
   vm.runInNewContext(read('parents/pairing.js').toString(), {window,URL,URLSearchParams,navigator:{userAgent:'iPhone'}});
   const parse = window.CubbyParsePairingLink, code = 'a'.repeat(22);
   assert.equal(parse('https://cubbyarcade.com/parents/#pair='+code).code,code);
+  assert.equal(parse('https://play.cubbyarcade.com/parents/#pair='+code).code,code);
   assert.equal(parse('https://preview.example/parents/#pair='+code+'&relay=https%3A%2F%2Frelay.example').relay,'https://relay.example');
   for (const link of ['https://evil.example/parents/#pair='+code,'https://cubbyarcade.com/parents/game/#pair='+code,'https://cubbyarcade.com/parents/#pair=bad','https://cubbyarcade.com/parents/#pair='+code+'&relay=javascript%3Aalert(1)']) assert.throws(() => parse(link));
 });
