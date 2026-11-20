@@ -105,7 +105,7 @@ def read_registry(filename):
     # Only builds parse hand-authored YAML; static serving remains stdlib-only.
     import yaml
     try:
-        registry = yaml.safe_load((HERE / 'hosting' / filename).read_text())
+        registry = yaml.safe_load((HERE / 'hosting' / filename).read_text(encoding='utf-8'))
     except yaml.YAMLError as error:
         raise ValueError(f'Invalid Store catalog YAML: {filename}') from error
     catalog.validate_registry(registry)

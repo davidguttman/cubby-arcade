@@ -32,6 +32,26 @@ class CatalogMetadataTests(unittest.TestCase):
                 self.assertEqual(catalog.validate_registry([record]), [record])
         catalog.validate_registry([dict(entry, kind='app', ages='3-5')])
 
+    def test_catalog_yaml_is_utf8_even_with_a_windows_default_encoding(self):
+        import yaml
+        record = dict(self.entry(), **self.metadata())
+        original_open = Path.open
+
+        def windows_open(path, *args, **kwargs):
+            if path.suffix == '.yaml' and kwargs.get('encoding') in (None, 'locale'):
+                kwargs['encoding'] = 'cp1252'
+            return original_open(path, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'hosting').mkdir()
+            for name in ('catalog.yaml', 'beta-catalog.yaml'):
+                (root / 'hosting' / name).write_text(
+                    yaml.safe_dump([record], allow_unicode=True), encoding='utf-8')
+            with patch.object(web, 'HERE', root), patch.object(Path, 'open', windows_open):
+                self.assertEqual(web.default_registry(), [record])
+                self.assertEqual(web.default_beta_registry(), [record])
+
     def test_invalid_metadata_is_rejected(self):
         bad_values = {
             'tagline': [None, 3, '', ' ', 'line\nbreak', 'x' * 161],
