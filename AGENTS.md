@@ -49,6 +49,15 @@
 - Legacy `app.zip` still only carries what `app_path()` allows, because the baseline coordinator refuses anything else. A device on that coordinator bridges with the files under `runtime/native/rg353v/`, so that release must keep working on the baseline runtime.
 - Releasing: bump `package.json` and `package-lock.json`, then push `main` (see `docs/releases.md`). That only publishes; a device installs it from the updates tile.
 
+## Handheld performance
+
+- Preserve the browsing performance invariants and functional regression guards in
+  [docs/performance.md](docs/performance.md).
+- Changes to selection hot paths, rendering effects, layout, or media lifecycle
+  and sizing require an actual RG353V A/B comparison against exact source with
+  identical games/media. Desktop/browser/VM checks do not establish hardware
+  performance; record negative results and restoration/cleanup evidence too.
+
 ## Scope
 
 This repo owns the Linux/OS integration, launcher, development VM, and future

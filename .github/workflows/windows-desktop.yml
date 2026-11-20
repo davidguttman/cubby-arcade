@@ -82,6 +82,11 @@ jobs:
         run: |
           node --test tests/*.cjs
           uv run python -m unittest discover -s tests -q
+      - name: Handheld paint-cost regression guards
+        timeout-minutes: 5
+        run: |
+          uv run --with playwright==1.65.2 python -m playwright install --with-deps chromium
+          uv run --script tests/browser_hub_performance.py --verify-guards
       - name: Production image filesystem audit regressions
         run: |
           command -v mkfs.vfat mkfs.ext4 debugfs
