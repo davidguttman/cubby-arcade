@@ -49,7 +49,11 @@ class StoreDistribution(unittest.TestCase):
                              ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle', 'waddle-wars'])
             beta = json.loads((site / 'beta/catalog').read_text())
             self.assertEqual([e['id'] for e in beta], ['line-cutter'])
-            self.assertEqual(beta[0], {
+            # Adult marketing metadata is optional; its validation/round-trip
+            # is covered by test_catalog_metadata. Keep discovery fields exact.
+            marketing_fields = {'tagline', 'teaches', 'ages', 'web_url', 'kind', 'added'}
+            self.assertEqual({key: value for key, value in beta[0].items()
+                              if key not in marketing_fields}, {
                 'id': 'line-cutter', 'title': 'Line Cutter',
                 'manifest_url': 'https://linecutter.cubbyarcade.com/store/line-cutter/manifest.json',
                 'moved_from': ['https://linecutter.david.app/store/line-cutter/manifest.json'],
