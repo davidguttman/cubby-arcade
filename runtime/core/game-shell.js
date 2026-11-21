@@ -22,8 +22,10 @@ function install(win){
  function chord(pad){return (pad.buttons[8]?.pressed&&(win.CubbyHandheldEmbed||pad.buttons[9]?.pressed))||(pad.buttons[4]?.pressed&&pad.buttons[5]?.pressed);}
  function pads(){try{return Array.from(originalPads?.()||[]);}catch{return [];}}
  // Reserve the system chord and all controller input while the menu is open.
+ // A pad the shell hasn't polled yet stays masked even when the game polls first,
+ // so its reveal reaches the game once, after the shell's neutral frame.
  // The first neutral frame after dismissal re-arms gameplay, never its held A.
- if(originalPads)Object.defineProperty(nav,'getGamepads',{configurable:true,value(){const values=pads();return values.map(p=>p&&(opened||blocked||chord(p))?{id:p.id,index:p.index,mapping:p.mapping,connected:p.connected,timestamp:p.timestamp,buttons:p.buttons.map(()=>({pressed:false,touched:false,value:0})),axes:p.axes.map(()=>0),vibrationActuator:p.vibrationActuator}:p);}});
+ if(originalPads)Object.defineProperty(nav,'getGamepads',{configurable:true,value(){const values=pads(),first=values.find(Boolean),fresh=first&&first.index+':'+first.id!==padId&&!neutral(first);return values.map(p=>p&&(opened||blocked||fresh||chord(p))?{id:p.id,index:p.index,mapping:p.mapping,connected:p.connected,timestamp:p.timestamp,buttons:p.buttons.map(()=>({pressed:false,touched:false,value:0})),axes:p.axes.map(()=>0),vibrationActuator:p.vibrationActuator}:p);}});
  function poll(time){
   if(disposed)return;
   const active=!doc.hidden&&(!doc.hasFocus||doc.hasFocus());
@@ -33,11 +35,13 @@ function install(win){
   // carry their own frozen input.js, which ignores a new pad first seen with a
   // button down: report one neutral frame to arm it, then the press. Soon after
   // load it may be a button still held from the previous page, so leave it masked.
-  const id=pad?pad.index+':'+pad.id:null,revealed=active&&pad&&id!==padId&&time-padSince>=250;
+  const id=pad?pad.index+':'+pad.id:null,changed=id!==padId,revealed=active&&pad&&changed&&time-padSince>=250;
   if(id!==padId||!active){padId=id;padSince=time;}
   if(!active||!pad){ready=false;last.clear();blocked=true;unmask=false;}
   else if(neutral(pad)){ready=true;blocked=false;unmask=false;last.clear();}
   else if(revealed){unmask=true;blocked=true;}
+  // Too soon after load: a held button. Keep it masked until it is let go.
+  else if(changed){unmask=false;blocked=true;}
   else if(unmask){unmask=false;ready=true;blocked=false;}
   else if(ready){
    const current=new Set();if(chord(pad))current.add('menu');

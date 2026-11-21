@@ -16,6 +16,7 @@ function harness() {
     actions,
     pad(pressed = []) { const buttons = Array.from({length: 16}, (_, i) => ({pressed: pressed.includes(i)})); pads = [{index: 0, id: 'pad', buttons, axes: [0, 0]}]; },
     hide() { pads = []; },
+    virtual(pressed = []) { pads = [{index: 0, id: 'Cubby virtual controller', buttons: Array.from({length: 16}, (_, i) => ({pressed: pressed.includes(i)})), axes: [0, 0]}]; },
     run(ms) { time += ms; frame(time); },
   };
 }
@@ -80,4 +81,25 @@ for (const heldFromLastPage of [false, true]) for (const virtual of [true, false
   pads = real(false); run(16); run(16);
   pads = real(true); run(16); run(16); run(16);
   assert.deepEqual(actions, heldFromLastPage ? ['a'] : ['a', 'a'], 'the next press after release always counts');
+});
+
+// The hub has no game shell: before the first press it reads host-osd's on-screen
+// pad, so the real pad appears under a new id with its revealing button down.
+for (const heldFromLastPage of [false, true]) test(`the hub ${heldFromLastPage ? 'ignores a button held from the last page' : 'hears the press that replaces the on-screen pad'}`, () => {
+  const h = harness();
+  h.virtual();
+  h.run(16); h.run(heldFromLastPage ? 100 : 1000);
+  h.pad([0]); h.run(16); h.run(16);
+  assert.deepEqual(h.actions, heldFromLastPage ? [] : ['a']);
+  h.pad(); h.run(16); h.pad([0]); h.run(16);
+  assert.deepEqual(h.actions, heldFromLastPage ? ['a'] : ['a', 'a'], 'the next press after release always counts');
+});
+
+test('a touch on the on-screen pad still counts, and a later reveal is heard', () => {
+  const h = harness();
+  h.virtual(); h.run(16); h.run(1000);
+  h.virtual([12]); h.run(16); h.virtual(); h.run(16);
+  assert.deepEqual(h.actions, ['up']);
+  h.run(1000); h.pad([0]); h.run(16);
+  assert.deepEqual(h.actions, ['up', 'a']);
 });

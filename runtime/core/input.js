@@ -8,6 +8,7 @@
   const buttons = {0:'a', 1:'b', 2:'x', 3:'y', 8:'select', 9:'start', 12:'up', 13:'down', 14:'left', 15:'right'};
   const directions = new Set(['up', 'down', 'left', 'right']);
   const semantic = {a:'confirm', b:'back', start:'pause'};
+  const virtualId = 'Cubby virtual controller';   // host-osd's on-screen pad
   function createInput(options) {
     options = options || {};
     const target = options.target || window;
@@ -99,11 +100,14 @@
       if (!pad) { ready = false; identity = null; last.clear(); repeated = {}; if (hiddenSince === null) hiddenSince = time; }
       else {
         const id = pad.index + ':' + pad.id;
-        if (identity !== id) { identity = id; ready = hiddenSince !== null && time - hiddenSince >= revealMs; last.clear(); repeated = {}; }
-        hiddenSince = null;
         const down = pad.buttons.map(b => b.pressed);
         const axes = pad.axes || [];
         const neutral = !down.some(Boolean) && axes.every(a => Math.abs(a) < deadzone);
+        if (identity !== id) { identity = id; ready = hiddenSince !== null && time - hiddenSince >= revealMs; last.clear(); repeated = {}; }
+        // Until the real pad's first press, host-osd shows only its on-screen pad.
+        // Nothing held on it means the real pad is still hidden, so the press that
+        // reveals it is a real press, not one held from the previous page.
+        hiddenSince = pad.id === virtualId && neutral ? (hiddenSince === null ? time : hiddenSince) : null;
         const current = new Set();
         Object.keys(buttons).forEach(i => { if (down[i]) current.add(buttons[i]); });
         if (axes[0] < -deadzone) current.add('left');
