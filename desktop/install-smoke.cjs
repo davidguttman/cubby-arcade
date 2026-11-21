@@ -68,9 +68,8 @@ async function run(win,installer,library,registry,options={}){
  await settleUpdates();fileRequests.length=0;current=fileRelease('3','<canvas id="screen" width="120" height="100"></canvas>');await checkUpdates();
  if(library.entries().find(e=>e.id==='demo').version!=='3'||fileRequests.length!==1||!fileRequests[0].endsWith('/index.html'))throw Error('File update failed to reuse unchanged bytes');
  await win.loadURL('hub://app/');await wait(()=>evaluate('!!document.querySelector("[data-game-id=demo]")'),'updated demo card');
- await evaluate(`document.querySelector('[data-game-id=demo]').click()`);
- await wait(()=>evaluate('!!document.querySelector(".play-game")'),'updated play control');
- await evaluate(`document.querySelector('.play-game').click()`);await wait(()=>win.webContents.getURL().includes('/games/demo/'),'file game launch');
+ // One click on a Library game plays it.
+ await evaluate(`document.querySelector('[data-game-id=demo]').click()`);await wait(()=>win.webContents.getURL().includes('/games/demo/'),'file game launch');
  if(!await evaluate('document.querySelector("canvas").width===120'))throw Error('File-installed game not playable');
  await win.loadURL('hub://app/');
  await settleUpdates();current=fileRelease('4','corrupt expected');current.files['index.html'].sha256='0'.repeat(64);await checkUpdates();

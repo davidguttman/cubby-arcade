@@ -15,7 +15,7 @@ async function run(win,launcher,library,userData,options={}){
   if(restart)await evaluate('sessionStorage.clear()');
   await win.loadURL('hub://app/');await wait(()=>evaluate('!!document.querySelector(".game-card")'),'home');
  }
- async function play(){await evaluate(`document.querySelector('.game-card').click();document.querySelector('.play-game').click()`);await wait(()=>!launcher.pending&&win.webContents.getURL().includes('/games/')&&!win.webContents.isLoading(),'play');await wait(()=>evaluate('!!window.HandheldPlatform'),'game platform');}
+ async function play(){await evaluate(`document.querySelector('.game-card').click()`);await wait(()=>!launcher.pending&&win.webContents.getURL().includes('/games/')&&!win.webContents.isLoading(),'play');await wait(()=>evaluate('!!window.HandheldPlatform'),'game platform');}
  // Exactly how a game saves: its own frozen platform from the injected options, plus
  // direct localStorage the way Line Cutter's engine writes.
  const save=value=>evaluate(`(()=>{const s=HandheldPlatform.createPlatform(window.HandheldPlatformOptions).saves(${JSON.stringify(game.id)});const before={save:s.get('players-smoke'),direct:localStorage.getItem('players-smoke-direct')};s.set('players-smoke',${JSON.stringify(value)});localStorage.setItem('players-smoke-direct',${JSON.stringify(value)});return before;})()`);

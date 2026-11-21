@@ -12,7 +12,7 @@ async function run(win,launcher,installer,feeds,userData,options={}){
  const evaluate=script=>win.webContents.executeJavaScript(script);
  async function wait(check,label){const until=Date.now()+12000;while(Date.now()<until){if(await check())return;await new Promise(r=>setTimeout(r,25));}throw Error('Free-play smoke timeout: '+label);}
  async function capture(name){if(options.output){await fs.mkdir(options.output,{recursive:true});await new Promise(r=>setTimeout(r,300));await fs.writeFile(path.join(options.output,name+'.png'),(await win.webContents.capturePage()).toPNG());}}
- async function home(){await win.loadURL('hub://app/');await wait(()=>evaluate('!!document.querySelector(".game-card")'),'hub');await evaluate('document.querySelector("[aria-label=library]").click();document.querySelector(".game-card").click()');}
+ async function home(){await win.loadURL('hub://app/');await wait(()=>evaluate('!!document.querySelector(".game-card")'),'hub');await evaluate('document.querySelector("[aria-label=library]").click()');await wait(()=>evaluate('!!document.querySelector(".play-game")'),'library play');}
  async function play(){await evaluate('document.querySelector(".play-game").click();document.querySelector(".play-game")?.click()');await wait(()=>!launcher.pending&&win.webContents.getURL().includes('/games/')&&!win.webContents.isLoading(),'game');}
  async function direct(url){await evaluate(`location.href=${JSON.stringify(url)}`);await wait(()=>!launcher.pending&&win.webContents.getURL().includes('/games/')&&!win.webContents.isLoading(),'direct game');await wait(()=>evaluate('!!window.HandheldGameShell'),'direct shell');}
  assert.equal(await fs.stat(account).then(()=>true,()=>false),false,'Fresh desktop created token account');

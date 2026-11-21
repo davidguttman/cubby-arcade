@@ -33,9 +33,9 @@ async function checkStartup(win){
       host.querySelector('.game-card').click();host.querySelector('.download-game').click();await tick();selected('library');
       assert(document.activeElement===host.querySelector('.play-game'),'Finished download must hand off to Library Play');
       host.querySelector('[aria-label="store"]').click();selected('store');
-      assert(host.querySelector('.game-card').disabled&&host.querySelector('.detail').hidden&&!host.querySelector('.play-game'),'Owned Store game must not be interactable');
-      host.querySelector('[aria-label="library"]').click();host.querySelector('.game-card').click();
-      host.querySelector('.uninstall-game').click();host.querySelector('.confirm-uninstall').click();await tick();selected('library');
+      assert(host.querySelector('.game-card').classList.contains('is-owned')&&host.querySelector('.detail').hidden&&!host.querySelector('.play-game'),'Owned Store game must rest checked, with nothing open');
+      host.querySelector('.game-card').click();assert(host.querySelector('.uninstall-game')&&!host.querySelector('.play-game'),'Owned Store game must offer only Uninstall');
+      host.querySelector('.uninstall-game').click();host.querySelector('.confirm-uninstall').click();await tick();host.querySelector('[aria-label="library"]').click();selected('library');
       assert(host.querySelector('.shelf-status.empty'),'Last uninstall did not leave empty Library in place');
     });
     await fixture(async({host,selected,assert,library,catalog})=>{
@@ -131,7 +131,7 @@ async function checkHub(win,output){
       if(host.querySelector('.play-game'))throw Error('Unresolved library must not claim ownership');
       resolveLibrary([game]);await new Promise(resolve=>setTimeout(resolve,0));
       if(host.querySelector('.play-game')||!host.querySelector('.detail').hidden)throw Error('Delayed library left an owned game open in Store');
-      if(!host.querySelector('.card-badge svg')||!host.querySelector('.game-card').disabled)throw Error('Delayed library did not refresh Store ownership');
+      if(!host.querySelector('.card-badge svg')||!host.querySelector('.game-card').classList.contains('is-owned'))throw Error('Delayed library did not refresh Store ownership');
     }finally{hub?.dispose();host.remove();HandheldPlatform.createPlatform=original;}
   })()`);
   // A live update may change the entrypoint while its preview stays open.
@@ -146,7 +146,7 @@ async function checkHub(win,output){
     const owner=new Proxy(document,{get(target,key){if(key==='defaultView')return fakeWindow;const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
     const scopedHost=new Proxy(host,{set(target,key,value){return Reflect.set(target,key,value,target);},get(target,key){if(key==='ownerDocument')return owner;const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
     try{
-      hub=HandheldHub.mount(scopedHost);await new Promise(r=>setTimeout(r,0));host.querySelector('.game-card').click();
+      hub=HandheldHub.mount(scopedHost);await new Promise(r=>setTimeout(r,0));host.querySelector('.game-card').focus();
       const media=host.querySelector('.preview-media'),play=host.querySelector('.play-game');play.focus();
       entries=[{...entries[0],version:'2',entrypoint:'/games/live-update/new.html'}];notify({'live-update':{phase:'installed',version:'2'}});await new Promise(r=>setTimeout(r,0));
       if(host.querySelector('.preview-media')!==media||host.querySelector('.play-game')!==play||document.activeElement!==play)throw Error('Live update disrupted preview/focus');
