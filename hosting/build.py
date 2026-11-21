@@ -33,7 +33,8 @@ def marketing_build(output):
         assets = ('index.html', 'style.css', 'desktop-download.js', 'waitlist.js',
                   'favicon.ico', 'favicon.svg', 'apple-touch-icon.png',
                   'og-cubby-buddy.jpg', 'trail-mix-poster.png',
-                  'spell-castle-cover.jpg', 'waddle-wars-cover.jpg')
+                  'spell-castle-cover.jpg', 'waddle-wars-cover.jpg',
+                  'wonder-patch-cover.jpg')
         (stage / 'site').mkdir()
         for name in assets:
             shutil.copyfile(ROOT / 'website' / name, stage / 'site' / name)

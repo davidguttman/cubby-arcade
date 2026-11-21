@@ -34,6 +34,9 @@ were filled on 2026-11-18 from the games' documented controls and learning tasks
 - **Waddle Wars: 4–7.** Its `README.md` describes a wordless snowball game for little
   kids; `docs/STORYBOARD.md` introduces moving, dice, and goals step by step.
   The range is editorial. Repository folder: `snowball`.
+- **Wonder Patch: 3–6.** Its `README.md` describes a farm for little kids with no words: plant a seed, water it,
+  be home by dark, and see what it grew into. Nothing dies and there is no timer to beat or way to lose. The range is
+  editorial. It has no `teaches` value: the game names no learning task. Repository folder: `wonder-patch`.
 
 The referenced files live in each game's independent repository, under the
 `davidguttman` GitHub account; `README.md` is the source for the existing taglines,

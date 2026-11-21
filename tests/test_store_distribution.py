@@ -41,12 +41,12 @@ class StoreDistribution(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         web.default_registry()
 
-    def test_default_fallback_has_seven_offers_but_no_payloads(self):
+    def test_default_fallback_has_eight_offers_but_no_payloads(self):
         with tempfile.TemporaryDirectory() as tmp:
             site = web.build(Path(tmp) / 'site', registry=web.default_registry())
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle', 'waddle-wars'])
+                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle', 'waddle-wars', 'wonder-patch'])
             beta = json.loads((site / 'beta/catalog').read_text())
             self.assertEqual([e['id'] for e in beta], ['line-cutter'])
             # Adult marketing metadata is optional; its validation/round-trip
@@ -104,7 +104,7 @@ class StoreDistribution(unittest.TestCase):
             self.assertEqual(json.loads((site / 'library').read_text()), [])
             self.assertFalse((site / 'games').exists())
             self.assertEqual([e['id'] for e in json.loads((site / 'catalog').read_text())],
-                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle', 'waddle-wars'])
+                             ['trail-mix', 'fox-barrister', 'small-change', 'owl-the-way-home', 'good-bribes-only', 'spell-castle', 'waddle-wars', 'wonder-patch'])
             self.assertEqual([e['id'] for e in json.loads((site / 'beta/catalog').read_text())],
                              ['line-cutter'])
             self.assertEqual((site / 'store/little-camp/1/little-camp-1.game.zip').read_bytes(), old.read_bytes())
