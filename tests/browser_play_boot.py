@@ -66,6 +66,12 @@ async def exercise(cdp, origin, screenshots):
                 assert first != await page.locator('.cubby-stars').screenshot()
                 screenshots.mkdir(parents=True, exist_ok=True)
                 await page.screenshot(path=str(screenshots / f'boot-{width}.png'))
+                progress = page.locator('.cubby-track')
+                before_document = await progress.get_attribute('aria-valuenow')
+                assert int(before_document) > 0
+                assert int(before_document) < int(await progress.get_attribute('aria-valuemax'))
+                await page.wait_for_timeout(900)
+                assert await progress.get_attribute('aria-valuenow') == before_document
                 native_release.set()
                 await asyncio.wait_for(script_requested.wait(), 20)
                 await boot.wait_for(state='visible')
@@ -74,9 +80,16 @@ async def exercise(cdp, origin, screenshots):
                 frame = page.frame_locator('#hub')
                 await frame.locator('html[data-cubby-embed="handheld"]').wait_for()
                 assert await boot.is_visible()
+                # Module scripts delay iframe load too: neither actual loading gate
+                # is complete while bootstrap is held, even after protocol ready.
+                before_hub = await progress.get_attribute('aria-valuenow')
+                await page.wait_for_timeout(900)
+                assert await progress.get_attribute('aria-valuenow') == before_hub
+                assert int(before_hub) < int(await progress.get_attribute('aria-valuemax'))
                 script_release.set()
                 await frame.locator('#hub .view-tab').first.wait_for(state='visible', timeout=30000)
                 await boot.wait_for(state='hidden')
+                assert await progress.get_attribute('aria-valuenow') == await progress.get_attribute('aria-valuemax')
                 # Plastic controls still reach the focused iframe after the shell
                 # owns lifecycle handling; focus must never suspend that iframe.
                 await frame.locator('html').evaluate("() => { window.__shellMessages=[]; addEventListener('message', e => { if(e.data?.type==='cubby:embed:v1') __shellMessages.push(e.data); }); }")
@@ -106,6 +119,7 @@ async def exercise(cdp, origin, screenshots):
             assert await page.locator('.cubby-boot > img').evaluate('(img) => img.currentSrc.endsWith("/assets/boot.png")')
             assert not await page.locator('.cubby-stars').is_visible()
             assert await page.locator('.cubby-fill').evaluate('(el) => getComputedStyle(el).animationName') == 'none'
+            assert await page.locator('.cubby-fill').evaluate('(el) => el.style.width') != '0%'
             first = await page.locator('.cubby-boot').screenshot()
             await page.wait_for_timeout(700)
             assert first == await page.locator('.cubby-boot').screenshot()

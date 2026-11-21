@@ -7,8 +7,11 @@ const KEYS = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'rig
 const asset = name => new URL('../assets/' + name, import.meta.url).href;
 
 /** Mount before loading a game; setGame then ready after the first game render. */
-export function mountShell({ canvas, content = canvas, game: initialGame, pixelWidth = canvas?.width || 640, integerScale = false, parent = content?.ownerDocument.body || globalThis.document?.body, onMenu, buttonMap = {}, keyboard = true, gamepad = true } = {}) {
+export function mountShell({ canvas, content = canvas, game: initialGame, pixelWidth = canvas?.width || 640, integerScale = false, parent = content?.ownerDocument.body || globalThis.document?.body, onMenu, buttonMap = {}, keyboard = true, gamepad = true, loadingSteps = [] } = {}) {
   if (!content || !parent) throw new TypeError('mountShell requires canvas/content and a parent');
+  if (!Array.isArray(loadingSteps) || loadingSteps.some(id => typeof id !== 'string' || !id.trim()) || new Set(loadingSteps).size !== loadingSteps.length) throw new TypeError('loadingSteps must be an array of unique nonempty strings');
+  loadingSteps = [...loadingSteps];
+  const remainingSteps = new Set(loadingSteps);
   const doc = parent.ownerDocument, win = doc.defaultView;
   let sheet = styles.get(doc);
   if (!sheet) {
@@ -25,12 +28,30 @@ export function mountShell({ canvas, content = canvas, game: initialGame, pixelW
   root.querySelector('.cubby-screen').prepend(content); parent.append(root);
   const device = root.querySelector('.cubby-device'), boot = root.querySelector('.cubby-boot');
   let game = initialGame, destroyed = false, started = false, focused = true, frame;
+  const track = root.querySelector('.cubby-track'), fill = root.querySelector('.cubby-fill');
+  const totalSteps = 4 + loadingSteps.length + 1; // stylesheet, three images, adapter steps, final paint gate
+  let completedSteps = 0, finishAdapterSteps;
+  const adapterReady = new Promise(resolve => { finishAdapterSteps = resolve; });
+  if (!remainingSteps.size) finishAdapterSteps(true);
+  track.removeAttribute('aria-hidden');
+  track.setAttribute('role', 'progressbar'); track.setAttribute('aria-label', 'Loading');
+  track.setAttribute('aria-valuemin', '0'); track.setAttribute('aria-valuemax', String(totalSteps));
+  function updateProgress() {
+    track.setAttribute('aria-valuenow', String(completedSteps));
+    track.setAttribute('aria-valuetext', `${completedSteps} of ${totalSteps} loading steps complete`);
+    root.dataset.loadingCompleted = String(completedSteps); root.dataset.loadingTotal = String(totalSteps);
+    fill.style.width = `${completedSteps / totalSteps * 100}%`;
+  }
+  function resourceStep(promise) {
+    return promise.then(success => { if (success && !destroyed) { completedSteps++; updateProgress(); } return success; });
+  }
+  updateProgress();
   const cleanups = [], pointers = new Map(), padArmed = new Map();
   const images = [...boot.querySelectorAll('img')];
   const photograph = new win.Image();
   const resources = [...images, photograph].map(image => watchResource(image, () => image.complete && image.naturalWidth > 0, win));
   photograph.src = asset('cubby-buddy.webp');
-  const resourceReady = Promise.all([sheet.resource.ready, ...resources.map(resource => resource.ready)]).then(results => {
+  const resourceReady = Promise.all([sheet.resource.ready, ...resources.map(resource => resource.ready)].map(resourceStep)).then(results => {
     const success = results.every(Boolean);
     if (!destroyed) {
       root.dataset.resourceState = success ? 'ready' : 'error';
@@ -48,7 +69,7 @@ export function mountShell({ canvas, content = canvas, game: initialGame, pixelW
     input.clear(); pointers.clear(); padArmed.clear();
     root.querySelectorAll('.pressed,.on').forEach(el => el.classList.remove('pressed', 'on'));
   }
-  const gate = createReadiness({ resources: resourceReady, requestFrame: fn => win.requestAnimationFrame(fn), cancelFrame: id => win.cancelAnimationFrame(id), reveal() { boot.hidden = true; started = true; if (!active()) game?.stop?.(); } });
+  const gate = createReadiness({ resources: resourceReady.then(success => success ? adapterReady : false), requestFrame: fn => win.requestAnimationFrame(fn), cancelFrame: id => win.cancelAnimationFrame(id), reveal() { completedSteps++; updateProgress(); boot.hidden = true; started = true; if (!active()) game?.stop?.(); } });
   function fit() {
     const bounds = parent === doc.body ? { width: win.innerWidth, height: win.innerHeight } : parent.getBoundingClientRect();
     const width = Math.max(0, Math.min(bounds.width - 16, (bounds.height - 16) * 242 / 352));
@@ -125,8 +146,17 @@ export function mountShell({ canvas, content = canvas, game: initialGame, pixelW
     element: root, screen: root.querySelector('.cubby-screen'), canvas,
     setGame(next) { if (destroyed) throw new Error('Shell is destroyed'); reset(); game?.stop?.(); game = next; if (started && !active()) game?.stop?.(); },
     ready: () => gate.ready(),
+    completeLoadingStep(id) {
+      if (destroyed) return false;
+      if (!loadingSteps.includes(id)) throw new RangeError('Unknown loading step: ' + id);
+      if (!remainingSteps.delete(id)) return false;
+      completedSteps++; updateProgress();
+      if (!remainingSteps.size) finishAdapterSteps(true);
+      return true;
+    },
     destroy() {
       if (destroyed) return; reset(); game?.stop?.(); destroyed = true; gate.destroy(); win.cancelAnimationFrame(frame);
+      finishAdapterSteps(false);
       resources.forEach(resource => resource.destroy());
       cleanups.splice(0).forEach(cleanup => cleanup());
       if (marker.parentNode) marker.replaceWith(content); else content.remove();
