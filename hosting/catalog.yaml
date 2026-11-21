@@ -203,6 +203,7 @@
 - id: wonder-patch
   ages: "3–6"
   tagline: Plant surprise seeds and watch your farm fill up.
+  teaches: how plants grow
   kind: game
   added: "2026-11-21"
   web_url: https://wonderpatch.cubbyarcade.com/
@@ -222,7 +223,7 @@
       sha256: 8d3f11ab8aad99fcdafcab12f31985c4c4e44356ac8462b5b073055f7af531dd
       source_sha256: e461f2c49e3cc57f7b6f59f15654b349db49adfcb626a7d1157e92f2f22bae32
     attract:
-      url: https://fortynews.publit.io/file/cubby-wonder-patch-attract320-3a41aad40614.webm
-      size: 1469435
-      sha256: 3a41aad406148447a82c3d3ae0561636cc389da071244335b30327235560b669
-      source_sha256: 59916922a27661fc5870b557e1d90b64bf730509312bd23fecc88b69b0cf8aaa
+      url: https://fortynews.publit.io/file/cubby-wonder-patch-attract320-156032223f9a.webm
+      size: 1384707
+      sha256: 156032223f9a43b1af285ca2eccf96b655bc1ec5881a4612d2bd680254a506cb
+      source_sha256: 7c4efa35f9b8277d650258b0215081f8d10cde9b1aa0487253bb73699544fa65
