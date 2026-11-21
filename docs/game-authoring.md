@@ -21,6 +21,15 @@ under `/games/<id>/`; it does not navigate to the remote game's website.
 Use a stable lowercase game ID such as `my-game`. Keep saves compatible between
 versions or migrate them. Keep old release files available.
 
+### Show the version on the title screen (required)
+
+Every game shows its release version on its title screen: small, quiet and out of
+the way (tiny numerals in a corner are enough), but readable against the art.
+It is how anyone holding a Cubby can tell which build is installed. The game
+cannot read a `VERSION` file at runtime, so keep the number as a constant in the
+game's code, and add a test that fails when the constant and the release version
+differ and when the title does not draw it. Bump both with every release.
+
 Game-specific phone/parent companion apps belong to the game's repository and
 release, not Cubby's code, catalog, or hosting routes. Declare the optional
 [`companion` manifest metadata](game-release-manifest.md#game-owned-phone-companions)
@@ -244,6 +253,7 @@ must also be replaced to gain the file installer.
 
 ## Before handing off
 
+Check the title screen shows the version being released, readable on the real art.
 Test a fresh offline install, keyboard/controller input, pause/resume, return to
 library, save/restart and an update from a prior version. Verify all payload URLs
 use direct HTTPS (no redirects), and that uploaded byte sizes/hashes match.
