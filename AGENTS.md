@@ -1,5 +1,20 @@
 # Cubby Arcade project rules
 
+## Display and canvas — invariant
+
+- Cubby's current device is the RG353V: **640×480, 4:3**. Current game
+  presentation, browser device frames, boot artwork and covers/trailers target
+  that shape. Logical game canvases may use 160×120, 240×180, 320×240 or 640×480;
+  lower resolution is not a defect when the aspect ratio and scaling are correct.
+- Line Cutter's 240×160 (3:2) canvas is an unchanged legacy technical fixture,
+  **not** the product canvas contract or a new-game template. Preserve its
+  bytes and proportions; do not stretch it or rewrite published packages.
+- Before claiming a resolution mismatch, inspect the actual game's entrypoint
+  and renderer. Distinguish backing canvas dimensions, intermediate render
+  buffers, host/CSS sizing and physical output. Cite the affected path and
+  measured/source evidence; never generalize from a legacy example or README
+  passage to all games. See [docs/canvas-audit.md](docs/canvas-audit.md).
+
 ## Audience: pre-literate children
 
 - Child-facing UI defaults to **no words**: launcher, library/store discovery,

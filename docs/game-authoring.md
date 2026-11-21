@@ -116,8 +116,10 @@ animations in response to it. On hosts with no such signal, these events don't f
 ## Canvas and display
 
 The current handheld, RG353V, has a **640×480 (4:3)** display. Match the game
-canvas to the device: use 320×240 for exact 2× pixel scaling, or 640×480 for
-native rendering. Do not copy Line Cutter's legacy 240×160 (3:2) test surface.
+canvas to the device: use 160×120 for exact 4× pixel scaling, 320×240 for 2×,
+or 640×480 for native rendering. These and 240×180 are correct 4:3 resolutions;
+240×180 requires fractional scaling to fill 640×480.
+Do not copy Line Cutter's legacy 240×160 (3:2) test surface.
 Changing CSS alone must not stretch or crop an existing game's logical world.
 
 The shared `screen.css` defaults to 4:3 and fills the available viewport. A hosted
@@ -125,7 +127,8 @@ The shared `screen.css` defaults to 4:3 and fills the available viewport. A host
 its sizing ratio from the canvas's intrinsic `width` and `height`, including
 later dimension changes. A non-canvas `.screen` wrapper can declare a numeric
 `--cubby-screen-ratio` (for example, `1.3333333333` for 4:3). Standalone wrappers
-with a different aspect ratio should also declare this property. Direct canvases
+hosting a legacy fixture with a different aspect ratio should also declare this
+property. Direct canvases
 retain their intrinsic pixel ratio; their backing dimensions remain game-owned.
 
 Make other game layouts responsive to the available area. Cubby's touch deck

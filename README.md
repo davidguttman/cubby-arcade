@@ -4,6 +4,13 @@ An independent home for Linux/OS integration, a picture-first launcher, and the
 ARM64 development VM. The dedicated RG353V image is separate from the QEMU disk;
 never flash the QEMU disk to a handheld.
 
+**Display contract: 640×480, 4:3.** Current games, browser device frames and
+boot presentation target the RG353V's screen shape. Game canvases may render at
+160×120, 240×180, 320×240 or native 640×480 with proportional scaling. Line Cutter's
+legacy 240×160 test canvas is not the product contract or a template for games.
+See [game authoring](docs/game-authoring.md#canvas-and-display) and the
+[source-backed canvas audit](docs/canvas-audit.md).
+
 For a physical **Anbernic RG353V**, use the separate
 [all-in-one SD-card image and adult setup guide](docs/rg353v-install.md): flash
 one image, insert the card, and power on. ROCKNIX, WPE and Cubby startup are
@@ -106,7 +113,7 @@ arrows=D-pad, Enter/P=Start, M/right Shift=Select. Escape, Select+Start, or L1+R
 wordless system menu to resume or return to the library.
 
 The RG353V display is **640×480 (4:3)**. Author game canvases for that aspect
-ratio (for example, 320×240 scaled 2× or native 640×480) so gameplay fills the
+ratio (for example, 160×120 scaled 4×, 320×240 scaled 2× or native 640×480) so gameplay fills the
 device without distortion or bars. The host preserves a game's intrinsic canvas
 ratio and reserves space only when touch controls are visible. Line Cutter's
 240×160 surface is an unchanged legacy test payload, not the Cubby canvas contract.
