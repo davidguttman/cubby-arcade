@@ -868,9 +868,13 @@ function mount(host){
   })().finally(()=>{if(catalogChecking===pending)catalogChecking=null;});catalogChecking=pending;return pending;
  }
  const stopCatalog=startCatalogChecks(win,refreshCatalog);
- async function installGame(id){if(disposed)return;requested=id;installStates[id]={phase:'checking'};refreshOwnership();try{await gameUpdates.idle();await platform.install(id);await refreshLibrary();}catch{installStates[id]={phase:'error'};refreshOwnership();}}
- const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(starterPending&&state.view==='library')renderGrid();if(installedChanged&&!starterPending)refreshLibrary();});
- platform.installStatus?.().then(states=>{if(!disposed){installStates=states;refreshOwnership();}}).catch(()=>{});
+ // A download waits its turn behind any update sweep, so the host may not know about it
+ // for a while. Until it does, its polled states must not wipe the busy ring the press showed.
+ const requestedInstalls=new Set();
+ function withRequested(states){states={...states};for(const id of requestedInstalls)states[id]??={phase:'checking'};return states;}
+ async function installGame(id){if(disposed)return;requested=id;requestedInstalls.add(id);installStates[id]={phase:'checking'};refreshOwnership();try{await gameUpdates.idle();await platform.install(id);requestedInstalls.delete(id);await refreshLibrary();}catch{requestedInstalls.delete(id);installStates[id]={phase:'error'};refreshOwnership();}}
+ const unsubscribeInstall=platform.onInstallState?.(states=>{if(disposed)return;states=withRequested(states);const installedChanged=Object.entries(states).some(([id,s])=>s.phase==='installed'&&(installStates[id]?.phase!=='installed'||installStates[id]?.version!==s.version));installStates=states;refreshOwnership();if(starterPending&&state.view==='library')renderGrid();if(installedChanged&&!starterPending)refreshLibrary();});
+ platform.installStatus?.().then(states=>{if(!disposed){installStates=withRequested(states);refreshOwnership();}}).catch(()=>{});
  const gameUpdates=startGameUpdates(win,platform);
  function hideDetail(){retirePreview();detail.replaceChildren();previewShell=null;state.detail=null;detail.hidden=true;body.classList.remove('has-detail');markSelection();}
  // Back changes focus, not selection: a populated shelf always has usable actions.

@@ -202,6 +202,17 @@ test('device reuses its poster across video and image selections while retiring 
  host.querySelector('[data-game-id="three"]').focus();assert.equal(host.querySelector('.stage'),stage);assert.equal(host.querySelector('.preview-poster'),poster);assert.equal(poster.src,'three.svg');
  assert.equal(host.querySelector('video'),null);clock.run();const video=host.querySelector('video');assert.notEqual(video,old);assert.equal(video.src,'three.webm');
 });
+test('download ring stays up while the host has not reported the install yet',async()=>{
+ const offers=games.map(g=>({...g,manifest_url:'/manifest/'+g.id}));let finish,onState;
+ const {host,hub}=mountedHub([],offers,{install:true},{install:()=>new Promise(r=>{finish=r;}),onInstallState:fn=>{onState=fn;}});await settle();hub.show('store');
+ host.querySelector('[data-game-id="two"]').focus();const download=host.querySelector('.download-game');
+ download.click();await settle();assert.ok(download.classList.contains('loading'));assert.equal(download.disabled,true);
+ // A poll that lands before the host has picked the job up (it waits behind update sweeps).
+ onState({});await settle();assert.ok(download.classList.contains('loading'));assert.equal(download.disabled,true);
+ onState({two:{phase:'downloading',received:1,total:4}});await settle();assert.ok(download.classList.contains('loading'));
+ onState({two:{phase:'error'}});await settle();assert.equal(download.classList.contains('loading'),false);assert.equal(download.getAttribute('aria-label'),'Retry download');
+ finish();
+});
 test('Store preview reuses download control and installs only the current offer',async()=>{
  const installed=[],offers=games.map(g=>({...g,manifest_url:'/manifest/'+g.id}));
  const {host,hub}=mountedHub([],offers,{install:true},{install:async id=>{installed.push(id);throw Error('offline');}});await settle();hub.show('store');
