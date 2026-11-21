@@ -113,6 +113,27 @@ Cubby injects this, so no SDK or package change is involved, and the display and
 sound are already off when you hear `handheld:sleep`. Don't start music or
 animations in response to it. On hosts with no such signal, these events don't fire.
 
+## Canvas and display
+
+The current handheld, RG353V, has a **640×480 (4:3)** display. Match the game
+canvas to the device: use 320×240 for exact 2× pixel scaling, or 640×480 for
+native rendering. Do not copy Line Cutter's legacy 240×160 (3:2) test surface.
+Changing CSS alone must not stretch or crop an existing game's logical world.
+
+The shared `screen.css` defaults to 4:3 and fills the available viewport. A hosted
+`canvas#screen`, `canvas.library`, or `.screen` wrapper containing a canvas gets
+its sizing ratio from the canvas's intrinsic `width` and `height`, including
+later dimension changes. A non-canvas `.screen` wrapper can declare a numeric
+`--cubby-screen-ratio` (for example, `1.3333333333` for 4:3). Standalone wrappers
+with a different aspect ratio should also declare this property. Direct canvases
+retain their intrinsic pixel ratio; their backing dimensions remain game-owned.
+
+Make other game layouts responsive to the available area. Cubby's touch deck
+reserves space only when visible and must never cover game pixels; on handhelds
+with physical controls it is normally hidden. Verify both states on narrow
+browser screens as well as the 640×480 device viewport. Already-published legacy
+games keep their original aspect ratio and immutable package bytes.
+
 ## Publish once, without a ZIP
 
 1. Build offline files into `dist/game/`.

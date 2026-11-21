@@ -105,7 +105,11 @@ Library: arrows/D-pad choose; A/Enter opens the selected game's detail preview. 
 arrows=D-pad, Enter/P=Start, M/right Shift=Select. Escape, Select+Start, or L1+R1 opens the
 wordless system menu to resume or return to the library.
 
-The 240×160 surfaces display at 480×320, centered on the 640×480 output.
+The RG353V display is **640×480 (4:3)**. Author game canvases for that aspect
+ratio (for example, 320×240 scaled 2× or native 640×480) so gameplay fills the
+device without distortion or bars. The host preserves a game's intrinsic canvas
+ratio and reserves space only when touch controls are visible. Line Cutter's
+240×160 surface is an unchanged legacy test payload, not the Cubby canvas contract.
 Persistent saves remain in the existing guest user's WebKit profile, outside
 all replaceable game directories. The origin stays `http://127.0.0.1:8080`, and
 Line Cutter keeps its existing `linecutter_run` key: prior saves are preserved
@@ -369,7 +373,8 @@ its play picture starts the game. A back-arrow picture returns. Gameplay has
 pictorial pointer/touch controls alongside keyboard and standard browser gamepads.
 New games should draw their own input demonstrations instead of written instructions.
 All surfaces fit narrow screens without scrolling. These controls are also shared
-with WPE; the 240×160 content remains centered at up to 480×320 on 640×480.
+with WPE on the RG353V's 640×480 (4:3) display. Current game canvases should
+match that shape; legacy test payloads retain their intrinsic aspect ratio.
 The web preview is for UX testing, not RG353V hardware/performance validation.
 
 

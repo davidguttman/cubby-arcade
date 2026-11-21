@@ -2,7 +2,10 @@
 :root{--control-size:clamp(44px,min(7vh,calc((100vw - 56px) / 6)),52px);--control-gap:4px;--game-controls-height:calc(5 * var(--control-size) + 4 * var(--control-gap));--controls-bottom:max(8px,env(safe-area-inset-bottom))}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101614;color:#edf3dc}
 body{display:grid;place-items:center;touch-action:none}
-.screen,canvas#screen,canvas.library{width:min(480px,94vw,calc((100vh - 112px)*1.5));width:min(480px,94vw,calc((100dvh - 112px)*1.5));aspect-ratio:3/2;height:auto;image-rendering:pixelated}
+/* Current handheld: 640×480 (4:3). Hosts supply the intrinsic canvas ratio
+   for legacy packages; authors may declare --cubby-screen-ratio for wrappers. */
+.screen,canvas#screen,canvas.library{width:min(100vw,calc(100vh * var(--cubby-screen-ratio,var(--cubby-canvas-ratio,1.3333333333))));width:min(100vw,calc(100dvh * var(--cubby-screen-ratio,var(--cubby-canvas-ratio,1.3333333333))));aspect-ratio:var(--cubby-screen-ratio,var(--cubby-canvas-ratio,1.3333333333));height:auto;image-rendering:pixelated}
+canvas#screen,canvas.library{aspect-ratio:auto}
 .screen{position:relative}
 .screen video{position:absolute;top:0;width:100%;height:91%;object-fit:contain;image-rendering:pixelated}
 .screen canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
@@ -37,6 +40,5 @@ body{display:grid;place-items:center;touch-action:none}
 .game-controls .control-start{transform:translateX(calc(.5 * var(--control-size) + 4px))}
 /* With no touch deck, gameplay still fills the viewport. When the deck is
    visible reserve its actual height so controls never cover game pixels. */
-canvas#screen{width:min(100vw,calc(100vh * 1.5));width:min(100vw,calc(100dvh * 1.5));height:auto;aspect-ratio:3/2;image-rendering:pixelated}
 body:has(.game-controls:not([hidden])){padding-bottom:calc(var(--game-controls-height) + var(--controls-bottom) + 16px)}
-body:has(.game-controls:not([hidden])) :is(.screen,canvas#screen,canvas.library){width:min(94vw,calc((100vh - var(--game-controls-height) - var(--controls-bottom) - 32px) * 1.5));width:min(94vw,calc((100dvh - var(--game-controls-height) - var(--controls-bottom) - 32px) * 1.5))}
+body:has(.game-controls:not([hidden])) :is(.screen,canvas#screen,canvas.library){width:min(94vw,calc((100vh - var(--game-controls-height) - var(--controls-bottom) - 32px) * var(--cubby-screen-ratio,var(--cubby-canvas-ratio,1.3333333333))));width:min(94vw,calc((100dvh - var(--game-controls-height) - var(--controls-bottom) - 32px) * var(--cubby-screen-ratio,var(--cubby-canvas-ratio,1.3333333333))))}

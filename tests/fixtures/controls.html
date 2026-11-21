@@ -3,13 +3,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Control layout verification</title>
 <link rel="stylesheet" href="/runtime/core/screen.css">
-<canvas id="screen" width="240" height="160" aria-label="Game screen"></canvas>
+<canvas id="screen" width="320" height="240" aria-label="Game screen"></canvas>
 <script src="/runtime/core/preferences.js"></script>
 <script src="/runtime/core/input.js"></script>
 <script src="/runtime/core/controls.js"></script>
 <script>
 const canvas=document.getElementById('screen'),ctx=canvas.getContext('2d');
-ctx.fillStyle='#263c30';ctx.fillRect(0,0,240,160);ctx.strokeStyle='#a7d07a';ctx.strokeRect(1,1,238,158);
+ctx.fillStyle='#263c30';ctx.fillRect(0,0,320,240);ctx.strokeStyle='#a7d07a';ctx.strokeRect(1,1,318,238);
 // This layout fixture emulates a touch-capable device.
 Object.defineProperty(navigator,'maxTouchPoints',{configurable:true,get:()=>1});
 const preferences=HandheldPreferences.createPreferences({storage:null});

@@ -87,6 +87,7 @@ jobs:
         run: |
           uv run --with playwright==1.65.2 python -m playwright install --with-deps chromium
           uv run --script tests/browser_hub_performance.py --verify-guards
+          uv run --script tests/browser_canvas.py
       - name: Production image filesystem audit regressions
         run: |
           command -v mkfs.vfat mkfs.ext4 debugfs

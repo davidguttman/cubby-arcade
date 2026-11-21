@@ -126,6 +126,30 @@
    tapPressed=false;
   },true);
  }
+ // Read intrinsic dimensions only on mount or canvas changes, never per frame.
+ // Backing dimensions and immutable game files remain the game's property.
+ function canvasRatios(win){
+  const doc=win.document,owned=new Map();
+  function restore(node,[value,priority]){if(value)node.style.setProperty('--cubby-canvas-ratio',value,priority);else node.style.removeProperty('--cubby-canvas-ratio');}
+  function update(){
+   const current=new Set();
+   for(const node of doc.querySelectorAll?.('.screen,canvas#screen,canvas.library')||[]){
+    const canvas=node.tagName==='CANVAS'?node:node.querySelector('canvas');
+    if(!canvas||!(canvas.width>0&&canvas.height>0))continue;
+    current.add(node);
+    if(!owned.has(node))owned.set(node,[node.style.getPropertyValue('--cubby-canvas-ratio'),node.style.getPropertyPriority('--cubby-canvas-ratio')]);
+    node.style.setProperty('--cubby-canvas-ratio',String(canvas.width/canvas.height));
+   }
+   for(const [node,original] of owned)if(!current.has(node)){restore(node,original);owned.delete(node);}
+  }
+  update();
+  const observer=win.MutationObserver?new win.MutationObserver(records=>{
+   if(records.some(record=>record.type==='attributes'?record.target.tagName==='CANVAS':
+    [...record.addedNodes,...record.removedNodes].some(node=>node.nodeType===1&&(node.matches('.screen,canvas')||node.querySelector('canvas')))))update();
+  }):null;
+  observer?.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['width','height']});
+  return ()=>{observer?.disconnect();for(const [node,original] of owned)restore(node,original);};
+ }
  function install(win){
   if(win.HandheldOSD)return win.HandheldOSD;
   const doc=win.document,nav=win.navigator,prefs=win.HandheldPreferences?.preferences;
@@ -133,7 +157,7 @@
   let storage;try{storage=win.localStorage;}catch{}
   const calibration=createCalibration(()=>read?.()||[],storage);
   const device=createDevice(()=>calibration.getGamepads(),()=>win.performance?.now?.()??Date.now(),()=>win.CubbyHandheldEmbed?.buttons||[]);
-  const listeners=[],pendingRelease=new Map();let host,shadow,style,disposed=false,menuOpen=false,visible=false;
+  const listeners=[],pendingRelease=new Map();let host,shadow,style,releaseCanvasRatios,disposed=false,menuOpen=false,visible=false;
   const legacyDescriptor=Object.getOwnPropertyDescriptor(win,'HandheldControls');
   const legacyGate={createControls:()=>()=>{}};
   // Legacy packages may assign their vendored module later. Accept the assignment
@@ -181,8 +205,8 @@
    // Only the host owns this reservation. Known canvas conventions cooperate;
    // arbitrary games using viewport dimensions still need a responsive layout.
    style=doc.createElement('style');style.setAttribute('data-cubby-owned','viewport');
-   style.textContent=`html[data-cubby-osd]{--cubby-size:clamp(44px,min(7vh,calc((100vw - 56px)/6)),52px);--cubby-deck:calc(5 * var(--cubby-size) + 16px);--cubby-bottom:max(8px,env(safe-area-inset-bottom))}html[data-cubby-osd] body{box-sizing:border-box!important;padding-bottom:calc(var(--cubby-deck) + var(--cubby-bottom) + 16px)!important}html[data-cubby-osd] :is(.screen,canvas#screen,canvas.library){width:min(94vw,calc((100dvh - var(--cubby-deck) - var(--cubby-bottom) - 32px)*1.5))!important;height:auto!important}.hub-controls{display:none!important}#cubby-host-osd{all:initial!important;position:fixed!important;inset:0!important;z-index:2147483645!important;pointer-events:none!important}#cubby-host-osd[hidden]{display:none!important}`;
-   doc.body.appendChild(style);update();
+   style.textContent=`html[data-cubby-osd]{--cubby-size:clamp(44px,min(7vh,calc((100vw - 56px)/6)),52px);--cubby-deck:calc(5 * var(--cubby-size) + 16px);--cubby-bottom:max(8px,env(safe-area-inset-bottom))}html[data-cubby-osd] body{box-sizing:border-box!important;padding-bottom:calc(var(--cubby-deck) + var(--cubby-bottom) + 16px)!important}html[data-cubby-osd] :is(.screen,canvas#screen,canvas.library){width:min(94vw,calc((100dvh - var(--cubby-deck) - var(--cubby-bottom) - 32px)*var(--cubby-screen-ratio,var(--cubby-canvas-ratio,1.3333333333))))!important;height:auto!important;aspect-ratio:var(--cubby-screen-ratio,var(--cubby-canvas-ratio,1.3333333333))!important}html[data-cubby-osd] :is(canvas#screen,canvas.library){aspect-ratio:auto!important}.hub-controls{display:none!important}#cubby-host-osd{all:initial!important;position:fixed!important;inset:0!important;z-index:2147483645!important;pointer-events:none!important}#cubby-host-osd[hidden]{display:none!important}`;
+   doc.body.appendChild(style);releaseCanvasRatios=canvasRatios(win);update();
   }
   // The hub needs the same physical provider, not a second touch deck.
   if(/^\/(?:games|__cubby_games__)\//.test(win.location.pathname)){
@@ -191,7 +215,7 @@
   // BFCache restores this document without rerunning host scripts. Keep its
   // provider/UI installed, but never carry held input into the restored page.
   listen(win,'pagehide',event=>{if(event.persisted)reset();else api.dispose();});
-  const api={device,calibration,reset,get root(){return shadow;},dispose(){if(disposed)return;disposed=true;reset();listeners.forEach(f=>f());host?.remove();style?.remove();doc.documentElement.removeAttribute('data-cubby-osd');if(descriptor)Object.defineProperty(nav,'getGamepads',descriptor);else delete nav.getGamepads;if(legacyDescriptor)Object.defineProperty(win,'HandheldControls',legacyDescriptor);else delete win.HandheldControls;if(win.HandheldOSD===api)delete win.HandheldOSD;}};
+  const api={device,calibration,reset,get root(){return shadow;},dispose(){if(disposed)return;disposed=true;reset();listeners.forEach(f=>f());releaseCanvasRatios?.();host?.remove();style?.remove();doc.documentElement.removeAttribute('data-cubby-osd');if(descriptor)Object.defineProperty(nav,'getGamepads',descriptor);else delete nav.getGamepads;if(legacyDescriptor)Object.defineProperty(win,'HandheldControls',legacyDescriptor);else delete win.HandheldControls;if(win.HandheldOSD===api)delete win.HandheldOSD;}};
   return api;
  }
  return {createDevice,createCalibration,controllerKey,install,completeTouches};
