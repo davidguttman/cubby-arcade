@@ -200,3 +200,29 @@
       size: 1975341
       sha256: 8c2c45424eb4d7a2bb838acc2deae2b5ddf541c80aabc17bb0061b316ee9f52a
       source_sha256: 5ad95e5052ecc717ae160258af1b2389228058ab5800102ed9eb526611ceb0b7
+- id: wonder-patch
+  ages: "3–6"
+  tagline: Plant surprise seeds and watch your farm fill up.
+  kind: game
+  added: "2026-11-21"
+  web_url: https://wonderpatch.cubbyarcade.com/
+  title: Wonder Patch
+  manifest_url: https://wonderpatch.cubbyarcade.com/arcade/manifest.json
+  artwork: https://wonderpatch.cubbyarcade.com/discovery/cover.png
+  attract: https://wonderpatch.cubbyarcade.com/discovery/trailer.webm
+  media:
+    thumbnail:
+      url: https://fortynews.publit.io/file/c_fit,w_192,h_144,q_75/cubby-wonder-patch-artwork-e461f2c49e3c.jpg
+      size: 12069
+      sha256: 1dfed160ec699e67d2979ce03e06c76e2fb3d3b3e1b72c6b69a838e892d7715b
+      source_sha256: e461f2c49e3cc57f7b6f59f15654b349db49adfcb626a7d1157e92f2f22bae32
+    artwork:
+      url: https://fortynews.publit.io/file/c_fit,w_640,h_480,q_75/cubby-wonder-patch-artwork-e461f2c49e3c.jpg
+      size: 81925
+      sha256: 8d3f11ab8aad99fcdafcab12f31985c4c4e44356ac8462b5b073055f7af531dd
+      source_sha256: e461f2c49e3cc57f7b6f59f15654b349db49adfcb626a7d1157e92f2f22bae32
+    attract:
+      url: https://fortynews.publit.io/file/cubby-wonder-patch-attract320-3a41aad40614.webm
+      size: 1469435
+      sha256: 3a41aad406148447a82c3d3ae0561636cc389da071244335b30327235560b669
+      source_sha256: 59916922a27661fc5870b557e1d90b64bf730509312bd23fecc88b69b0cf8aaa
