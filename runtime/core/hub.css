@@ -58,7 +58,8 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 @media (prefers-reduced-motion:reduce){.hub .has-notice:not([aria-current]){color:#ffd770}}
 
 /* Store: a game already in the Library is a dimmed picture with a check, not a control. */
-.hub :is(.game-card,.shelf-copy).is-owned{pointer-events:none;cursor:default;box-shadow:0 3px 0 rgba(10,4,20,.35)}
+.hub :is(.game-card,.shelf-copy).is-owned{box-shadow:0 3px 0 rgba(10,4,20,.35)}
+.detail.is-owned .stage :is(img,video){filter:grayscale(1) brightness(.6)}
 :is(.game-card,.shelf-copy).is-owned img{filter:grayscale(1) brightness(.6)}
 .rest-done{display:none}
 .all-owned .rest-hint{display:none}
@@ -276,7 +277,7 @@ body.hub{display:block;touch-action:manipulation;color:#fff4e6;font-family:syste
 .shelf.is-slotted{padding-left:calc(50% - var(--card-h) * 2 / 3);padding-right:calc(50% - var(--card-h) * 2 / 3)}
 .shelf.is-slotted>:first-child{margin-left:0}.shelf.is-slotted>:last-child{margin-right:0}
 /* The slot stays still: a newly selected game takes its place without a lift or zoom animation. */
-.hub .shelf :is(.game-card,.shelf-copy){transition:none}.shelf-copy{cursor:pointer;touch-action:manipulation;flex-shrink:0}.shelf-copy.is-owned{pointer-events:none}
+.hub .shelf :is(.game-card,.shelf-copy){transition:none}.shelf-copy{cursor:pointer;touch-action:manipulation;flex-shrink:0}
 
 /* The handheld spends its frame budget on input and the selected game, not
    perpetual decoration or repainting interpolated shadows on every card. */

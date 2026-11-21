@@ -251,7 +251,7 @@ Start (+) sit
 below; Exit remains separate in the upper-left.
 Pointer presses emit the matching logical button; standard browser gamepads
 retain A/B on indices 0/1 and provide X/Y on indices 2/3 and L/R on indices 4/5.
-The hub still uses shoulders to switch views; pressing both consumes individual
+Shoulders never switch hub views; pressing both consumes individual
 shoulder input and opens the system menu. Existing keyboard preferences are
 unchanged; X/Y and L/R are available through touch or gamepad.
 
@@ -662,10 +662,12 @@ installation themselves are free.
 
 The shared hub starts on a **cover grid**, not a detail screen. Pointer hover,
 keyboard/controller focus, or tapping a cover opens the actual packaged trailer,
-a persistent favorite star, and a play control. Favorites are a binary preference,
-not a rating. The library, shopping-bag discovery tab, and gear options tab use
-pictures only; R1/RB cycles forward and L1/LB backward through these tabs, wrapping
-at either end. Shoulders do not switch views in games or while a dialog/capture is open.
+a persistent favorite star, and a play control. In the Library one press of A (or
+one tap) on a cover plays it; Up leaves the shelf for the top row (player, Library,
+shopping bag, gear). Favorites are a binary preference, not a rating. The library,
+shopping-bag discovery tab, and gear options tab use pictures only, and the top row
+is the only way between them: shoulders and Select never switch views. Library
+games are uninstalled from the Store, where they stay checked and dimmed but selectable.
 The desktop Settings power picture quits the hub after pictorial confirmation;
 unsupported web/VM hosts do not show it. Accessible names are available to assistive technology.
 

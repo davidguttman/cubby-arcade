@@ -184,13 +184,13 @@ function devicePreviewClock(){
 }
 test('selection reuses preview shell, poster and Library actions without stale targets',async()=>{
  const {host,hub}=mountedHub(games,[],{uninstall:true});await settle();
- const stage=host.querySelector('.stage'),close=host.querySelector('.detail-close'),poster=host.querySelector('.preview-media'),actions=host.querySelector('.detail-actions'),star=host.querySelector('.favorite'),play=host.querySelector('.play-game'),remove=host.querySelector('.uninstall-game');
+ const stage=host.querySelector('.stage'),close=host.querySelector('.detail-close'),poster=host.querySelector('.preview-media'),actions=host.querySelector('.detail-actions'),star=host.querySelector('.favorite'),play=host.querySelector('.play-game');
+ assert.equal(host.querySelector('.uninstall-game'),null,'Library games only play; Uninstall lives in the Store');
  host.querySelector('[data-game-id="two"]').focus();
  assert.equal(host.querySelector('.stage'),stage);assert.equal(host.querySelector('.detail-close'),close);assert.equal(host.querySelector('.preview-media'),poster);assert.equal(poster.src,'two.svg');
- assert.equal(host.querySelector('.detail-actions'),actions);assert.equal(host.querySelector('.favorite'),star);assert.equal(host.querySelector('.play-game'),play);assert.equal(host.querySelector('.uninstall-game'),remove);
+ assert.equal(host.querySelector('.detail-actions'),actions);assert.equal(host.querySelector('.favorite'),star);assert.equal(host.querySelector('.play-game'),play);assert.equal(host.querySelector('.uninstall-game'),null);
  star.click();assert.equal(hub.state.isFavorite('two'),true);assert.equal(hub.state.isFavorite('one'),false);
  play.click();assert.equal(host.ownerDocument.defaultView.location.href,'/two');
- remove.click();assert.equal(host.querySelector('.uninstall-picture img').src,'two.svg');host.querySelector('.cancel-uninstall').click();
  host.querySelector('[data-game-id="one"]').focus();assert.equal(star.getAttribute('aria-pressed'),'false');star.click();assert.equal(hub.state.isFavorite('one'),true);
 });
 test('device reuses its poster across video and image selections while retiring each video',async()=>{
@@ -385,7 +385,7 @@ test('favorites and ownership update circular copies without replacing unrelated
  assert.equal(copies.find(copy=>copy.dataset.gameId==='game-2').querySelector('img'),unrelated);
  cards[1].focus();refresh([entries[0]]);await settle();
  for(const copy of host.querySelectorAll('.shelf-copy').filter(copy=>copy.dataset.gameId==='game-0')){assert.ok(copy.classList.contains('is-owned'));assert.equal(copy.querySelector('.card-badge').dataset.kind,'installed');assert.equal(copy.getAttribute('aria-hidden'),'true');}
- assert.equal(cards[0].getAttribute('aria-label'),'In library');assert.equal(hub.state.detail.id,'game-1');action('left');assert.equal(hub.state.detail.id,'game-7','updated navigation index skips the newly owned game');hub.dispose();
+ assert.equal(cards[0].getAttribute('aria-label'),'In library');assert.equal(hub.state.detail.id,'game-1');action('left');assert.equal(hub.state.detail.id,'game-0','an owned Store game stays selectable for its Uninstall');hub.dispose();
 });
 const shelfIds=host=>host.querySelectorAll('.game-card').map(card=>card.dataset.gameId);
 const offers=games.map(game=>({...game,manifest_url:'/manifest'}));
@@ -395,16 +395,20 @@ for(const view of ['library','store'])for(const control of ['click','confirm','p
  if(control==='click')tab.click();else action(control);
  const primary=host.querySelector(view==='library'?'.play-game':'.download-game');
  assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
- action('confirm');assert.equal(host.ownerDocument.activeElement,primary);
+ // Library plays on one press of A; the Store still asks for a second press to download.
+ if(view==='store'){action('confirm');assert.equal(host.ownerDocument.activeElement,primary);}
  action('confirm');await settle();
  if(view==='library')assert.equal(host.ownerDocument.defaultView.location.href,games[0].entrypoint);else assert.equal(installed,'offer-one');
  assert.equal(hub.state.view,view);
 });
-test('view cycling enters content, including the first options control',async()=>{
+test('shoulders and Select never change pages; Up from a Library game reaches the top row',async()=>{
  const {host,hub,action}=mountedHub(games,[{...offers[0],id:'offer'}],{install:true});await settle();
- action('nextView');assert.equal(hub.state.view,'store');assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
- action('select');assert.equal(hub.state.view,'options');assert.equal(host.ownerDocument.activeElement,host.querySelector('.options-panel').querySelector('button'));
- action('previousView');assert.equal(host.ownerDocument.activeElement,host.querySelector('.is-selected'));
+ const doc=host.ownerDocument,card=host.querySelector('.is-selected');assert.equal(doc.activeElement,card);
+ for(const a of ['nextView','previousView','select']){action(a,'gamepad');assert.equal(hub.state.view,'library');assert.equal(doc.activeElement,card);}
+ action('up');assert.equal(doc.activeElement,host.querySelectorAll('.view-tab')[0]);
+ action('right');assert.equal(doc.activeElement,host.querySelectorAll('.view-tab')[1]);action('left');
+ action('down');assert.equal(doc.activeElement,card);
+ action('up');action('right');action('confirm');assert.equal(hub.state.view,'store');assert.equal(doc.activeElement,host.querySelector('.is-selected'));
 });
 test('gear tab shows only the question until answered, and locks again on leaving',async()=>{
  const {host,hub,action}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();
@@ -422,11 +426,10 @@ test('every host gates its whole settings tab, including Quit',async()=>{
  for(const name of ['.quit-app','.manage-saves'])assert.equal(host.querySelector(name),null,name);
  passGate(host);for(const name of ['.quit-app','.manage-saves'])assert.ok(host.querySelector(name),name);assert.equal(host.querySelector('.adult-entry'),null);
 });
-test('the question never traps a child: shoulders and Back move on, and the D-pad reaches the tabs',async()=>{
+test('the question never traps a child: Back moves on, and the D-pad reaches the tabs',async()=>{
  const {host,hub,action}=mountedHub(games,[],{},{settings:[{icon:'trash',label:'Game saves',href:'#adult-saves'}]});await settle();
- action('previousView');assert.equal(hub.state.view,'options');action('nextView');assert.equal(hub.state.view,'library');
- action('previousView');assert.equal(hub.state.view,'options');action('back');assert.equal(hub.state.view,'library');
- action('previousView');const keys=host.querySelector('.gate-pad').querySelectorAll('button'),active=()=>host.ownerDocument.activeElement;
+ const gear=host.querySelectorAll('.view-tab')[2];gear.focus();gear.click();assert.equal(hub.state.view,'options');action('back');assert.equal(hub.state.view,'library');
+ gear.focus();gear.click();const keys=host.querySelector('.gate-pad').querySelectorAll('button'),active=()=>host.ownerDocument.activeElement;
  action('right');assert.equal(active(),keys[1]);action('down');assert.equal(active(),keys[4]);action('left');assert.equal(active(),keys[3]);action('up');assert.equal(active(),keys[0]);
  action('left');assert.equal(active(),keys[2]);action('down');action('down');action('down');assert.equal(active(),keys[11]);action('down');assert.equal(active(),keys[2]);
  action('up');assert.equal(active(),host.querySelectorAll('.view-tab')[2]);
@@ -491,27 +494,30 @@ test('empty, failed and all-owned tab activation keeps a usable tab focused',asy
   const tab=host.querySelectorAll('.view-tab')[1];tab.focus();tab.click();assert.equal(host.ownerDocument.activeElement,tab);
  }
 });
-test('Store shows Library games as inert checked pictures after its offers',async()=>{
+test('Store shows Library games checked and dimmed after its offers, carrying only Uninstall',async()=>{
  const {host,hub}=mountedHub([games[0]],[games[0],games[1]],{install:true,uninstall:true});await settle();
  hub.show('library');host.querySelector('.favorite').click();hub.show('store');
  assert.deepEqual(shelfIds(host),['two','one']);assert.equal(hub.state.detail.id,'two');
  const owned=host.querySelector('[data-game-id="one"]'),offer=host.querySelector('[data-game-id="two"]');
- assert.equal(owned.disabled,true);assert.ok(owned.classList.contains('is-owned'));assert.equal(owned.getAttribute('aria-label'),'In library');
+ assert.equal(owned.disabled,false);assert.ok(owned.classList.contains('is-owned'));assert.equal(owned.getAttribute('aria-label'),'In library');
  assert.equal(owned.querySelector('.card-badge').dataset.kind,'installed');
  assert.equal(offer.disabled,false);assert.ok(!offer.classList.contains('is-owned'));
+ owned.focus();assert.equal(hub.state.detail.id,'one');assert.ok(host.querySelector('.detail').classList.contains('is-owned'));
+ assert.equal(host.querySelector('.play-game'),null);assert.equal(host.querySelector('.download-game'),null);
+ host.querySelector('.uninstall-game').click();assert.equal(host.querySelector('.uninstall-picture img').src,'one.svg');host.querySelector('.cancel-uninstall').click();
+ assert.equal(host.ownerDocument.activeElement,host.querySelector('.uninstall-game'));
+ offer.focus();assert.ok(!host.querySelector('.detail').classList.contains('is-owned'));assert.equal(host.querySelector('.uninstall-game'),null);
  hub.show('library');const card=host.querySelector('[data-game-id="one"]');
  assert.equal(card.disabled,false);assert.equal(card.querySelector('.card-badge').dataset.kind,'favorite');
 });
-test('Store with every game owned rests with nothing to activate',async()=>{
+test('Store with every game owned rests on its tab until an adult goes down to Uninstall',async()=>{
  const {host,hub,action}=mountedHub(games,games,{install:true,uninstall:true});await settle();
- hub.show('store');const doc=host.ownerDocument;
+ const doc=host.ownerDocument,tab=host.querySelectorAll('.view-tab')[1];tab.focus();tab.click();
+ assert.equal(doc.activeElement,tab);
  assert.equal(hub.state.detail,null);assert.equal(host.querySelector('.detail').hidden,true);
  assert.ok(host.querySelector('.view-body').classList.contains('all-owned'));
- assert.equal(host.querySelectorAll('.game-card').every(card=>card.disabled),true);
  for(const name of ['.play-game','.uninstall-game','.favorite','.download-game'])assert.equal(host.querySelector(name),null);
- const tab=host.querySelectorAll('.view-tab').find(x=>x.getAttribute('aria-current'));tab.focus();
- action('down');action('up');assert.equal(doc.activeElement,tab);
- doc.activeElement=null;action('confirm');assert.ok(doc.activeElement.classList.contains('view-tab'));
+ action('down');assert.ok(doc.activeElement.classList.contains('game-card'));assert.ok(host.querySelector('.uninstall-game'));assert.equal(host.querySelector('.play-game'),null);
  hub.show('library');assert.ok(!host.querySelector('.view-body').classList.contains('all-owned'));assert.ok(host.querySelector('.play-game'));
 });
 test('finished Store download hands off to Library game row',async()=>{
@@ -527,7 +533,7 @@ test('download finishing behind another Store preview stays in the Store',async(
  const other=host.querySelector('[data-game-id="two"]');other.click();const media=host.querySelector('.preview-media');
  refresh([games[0]]);await settle();
  assert.equal(hub.state.view,'store');assert.equal(hub.state.detail.id,'two');assert.equal(host.querySelector('.preview-media'),media);
- assert.equal(host.querySelector('[data-game-id="one"]').disabled,true);assert.equal(other.disabled,false);
+ assert.ok(host.querySelector('[data-game-id="one"]').classList.contains('is-owned'));assert.ok(!other.classList.contains('is-owned'));
 });
 test('late Library discovery moves Store off a game it turns out to own',async()=>{
  let resolve;const {host,hub}=mountedHub(new Promise(r=>{resolve=r;}),games,{install:true});
