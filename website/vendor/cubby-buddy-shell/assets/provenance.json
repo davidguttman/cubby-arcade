@@ -1,0 +1,24 @@
+{
+  "repository": "https://github.com/davidguttman/handheld-os",
+  "commit": "564fadc9c0675d97312b05fff59bbaf94407f7b4",
+  "generator": "scripts/build-browser-boot.py",
+  "files": {
+    "cubby-buddy.webp": {
+      "source": "website/cubby-buddy.webp",
+      "sha256": "ffc6e9a14ae53c6d79c314a38e59e5056cee85d1deb20b941d0f9bb0144df559"
+    },
+    "boot.png": {
+      "source": "rocknix/splash/preview.png",
+      "sha256": "ebafc24d261aa9d245950a3d76dcaa6bc93963a7a9896829c9f27b8b09291a64"
+    },
+    "boot.webp": {
+      "source": "website/boot.webp",
+      "sha256": "08730c775efa91ae3f6d43f736a3cc4bf9c2efdd2c8d83a36cfc59bb2cfce333"
+    }
+  },
+  "generator_inputs": {
+    "scripts/build-browser-boot.py": "1ebd2facf21b858c31f4485168f51ef7ec07b9e020fab19dc86d6a91ef1e18eb",
+    "runtime/native/rg353v/boot-screen/boot-screen.py": "d27c6d595062b85a8ed3bc67ced30b40cd6687e4d24689d463217d72eaf77285",
+    "rocknix/splash/splash-32.raw": "8e63b06b54ea253f5216037b3e7ee9c2522b7bd33c3eee51d7fc2c634402c5cc"
+  }
+}

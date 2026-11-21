@@ -1,0 +1,15 @@
+{
+  "name": "cubby-buddy-shell",
+  "version": "0.1.0",
+  "files": {
+    "assets/boot.png": "ebafc24d261aa9d245950a3d76dcaa6bc93963a7a9896829c9f27b8b09291a64",
+    "assets/boot.webp": "08730c775efa91ae3f6d43f736a3cc4bf9c2efdd2c8d83a36cfc59bb2cfce333",
+    "assets/cubby-buddy.webp": "ffc6e9a14ae53c6d79c314a38e59e5056cee85d1deb20b941d0f9bb0144df559",
+    "assets/provenance.json": "75b9e8d0a1898733f7c336e6bc0933fe4ab4dda282262599424835615c4ba2df",
+    "src/input.js": "9cbaac3b36737ac0588361e67e3fa7245d59c23051beb5b8f72dc86f6c6c9c9b",
+    "src/readiness.js": "db047844130dffc3fbcc9761d0ae2ac06d202469f67f49748353662f6a057185",
+    "src/resources.js": "ea47d53431deb9ea41d59a96d145ee2f53c3cd479677fd9343ad15d773bd85df",
+    "src/shell.css": "cc253a2645295d046a356812f16cac3b36ea2c42b89b1cf70683ec6c219706e9",
+    "src/shell.js": "fdfe98c34fc7bbe746d3dba6069a1fb99582ec5270d14f12dc4ea00d7e5ec07a"
+  }
+}

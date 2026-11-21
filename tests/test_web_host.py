@@ -112,14 +112,38 @@ with tempfile.TemporaryDirectory() as tmp:
             self.assertTrue(motion.startswith(b'RIFF'))
             self.assertIn(b'ANIM', motion)
             page = (output / 'site/play.html').read_text()
-            self.assertIn('/site/boot.webp', page)
-            self.assertIn('/site/boot.png', page)
-            self.assertNotIn('boot-dots', page)
+            prefix = '/site/vendor/cubby-buddy-shell/'
+            self.assertIn(prefix + 'src/shell.js', page)
+            self.assertNotIn('boot-progress', page)
             worker = (output / 'cubby-worker.js').read_text()
             settings = json.loads(worker.split('attachWorker(self,', 1)[1].removesuffix(');\n'))
-            self.assertTrue({'/site/boot.png', '/site/boot.webp'}.issubset(settings['shellPaths']))
+            vendor = output / prefix.lstrip('/')
+            manifest = json.loads((vendor / 'manifest.json').read_text())
+            for name, digest in manifest['files'].items():
+                self.assertIn(prefix + name, settings['shellPaths'])
+                self.assertEqual(hashlib.sha256((vendor / name).read_bytes()).hexdigest(), digest)
+            self.assertEqual((vendor / 'assets/boot.png').read_bytes(),
+                             (web.HERE / 'rocknix/splash/preview.png').read_bytes())
+            self.assertEqual((vendor / 'assets/boot.webp').read_bytes(), motion)
             inventory = json.loads((output / 'hub-manifest.json').read_text())['files']
-            self.assertFalse(any(name.startswith('/site/boot') for name in inventory))
+            self.assertFalse(any(name.startswith('/site/') for name in inventory))
+
+    def test_vendor_changes_rotate_browser_cache_without_native_inventory_changes(self):
+        public_build = web.public_site.build
+        def changed_vendor(output):
+            public_build(output)
+            source = output / 'site/vendor/cubby-buddy-shell/src/resources.js'
+            source.write_text(source.read_text() + '\n// simulated next shell version\n')
+        def settings(output):
+            worker = (output / 'cubby-worker.js').read_text()
+            return json.loads(worker.split('attachWorker(self,', 1)[1].removesuffix(');\n'))
+        with tempfile.TemporaryDirectory() as tmp:
+            first = web.build(Path(tmp) / 'first')
+            with patch.object(web.public_site, 'build', side_effect=changed_vendor):
+                second = web.build(Path(tmp) / 'second')
+            self.assertNotEqual(settings(first)['shellVersion'], settings(second)['shellVersion'])
+            self.assertEqual((first / 'hub-manifest.json').read_bytes(),
+                             (second / 'hub-manifest.json').read_bytes())
 
     def test_browser_play_alias_resolves_cubby_buddy_page_not_site_landing(self):
         # /play is the Cubby Buddy page; it frames the hub at /native/index.html.

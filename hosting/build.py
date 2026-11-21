@@ -112,7 +112,7 @@ def build(output=None, *, surface='combined'):
     if surface == 'play':
         # Interactive pages retain only their own website assets, never the
         # marketing landing page, tracking SDK or waitlist submission script.
-        keep = {'play.html', 'cubby-buddy.webp', 'boot.png', 'boot.webp', 'style.css', 'favicon.ico',
+        keep = {'vendor', 'play.html', 'cubby-buddy.webp', 'boot.png', 'boot.webp', 'style.css', 'favicon.ico',
                 'favicon.svg', 'apple-touch-icon.png'}
         for asset in (result / 'site').iterdir():
             if asset.name not in keep:

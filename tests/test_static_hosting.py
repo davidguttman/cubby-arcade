@@ -64,6 +64,7 @@ class StaticHosting(unittest.TestCase):
                              (web.HERE / 'rocknix/splash/preview.png').read_bytes())
             self.assertEqual((root / 'site/boot.webp').read_bytes(),
                              (web.HERE / 'website/boot.webp').read_bytes())
+            self.assertTrue((root / 'site/vendor/cubby-buddy-shell/src/shell.js').is_file())
             native = (root / 'native/index.html').read_bytes()
             manifest = json.loads((root / 'hub-manifest.json').read_text())
             self.assertEqual(manifest['files']['/index.html']['sha256'], hashlib.sha256(native).hexdigest())

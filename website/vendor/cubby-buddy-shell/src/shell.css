@@ -1,0 +1,22 @@
+.cubby-shell{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;background:radial-gradient(ellipse at 50% 40%,#ece6dc,#cfc8bc 75%)}
+.cubby-device{position:relative;flex:none;width:var(--cubby-width,360px);aspect-ratio:242/352;background:url(../assets/cubby-buddy.webp) center/100% 100% no-repeat;filter:drop-shadow(0 calc(var(--cubby-width,360px)*.03) calc(var(--cubby-width,360px)*.04) #0005)}
+.cubby-screen{position:absolute;left:11.983%;top:7.848%;width:76.446%;aspect-ratio:4/3;overflow:hidden;background:#000}
+.cubby-screen>.cubby-content{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+.cubby-screen>canvas.cubby-content{image-rendering:pixelated}
+.cubby-boot{position:absolute;inset:0;z-index:1;background:#061b2b;pointer-events:none}
+.cubby-boot[hidden]{display:none}.cubby-boot img{display:block;width:100%;height:100%}.cubby-stars{position:absolute;inset:0}
+.cubby-track{position:absolute;left:26.5625%;top:93.75%;width:46.875%;height:1.6667%;border-radius:1px;background:#061b2baa;overflow:hidden}
+.cubby-fill{height:100%;width:0;background:#ffbb45;animation:cubby-progress 30s linear forwards}
+@keyframes cubby-progress{0%{width:0}16.667%{width:90%}100%{width:99%}}
+.cubby-hit{position:absolute;border:0;padding:0;margin:0;background:transparent;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
+.cubby-hit:focus-visible{outline:3px solid #ffbb45;outline-offset:-4px;clip-path:none;border-radius:50%}
+.cubby-hit.cubby-menu{clip-path:circle(50%);min-width:44px;min-height:44px;transform:translate(-50%,-50%)}
+.cubby-hit.pressed,.cubby-pad.on{background:radial-gradient(circle,#0000004d 0 55%,#0000 72%)}
+.cubby-pad{position:absolute;border-radius:50%;touch-action:none}
+.cubby-dpad{left:9.917%;top:53.693%;width:27.273%;height:18.750%}.cubby-stick{left:16.116%;top:76.420%;width:21.488%;height:14.773%}
+.cubby-a{left:73.450%;top:53.196%;width:24.793%;height:17.045%}.cubby-b{left:61.260%;top:61.861%;width:24.793%;height:17.045%}
+.cubby-start{left:56.198%;top:72.7275%;width:14.876%;height:8.523%;min-width:44px;min-height:44px;transform:translate(-50%,-50%)}.cubby-menu{left:49.897%;top:57.599%;width:9.298%;height:6.392%}
+@media(prefers-reduced-motion:reduce){.cubby-stars{display:none}.cubby-fill{animation:none;width:0}}
+
+body>.cubby-shell{position:fixed}
+.cubby-screen>iframe.cubby-content{width:var(--cubby-pixel-width,640px);height:var(--cubby-pixel-height,480px);transform:scale(var(--cubby-scale,1));transform-origin:0 0}
