@@ -1,11 +1,16 @@
 <!doctype html>
 <html lang="en">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Cubby Arcade</title>
 <link rel="preload" as="image" href="/site/boot.webp" media="(prefers-reduced-motion:no-preference)" fetchpriority="high">
 <link rel="preload" as="image" href="/site/boot.png" fetchpriority="high">
+<!-- Installable as its own app on phones and tablets: Android reads the manifest, iOS the apple-* tags too.
+     Installed, the page fills the screen under the status bar, so the safe-area insets pad #wrap. -->
+<link rel="manifest" href="/site/manifest.webmanifest">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cubby Arcade">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#d9d3c9">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" href="/site/favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/site/apple-touch-icon.png">
@@ -16,7 +21,8 @@
 <style>
 html,body{margin:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
   background:radial-gradient(ellipse at 50% 40%,#ece6dc,#cfc8bc 75%)}
-#wrap{display:flex;align-items:center;justify-content:center;height:100%}
+#wrap{display:flex;align-items:center;justify-content:center;height:100%;box-sizing:border-box;
+  padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0)}
 /* Every position is a share of the photograph (968x1408), so it holds at any size. */
 .dev{position:relative;width:var(--dw,360px);aspect-ratio:242/352;background:url(/site/cubby-buddy.webp) center/100% 100% no-repeat;
   filter:drop-shadow(0 calc(var(--dw,360px)*.03) calc(var(--dw,360px)*.04) #0005)}
@@ -97,8 +103,12 @@ html,body{margin:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-se
   });
   document.addEventListener('visibilitychange', setActive);
   // The handheld is sized from the window; the screen's 640x480 hub is scaled to the photo's screen.
+  const wrap = document.getElementById('wrap');
   function fit() {
-    const cw = Math.min(innerWidth - 16, (innerHeight - 16) * 242 / 352) * 185 / 242;
+    // The room left once the safe-area insets (notch, home bar) are taken off.
+    const pad = getComputedStyle(wrap), w = wrap.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight),
+      h = wrap.clientHeight - parseFloat(pad.paddingTop) - parseFloat(pad.paddingBottom);
+    const cw = Math.min(w - 16, (h - 16) * 242 / 352) * 185 / 242;
     // Even widths keep the photo on whole pixels when centred, so its edge can't shimmer against the page.
     const dw = Math.floor(cw * 242 / 185 / 2) * 2;
     document.documentElement.style.setProperty('--dw', dw + 'px');

@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Cubby Arcade",
+  "short_name": "Cubby Arcade",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#e4ded3",
+  "theme_color": "#d9d3c9",
+  "icons": [
+    {"src": "/site/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/site/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/site/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

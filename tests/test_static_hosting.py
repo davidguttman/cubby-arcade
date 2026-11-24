@@ -47,6 +47,14 @@ class StaticHosting(unittest.TestCase):
                  patch.object(hosting_build, 'legacy_manifests', return_value={}):
                 root = hosting_build.build(temporary / 'play', surface='play')
             self.assertEqual((root / 'index.html').read_bytes(), (root / 'site/play.html').read_bytes())
+            # The play page installs as its own app on phones: its manifest and every icon ship.
+            page = (root / 'index.html').read_text()
+            self.assertIn('<link rel="manifest" href="/site/manifest.webmanifest">', page)
+            app = json.loads((root / 'site/manifest.webmanifest').read_text())
+            self.assertEqual((app['id'], app['start_url'], app['scope']), ('/', '/', '/'))
+            self.assertEqual({icon['purpose'] for icon in app['icons']}, {'any', 'maskable'})
+            for icon in app['icons']:
+                self.assertTrue((root / icon['src'].lstrip('/')).is_file(), icon['src'])
             self.assertFalse((root / 'site/index.html').exists())
             self.assertFalse((root / 'site/waitlist.js').exists())
             self.assertTrue((root / 'parents/worker.js').is_file())
