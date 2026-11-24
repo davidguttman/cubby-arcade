@@ -11,6 +11,7 @@
   'use strict';
   const Companions=typeof module==='object'&&module.exports?require('./link.js'):globalThis.CubbyLinkAPI;
   const PREFIX='/__cubby_games__/',DB_NAME='cubby-browser-games-v1',CACHE_PREFIX='cubby-game-';
+  const SHELL_FEEDS=new Set(['/catalog','/beta/catalog']);
   const CATALOG_CACHE='cubby-discovery-v1',MAX_BYTES=128*1024*1024,MAX_MANIFEST=256*1024;
   const ID=/^[a-z0-9][a-z0-9-]{0,79}$/,VERSION=/^[a-z0-9][a-z0-9.-]{0,79}$/;
   const DOWNLOAD_WORKERS=6;
@@ -276,7 +277,11 @@
     scope.addEventListener('install',event=>event.waitUntil((async()=>{
       const cache=await ctx.caches.open(shellName);if(paths.size)await cache.addAll([...paths]);await scope.skipWaiting();
     })()));
-    scope.addEventListener('activate',event=>event.waitUntil(scope.clients.claim()));
+    // Each build's shell lives in its own cache, so the ones older builds left behind go.
+    scope.addEventListener('activate',event=>event.waitUntil((async()=>{
+      for(const name of await ctx.caches.keys())if(name.startsWith('cubby-shell-')&&name!==shellName)await ctx.caches.delete(name);
+      await scope.clients.claim();
+    })()));
     scope.addEventListener('fetch',event=>{
       const request=event.request,url=new URL(request.url);
       if(url.origin!==ctx.origin)return;
@@ -286,8 +291,15 @@
       if(request.method!=='GET'||!paths.has(url.pathname))return;
       event.respondWith((async()=>{
         const cache=await ctx.caches.open(shellName),key=ctx.origin+url.pathname;
-        try{const response=await ctx.fetch(request);if(!response.ok)throw Error('Shell unavailable');await cache.put(key,response.clone());return response;}
-        catch(error){const saved=await cache.match(key);if(saved)return saved;throw error;}
+        const network=async()=>{const response=await ctx.fetch(request);if(!response.ok)throw Error('Shell unavailable');await cache.put(key,response.clone());return response;};
+        // Catalogs are news: the network first, the last copy only when it can't answer.
+        if(SHELL_FEEDS.has(url.pathname)){
+          try{return await network();}catch(error){const saved=await cache.match(key);if(saved)return saved;throw error;}
+        }
+        // The rest is this build's own shell, saved whole when the worker installed (the worker's
+        // version is the hash of those bytes, so a new build brings a new worker). Answer from it
+        // first: offline and on a weak signal the hub starts at once, and every file is the same build.
+        return (await cache.match(key))||network();
       })());
     });
   }

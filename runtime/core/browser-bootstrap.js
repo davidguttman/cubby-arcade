@@ -8,6 +8,8 @@
  try{
   if(!win.isSecureContext||!win.navigator?.serviceWorker)throw Error('Browser storage unavailable');
   const workers=win.navigator.serviceWorker;
+  // Installed games and saves must outlive storage pressure; installed web apps are usually granted this.
+  win.navigator.storage?.persist?.().catch(()=>{});
   await Promise.race([(async()=>{
    await workers.register('/cubby-worker.js',{scope:'/',updateViaCache:'none'});
    await workers.ready;
