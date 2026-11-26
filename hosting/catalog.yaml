@@ -196,10 +196,10 @@
       sha256: 6d7732e3fe74ce3f636b899257103b5c85b8e6aadee8ef26c78328ca9341b3a4
       source_sha256: f6aaae9d15b1be32cbf993df4ceb8f8e438fed6f8c566d6f68180cf142c4a49c
     attract:
-      url: https://media.publit.io/file/cubby-waddle-wars-attract320-8c2c45424eb4.webm
-      size: 1975341
-      sha256: 8c2c45424eb4d7a2bb838acc2deae2b5ddf541c80aabc17bb0061b316ee9f52a
-      source_sha256: 5ad95e5052ecc717ae160258af1b2389228058ab5800102ed9eb526611ceb0b7
+      url: https://fortynews.publit.io/file/cubby-waddle-wars-attract320-26e815d0299d.webm
+      size: 1521013
+      sha256: 26e815d0299d5e56d28c27a0cddf598499261a52098972e947c4fa933c63d746
+      source_sha256: dce5cc4348df58985084b6f3ce5d5d7ff86dbcf5e7b05eca28252c6b7980e414
 - id: wonder-patch
   ages: "3–6"
   tagline: Plant surprise seeds and watch your farm fill up.
