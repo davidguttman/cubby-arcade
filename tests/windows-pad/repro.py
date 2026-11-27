@@ -1,5 +1,5 @@
 """Windows repro: real Cubby on Windows, a ViGEm virtual Xbox 360 pad, presses through the OS."""
-import json, os, subprocess, sys, time, glob, asyncio
+import json, os, re, subprocess, sys, time, glob, asyncio
 import vgamepad as vg
 from playwright.async_api import async_playwright
 APP, MODE = sys.argv[1], sys.argv[2]
@@ -28,11 +28,21 @@ async def main():
         proc = subprocess.Popen([exe, '--remote-debugging-port=9333', '--mute-audio'])
     else:
         chrome = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
-        proc = subprocess.Popen([chrome, '--remote-debugging-port=9333', '--mute-audio', '--no-first-run', '--user-data-dir=' + os.path.abspath('chrome-profile'), 'https://play.cubbyarcade.com/'])
+        proc = subprocess.Popen([chrome, '--remote-debugging-port=9333', '--mute-audio', '--no-first-run', '--user-data-dir=' + os.path.abspath('chrome-profile-' + MODE), 'about:blank'])
     async with async_playwright() as pw:
         for _ in range(60):
             try: b = await pw.chromium.connect_over_cdp('http://localhost:9333'); break
             except Exception: time.sleep(1)
+        if MODE.startswith('chrome'):
+            ctx = b.contexts[0]
+            if 'fix' in MODE:
+                # The branch's core files in place of the live ones: same page, same Windows controller stack.
+                here = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core')
+                async def swap(route):
+                    name = route.request.url.split('?')[0].rsplit('/', 1)[-1]
+                    await route.fulfill(content_type='text/javascript', body=open(os.path.join(here, name), encoding='utf-8').read())
+                await ctx.route(re.compile(r'.*/runtime/core/(host-osd|input|game-shell)\.js(\?.*)?$'), swap)
+            await ctx.pages[0].goto('https://play.cubbyarcade.com/')
         await asyncio.sleep(8)
         page = [p for c in b.contexts for p in c.pages if 'hub://' in p.url or 'cubbyarcade' in p.url][0]
         frame = page.frames[-1] if len(page.frames) > 1 else page.main_frame
@@ -50,7 +60,6 @@ async def main():
         if 'setup' in MODE:
             await asyncio.get_running_loop().run_in_executor(None, tap, 'A'); await asyncio.sleep(0.6)
             await frame.evaluate("()=>{location.hash='options'}"); await asyncio.sleep(1)
-            import re
             q = await frame.evaluate("()=>document.querySelector('.gate-question')?.textContent"); n = [int(x) for x in re.findall(r'\d+', q)]
             ans = n[0]*n[1] if ('×' in q or 'x' in q) else n[0]-n[1] if ('-' in q or '−' in q) else n[0]+n[1]
             for d in str(ans): await frame.locator('.gate-pad button', has_text=re.compile('^'+d+'$')).click()
@@ -65,7 +74,8 @@ async def main():
         for label in ['A', 'right', 'right', 'left']:
             await asyncio.get_running_loop().run_in_executor(None, tap, label); await asyncio.sleep(0.6); await snap(label)
         await page.screenshot(path=f'evidence/{MODE}.png')
-        moved = len({s['focus'] for s in log[1:]}) > 1
+        after = [s for s in log if 'focus' in s][-4:]
+        moved = len({s['focus'] for s in after}) > 1
         print('RESULT', MODE, 'hub moved' if moved else 'HUB DID NOT MOVE', flush=True)
         json.dump(log, open(f'evidence/{MODE}.json', 'w'), indent=1)
     proc.kill()

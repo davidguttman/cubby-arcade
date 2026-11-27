@@ -51,6 +51,24 @@ jobs:
       - name: Desktop app, two pads, first never still, setup then hub
         if: always()
         run: python tests/windows-pad/repro.py app desktop-two-noisy-setup-ds4
+      - name: Chrome, live site, two pads, first idle
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-two-ds4
+      - name: Chrome, FIX, two pads, first idle
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-two-fix-ds4
+      - name: Chrome, live site, two pads, first never still, setup then hub
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-two-noisy-setup-ds4
+      - name: Chrome, FIX, two pads, first never still, setup then hub
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-two-noisy-setup-fix-ds4
+      - name: Chrome, FIX, one pad
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-one-fix-ds4
+      - name: Chrome, FIX, one pad, setup then hub
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-setup-fix-ds4
       - uses: actions/upload-artifact@v4
         if: always()
         with:
