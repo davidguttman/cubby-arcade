@@ -289,6 +289,18 @@ Without calibration, ordinary browser pads and the RG353V's existing built-in
 adapter retain their current behavior. Keyboard preferences are unchanged, and
 installed game files are never edited.
 
+A controller the browser cannot map (an empty `mapping`, common for third-party
+Xbox-style pads on macOS and Linux) needs no calibration either. The same host
+module presents it to the hub and every game as a standard pad: face buttons
+0-3 (or the calibrated ones), Select, Start, the D-pad and the left stick. The
+defaults follow Chromium's own mappings: 11 buttons is the Linux xpad order
+(Select 6, Start 7, D-pad hat on axes 6/7), 15 buttons is the macOS
+360Controller order (Start 8, Back 9, D-pad buttons 11-14), anything else uses
+Select 8 and Start 9. A D-pad reported as one hat axis (resting above 1) is
+found and decoded too. Triggers, shoulders and the right stick are left out, so
+an axis resting at -1 never looks held. Only the left stick counts when deciding
+a pad is released.
+
 The host reserves screen space for the `.screen`/`canvas#screen`/`canvas.library`
 layout conventions. Shadow DOM isolates controls and styles, not the browser
 viewport: arbitrary games that calculate their layout from `innerHeight` still

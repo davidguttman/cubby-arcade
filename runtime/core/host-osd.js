@@ -10,7 +10,43 @@
  // Gamepad attributes are native prototype getters: copy explicitly, not with spread.
  function copyPad(pad,buttons=pad.buttons,axes=pad.axes){return {id:pad.id,index:pad.index,mapping:pad.mapping,connected:pad.connected,timestamp:pad.timestamp,buttons,axes,vibrationActuator:pad.vibrationActuator,hapticActuators:pad.hapticActuators,pose:pad.pose};}
  const held=pad=>Array.from(pad.buttons).flatMap((b,i)=>b.pressed||b.value>.5?[i]:[]);
- const still=pad=>!pad||!held(pad).length&&Array.from(pad.axes).every(a=>Math.abs(a)<.5);
+ // Only the left stick steers. Other axes may rest at -1 or +1 (triggers, hats).
+ const still=pad=>!pad||!held(pad).length&&[0,1].every(i=>Math.abs(pad.axes[i]||0)<.5);
+ const released=()=>({pressed:false,touched:false,value:0}),pressed=()=>({pressed:true,touched:true,value:1});
+ // A pad the browser could not map ('' mapping) reports raw indices. Turn it into a
+ // standard pad so the hub, the game shell and every game's own input read it as one:
+ // faces 0-3 (or the calibrated ones), Select, Start, the d-pad and the left stick.
+ // Defaults follow what Chromium does for the same layouts:
+ //  - 11 buttons: Linux xpad/joydev order, Select 6, Start 7, d-pad hat on axes 6/7.
+ //  - 15 buttons: macOS 360Controller order, Start 8, Back 9, d-pad buttons 11-14.
+ //  - otherwise: Select 8, Start 9, d-pad buttons 12-15 if there are that many.
+ // A d-pad reported as one HID hat axis (8 directions in -1..1, at rest above 1) is
+ // found by its out-of-range rest and decoded with Chromium's and Firefox's thresholds.
+ // Shoulders, triggers and the right stick are left out.
+ function createStandardizer(){
+  const hats=new Map();
+  return function standardize(pad,faces){
+   const raw=Array.from(pad.buttons),axes=Array.from(pad.axes||[]),n=raw.length,face=faces||[0,1,2,3];
+   const key=pad.index+':'+controllerKey(pad);let hat=hats.get(key);if(!hat)hats.set(key,hat=new Set());
+   axes.forEach((a,i)=>{if(Math.abs(a)>1.05)hat.add(i);});
+   const layout=n===11?{select:6,start:7,dpad:[]}:n===15?{select:9,start:8,dpad:[11,12,13,14]}:{select:8,start:9,dpad:n>=16?[12,13,14,15]:[]};
+   const buttons=Array.from({length:17},released);
+   face.forEach((source,i)=>{if(raw[source])buttons[i]=raw[source];});
+   const take=(target,source)=>{if(raw[source]&&!face.includes(source))buttons[target]=raw[source];};
+   take(8,layout.select);take(9,layout.start);layout.dpad.forEach((source,i)=>take(12+i,source));
+   const dir=new Set();
+   for(const i of hat){
+    const d=axes[i];if(!(d!==0&&Math.abs(d)<=1))continue;
+    if(d<-.7||d>=.95)dir.add('up');if(d>=-.75&&d<-.1)dir.add('right');if(d>=-.2&&d<.45)dir.add('down');if(d>=.4)dir.add('left');
+   }
+   if(axes.length>=8&&!hat.has(6)&&!hat.has(7)){
+    if(axes[6]<-.5)dir.add('left');if(axes[6]>.5)dir.add('right');if(axes[7]<-.5)dir.add('up');if(axes[7]>.5)dir.add('down');
+   }
+   ['up','down','left','right'].forEach((name,i)=>{if(dir.has(name)&&!buttons[12+i].pressed)buttons[12+i]=pressed();});
+   const stick=i=>hat.has(i)?0:(axes[i]||0);
+   const mapped=copyPad(pad,buttons,[stick(0),stick(1),0,0]);mapped.mapping='standard';return mapped;
+  };
+ }
  // Driven entirely by the controller being calibrated: the first pad to press a
  // button after everything is released is locked in, then A, B, X, Y are taken
  // one press at a time and saved after Y. A standard pad's face buttons are
@@ -19,8 +55,10 @@
  // exits only by idling; the dialog's own close/Escape works for every pad.
  function createCalibration(read,storage,now=()=>Date.now()){
   let profiles={};try{const saved=JSON.parse(storage?.getItem(calibrationKey)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))profiles=saved;}catch{}
-  let session=null,draining=false;
+  let session=null,draining=false;const standardize=createStandardizer();
   function raw(){try{return Array.from(read()||[]);}catch{return [];}}
+  // Released, judged on what the pad will be read as: a hat or a trigger at rest is not held.
+  const settled=pad=>!pad||(pad.mapping==='standard'?still(pad):!held(pad).length&&still(standardize(pad)));
   function valid(map,pad){return Array.isArray(map)&&map.length===4&&new Set(map).size===4&&map.every(i=>Number.isInteger(i)&&i>=0&&i<pad.buttons.length);}
   function state(){return session?{phase:session.phase,ready:session.ready,next:session.phase==='capture'?labels[session.map.length]:null,captured:labels.slice(0,session.map.length),rejected:session.rejected,persisted:session.persisted}:null;}
   function notify(){session?.change?.(state());}
@@ -31,7 +69,7 @@
    try{storage.setItem(calibrationKey,JSON.stringify(profiles));session.persisted=true;}catch{session.persisted=false;}
   }
   function capture(pads){
-   const t=now(),neutral=pads.every(still);
+   const t=now(),neutral=pads.every(settled);
    if(!neutral)session.active=t;
    if(neutral){if(!session.ready){session.ready=true;notify();}}
    else if(session.ready){
@@ -57,16 +95,19 @@
    getGamepads(){
     const pads=raw();
     if(session?.phase==='capture')capture(pads);
-    const blocked=!!session||draining;if(draining&&pads.every(still))draining=false;
+    const blocked=!!session||draining;if(draining&&pads.every(settled))draining=false;
     return pads.map(pad=>{
      if(!pad)return pad;
-     if(blocked)return copyPad(pad,Array.from(pad.buttons,()=>({pressed:false,touched:false,value:0})),Array.from(pad.axes,()=>0));
-     const map=profiles[controllerKey(pad)];if(!valid(map,pad))return pad;
-     const buttons=Array.from(pad.buttons);for(const source of map)if(source>=4)buttons[source]={pressed:false,touched:false,value:0};
-     for(let i=0;i<4;i++)buttons[i]=pad.buttons[map[i]];
-     // A calibrated nonstandard pad now supplies our standard face-button slots.
-     // Other buttons and axes remain browser-reported.
-     const mapped=copyPad(pad,buttons);mapped.mapping='standard';return mapped;
+     const map=profiles[controllerKey(pad)],faces=valid(map,pad)?map:null;
+     let view=pad;
+     if(pad.mapping!=='standard')view=standardize(pad,faces);
+     else if(faces){
+      const buttons=Array.from(pad.buttons);for(const source of faces)if(source>=4)buttons[source]=released();
+      for(let i=0;i<4;i++)buttons[i]=pad.buttons[faces[i]];
+      view=copyPad(pad,buttons);view.mapping='standard';
+     }
+     if(blocked)return copyPad(view,Array.from(view.buttons,released),Array.from(view.axes,()=>0));
+     return view;
     });
    }
   };return api;
@@ -85,7 +126,8 @@
      return {pressed,touched:virtual||!!original?.touched,value:virtual?1:(original?.value||0)};
     });
     const merged={id:physical?.id||'Cubby virtual controller',index:mergedIndex,mapping:'standard',connected:true,timestamp:Math.max(physical?.timestamp||0,stamp),buttons,axes:Array.from(physical?.axes||[0,0,0,0]),vibrationActuator:physical?.vibrationActuator,hapticActuators:physical?.hapticActuators};
-    // A nonstandard controller cannot accept standard button indices. Keep it as
+    // Installed, calibration has already presented every pad as standard; this is
+    // for a nonstandard pad read directly. It cannot accept standard indices. Keep it as
     // its own device, with the standard virtual/aggregated pad first for old
     // games which select only the first connected controller.
     const first=pads.findIndex(Boolean);
@@ -194,5 +236,5 @@
   const api={device,calibration,reset,get root(){return shadow;},dispose(){if(disposed)return;disposed=true;reset();listeners.forEach(f=>f());host?.remove();style?.remove();doc.documentElement.removeAttribute('data-cubby-osd');if(descriptor)Object.defineProperty(nav,'getGamepads',descriptor);else delete nav.getGamepads;if(legacyDescriptor)Object.defineProperty(win,'HandheldControls',legacyDescriptor);else delete win.HandheldControls;if(win.HandheldOSD===api)delete win.HandheldOSD;}};
   return api;
  }
- return {createDevice,createCalibration,controllerKey,install,completeTouches};
+ return {createDevice,createCalibration,createStandardizer,controllerKey,install,completeTouches};
 });

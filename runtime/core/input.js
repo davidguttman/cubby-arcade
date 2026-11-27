@@ -102,7 +102,8 @@
         const id = pad.index + ':' + pad.id;
         const down = pad.buttons.map(b => b.pressed);
         const axes = pad.axes || [];
-        const neutral = !down.some(Boolean) && axes.every(a => Math.abs(a) < deadzone);
+        // Only the axes that steer count: others (triggers, hats) can rest at -1 or +1.
+        const neutral = !down.some(Boolean) && Math.abs(axes[0] || 0) < deadzone && Math.abs(axes[1] || 0) < deadzone;
         if (identity !== id) { identity = id; ready = hiddenSince !== null && time - hiddenSince >= revealMs; last.clear(); repeated = {}; }
         // Until the real pad's first press, host-osd shows only its on-screen pad.
         // Nothing held on it means the real pad is still hidden, so the press that

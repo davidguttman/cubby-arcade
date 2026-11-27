@@ -18,7 +18,8 @@ function install(win){
  function home(){win.location.href=/^https?:$/.test(win.location.protocol)?(win.CubbyHandheldEmbed?'/native/index.html':'/play'):'/';}
  // Games return to their title first; only Cubby turns this request into navigation.
  listen(win,'handheld:quit',home);
- function neutral(pad){return !pad.buttons.some(b=>b.pressed)&&pad.axes.every(a=>Math.abs(a)<0.5);}
+ // Only the left stick steers; other axes (triggers, hats) may rest at -1 or +1.
+ function neutral(pad){return !pad.buttons.some(b=>b.pressed)&&Math.abs(pad.axes[0]||0)<0.5&&Math.abs(pad.axes[1]||0)<0.5;}
  function chord(pad){return (pad.buttons[8]?.pressed&&(win.CubbyHandheldEmbed||pad.buttons[9]?.pressed))||(pad.buttons[4]?.pressed&&pad.buttons[5]?.pressed);}
  function pads(){try{return Array.from(originalPads?.()||[]);}catch{return [];}}
  // Reserve the system chord and all controller input while the menu is open.
