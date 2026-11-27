@@ -36,28 +36,19 @@ jobs:
         run: |
           gh release download --repo ${{ github.repository }} --pattern 'CubbyArcade-win32-x64.zip' --dir dl
           Expand-Archive dl/CubbyArcade-win32-x64.zip -DestinationPath app
-      - name: Desktop app with one virtual PlayStation pad
-        if: always()
-        run: python tests/windows-pad/repro.py app desktop-one-ds4
-      - name: Desktop app, controller setup then hub (PlayStation pad)
-        if: always()
-        run: python tests/windows-pad/repro.py app desktop-setup-ds4
-      - name: Desktop app, two pads, first idle (PlayStation)
-        if: always()
-        run: python tests/windows-pad/repro.py app desktop-two-ds4
-      - name: Desktop app, two pads, first never still (PlayStation)
-        if: always()
-        run: python tests/windows-pad/repro.py app desktop-two-noisy-ds4
-      - name: Desktop app, two pads, first never still, setup then hub
-        if: always()
-        run: python tests/windows-pad/repro.py app desktop-two-noisy-setup-ds4
-      - name: Chrome, live site, two pads, first idle
+      - name: Chrome, LIVE, two pads, play the second
         if: always()
         run: python tests/windows-pad/repro.py app chrome-two-ds4
-      - name: Chrome, FIX, two pads, first idle
+      - name: Chrome, FIX, two pads, play the second
         if: always()
         run: python tests/windows-pad/repro.py app chrome-two-fix-ds4
-      - name: Chrome, live site, two pads, first never still, setup then hub
+      - name: Chrome, LIVE, two pads, first never still
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-two-noisy-ds4
+      - name: Chrome, FIX, two pads, first never still
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-two-noisy-fix-ds4
+      - name: Chrome, LIVE, two pads, first never still, setup then hub
         if: always()
         run: python tests/windows-pad/repro.py app chrome-two-noisy-setup-ds4
       - name: Chrome, FIX, two pads, first never still, setup then hub
@@ -69,6 +60,12 @@ jobs:
       - name: Chrome, FIX, one pad, setup then hub
         if: always()
         run: python tests/windows-pad/repro.py app chrome-setup-fix-ds4
+      - name: Desktop, LIVE, two pads, play the second
+        if: always()
+        run: python tests/windows-pad/repro.py app desktop-two-ds4
+      - name: Desktop, LIVE, one pad
+        if: always()
+        run: python tests/windows-pad/repro.py app desktop-one-ds4
       - uses: actions/upload-artifact@v4
         if: always()
         with:

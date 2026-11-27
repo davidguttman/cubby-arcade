@@ -49,6 +49,17 @@ async def main():
         async def snap(label):
             s = await frame.evaluate(STATE); s['step'] = label; log.append(s); print(json.dumps(s), flush=True)
         await snap('start')
+        if len(pads) > 1:
+            # Windows chooses the slots: find which virtual pad sits first, play the other one.
+            sq = vg.DS4_BUTTONS.DS4_BUTTON_SQUARE if DS4 else vg.XUSB_BUTTON.XUSB_GAMEPAD_X
+            pads[0].press_button(button=sq); pads[0].update(); await asyncio.sleep(0.4)
+            raw = await page.evaluate('()=>[...Navigator.prototype.getGamepads.call(navigator)].filter(Boolean).map(p=>[p.index,[...p.buttons].some(b=>b.pressed)])') if frame is page.main_frame else await frame.evaluate('()=>[...Navigator.prototype.getGamepads.call(navigator)].filter(Boolean).map(p=>[p.index,[...p.buttons].some(b=>b.pressed)])')
+            pads[0].release_button(button=sq); pads[0].update(); await asyncio.sleep(0.4)
+            first_is_0 = any(i == min(r[0] for r in raw) and down for i, down in raw)
+            global real
+            real = pads[1] if first_is_0 else pads[0]
+            pads.sort(key=lambda p: p is real)   # pads[0] is now the first-listed pad (idle or wandering)
+            print('slots', raw, 'playing the second-listed pad', flush=True)
         if 'noisy' in MODE:
             # first device never sits still: its stick wanders past half travel
             import threading
