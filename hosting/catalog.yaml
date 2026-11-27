@@ -169,10 +169,10 @@
       sha256: 89664660feb2c3814a5237b655802dce067fe485d2182155b2e97485e61646b7
       source_sha256: e15a8509b775b46abb95441bf4131f6f2d6c060262197b0c87b597abcd74aac1
     attract:
-      url: https://fortynews.publit.io/file/c_fit,w_320,h_240/cubby-spell-castle-attract-037d95779c95.webm
-      size: 1830389
-      sha256: 95df4cd0b17023d82d5d15563309b844a9384faf8267b540d2106dc9c01eda4b
-      source_sha256: 037d95779c95af169f879bca5aa6b120b366e3971d9dff47e20717452926fbc5
+      url: https://fortynews.publit.io/file/cubby-spell-castle-attract320-ebbae94968e2.webm
+      size: 1320383
+      sha256: ebbae94968e2c285cde3975622b061f81a34b2c9c5476fb486d223eac3a1f0ab
+      source_sha256: 25a91a15e6be8e0b4995020a08b14a282da486422a7c91159b04464a5687e454
 - id: waddle-wars
   ages: "4–7"
   tagline: Lead your penguins through a snowball battle.
