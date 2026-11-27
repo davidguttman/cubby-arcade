@@ -20,7 +20,13 @@ jobs:
           Invoke-WebRequest https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe -OutFile vigem.exe
           Start-Process .\vigem.exe -ArgumentList '/qn','/norestart' -Wait
           Get-PnpDevice -FriendlyName '*Virtual Gamepad Emulation*' | Format-Table -AutoSize
-      - run: pip install vgamepad playwright
+      - name: Install vgamepad without its interactive driver installer, and playwright
+        shell: pwsh
+        run: |
+          pip install playwright
+          pip download vgamepad==0.2.0 --no-deps --no-binary :all: -d vg
+          tar -xzf vg/vgamepad-0.2.0.tar.gz -C vg
+          "PYTHONPATH=$PWD\vg\vgamepad-0.2.0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Download released Windows app
         shell: pwsh
         env:
