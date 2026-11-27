@@ -20,6 +20,8 @@ jobs:
           Invoke-WebRequest https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe -OutFile vigem.exe
           Start-Process .\vigem.exe -ArgumentList '/qn','/norestart' -Wait
           Get-PnpDevice -FriendlyName '*Virtual Gamepad Emulation*' | Format-Table -AutoSize
+          # Windows Server lacks the Xbox 360 (XUSB) class driver that ViGEm's Xbox target needs; add it from the driver store if present.
+          Get-ChildItem C:\Windows\System32\DriverStore\FileRepository -Recurse -Filter 'xusb*.inf' | ForEach-Object { $_.FullName; pnputil /add-driver $_.FullName /install }
       - name: Install vgamepad without its interactive driver installer, and playwright
         shell: pwsh
         run: |
@@ -35,7 +37,14 @@ jobs:
           gh release download --repo ${{ github.repository }} --pattern 'CubbyArcade-win32-x64.zip' --dir dl
           Expand-Archive dl/CubbyArcade-win32-x64.zip -DestinationPath app
       - name: Desktop app with one virtual Xbox pad
+        if: always()
         run: python tests/windows-pad/repro.py app desktop-one
+      - name: Desktop app with one virtual PlayStation pad
+        if: always()
+        run: python tests/windows-pad/repro.py app desktop-one-ds4
+      - name: Chrome with one virtual PlayStation pad
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-one-ds4
       - name: Desktop app with two virtual Xbox pads (second idle)
         if: always()
         run: python tests/windows-pad/repro.py app desktop-two
