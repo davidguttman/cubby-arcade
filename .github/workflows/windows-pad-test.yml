@@ -24,7 +24,7 @@ jobs:
         shell: pwsh
         run: |
           pip install playwright
-          New-Item -ItemType Directory vg | Out-Null; Invoke-WebRequest  -OutFile vg/vgamepad-0.2.0.tar.gz
+          New-Item -ItemType Directory vg | Out-Null; Invoke-WebRequest https://files.pythonhosted.org/packages/06/a5/990701a89ea8d7528a269c2be1ba71d888de38a762a1b0f8d8eae4c2be62/vgamepad-0.2.0.tar.gz -OutFile vg/vgamepad-0.2.0.tar.gz
           tar -xzf vg/vgamepad-0.2.0.tar.gz -C vg
           "PYTHONPATH=$PWD\vg\vgamepad-0.2.0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Download released Windows app
