@@ -36,21 +36,21 @@ jobs:
         run: |
           gh release download --repo ${{ github.repository }} --pattern 'CubbyArcade-win32-x64.zip' --dir dl
           Expand-Archive dl/CubbyArcade-win32-x64.zip -DestinationPath app
-      - name: Desktop app with one virtual Xbox pad
-        if: always()
-        run: python tests/windows-pad/repro.py app desktop-one
       - name: Desktop app with one virtual PlayStation pad
         if: always()
         run: python tests/windows-pad/repro.py app desktop-one-ds4
-      - name: Chrome with one virtual PlayStation pad
+      - name: Desktop app, controller setup then hub (PlayStation pad)
         if: always()
-        run: python tests/windows-pad/repro.py app chrome-one-ds4
-      - name: Desktop app with two virtual Xbox pads (second idle)
+        run: python tests/windows-pad/repro.py app desktop-setup-ds4
+      - name: Desktop app, two pads, first idle (PlayStation)
         if: always()
-        run: python tests/windows-pad/repro.py app desktop-two
-      - name: Chrome on play.cubbyarcade.com with one virtual Xbox pad
+        run: python tests/windows-pad/repro.py app desktop-two-ds4
+      - name: Desktop app, two pads, first never still (PlayStation)
         if: always()
-        run: python tests/windows-pad/repro.py app chrome-one
+        run: python tests/windows-pad/repro.py app desktop-two-noisy-ds4
+      - name: Desktop app, two pads, first never still, setup then hub
+        if: always()
+        run: python tests/windows-pad/repro.py app desktop-two-noisy-setup-ds4
       - uses: actions/upload-artifact@v4
         if: always()
         with:

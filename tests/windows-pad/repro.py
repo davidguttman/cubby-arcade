@@ -15,7 +15,7 @@ def tap(name, pad=None):
     if DS4 and name in ('right', 'left'):
         d = vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_EAST if name == 'right' else vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_WEST
         pad.directional_pad(direction=d); pad.update(); time.sleep(0.15); pad.directional_pad(direction=vg.DS4_DPAD_DIRECTIONS.DS4_BUTTON_DPAD_NONE); pad.update(); time.sleep(0.15); return
-    btn = {'A': vg.DS4_BUTTONS.DS4_BUTTON_CROSS} [name] if DS4 else {'A': vg.XUSB_BUTTON.XUSB_GAMEPAD_A, 'right': vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT, 'left': vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT}[name]
+    btn = {'A': vg.DS4_BUTTONS.DS4_BUTTON_CROSS, 'B': vg.DS4_BUTTONS.DS4_BUTTON_CIRCLE, 'X': vg.DS4_BUTTONS.DS4_BUTTON_SQUARE, 'Y': vg.DS4_BUTTONS.DS4_BUTTON_TRIANGLE}[name] if DS4 else {'A': vg.XUSB_BUTTON.XUSB_GAMEPAD_A, 'right': vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT, 'left': vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT}[name]
     pad.press_button(button=btn); pad.update(); time.sleep(0.15); pad.release_button(button=btn); pad.update(); time.sleep(0.15)
 STATE = '''()=>({url:location.href.slice(0,60),focus:(document.activeElement?.dataset?.gameId||document.activeElement?.className||document.activeElement?.tagName),hasFocus:document.hasFocus(),hidden:document.hidden,
  raw:[...Navigator.prototype.getGamepads.call(navigator)].map(p=>p&&{id:p.id,i:p.index,map:p.mapping,nb:p.buttons.length,ax:p.axes.length,axes:[...p.axes].map(a=>+a.toFixed(2)),down:[...p.buttons].flatMap((b,i)=>b.pressed||b.value>.5?[i]:[])}).filter(Boolean),
@@ -39,6 +39,29 @@ async def main():
         async def snap(label):
             s = await frame.evaluate(STATE); s['step'] = label; log.append(s); print(json.dumps(s), flush=True)
         await snap('start')
+        if 'noisy' in MODE:
+            # first device never sits still: its stick wanders past half travel
+            import threading
+            def wander():
+                v = 0
+                while True:
+                    v = 200 - v; pads[0].left_joystick(x_value=v, y_value=128); pads[0].update(); time.sleep(0.05)
+            threading.Thread(target=wander, daemon=True).start()
+        if 'setup' in MODE:
+            await asyncio.get_running_loop().run_in_executor(None, tap, 'A'); await asyncio.sleep(0.6)
+            await frame.evaluate("()=>{location.hash='options'}"); await asyncio.sleep(1)
+            import re
+            q = await frame.evaluate("()=>document.querySelector('.gate-question')?.textContent"); n = [int(x) for x in re.findall(r'\d+', q)]
+            ans = n[0]*n[1] if ('×' in q or 'x' in q) else n[0]-n[1] if ('-' in q or '−' in q) else n[0]+n[1]
+            for d in str(ans): await frame.locator('.gate-pad button', has_text=re.compile('^'+d+'$')).click()
+            await frame.locator('.gate-submit').click(); await asyncio.sleep(0.6)
+            await frame.locator('.controller-settings').click(); await asyncio.sleep(1)
+            await snap('setup open')
+            for name in ['A', 'B', 'X', 'Y']:
+                await asyncio.get_running_loop().run_in_executor(None, tap, name); await asyncio.sleep(0.8)
+                s2 = await frame.evaluate("()=>({prompt:document.querySelector('.calibration-prompt')?.getAttribute('aria-label'),dialog:!!document.querySelector('dialog.controller-setup[open]'),blocking:window.HandheldOSD?.calibration?.isBlocking()})"); print('setup', name, s2, flush=True); log.append({'step':'setup '+name, **s2})
+            await asyncio.sleep(2.5)
+            await snap('after setup')
         for label in ['A', 'right', 'right', 'left']:
             await asyncio.get_running_loop().run_in_executor(None, tap, label); await asyncio.sleep(0.6); await snap(label)
         await page.screenshot(path=f'evidence/{MODE}.png')
