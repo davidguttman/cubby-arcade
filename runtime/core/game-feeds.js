@@ -142,7 +142,12 @@
         if(saved.profiles!==undefined){
           if(!object(saved.profiles))throw Error('Invalid player feeds');
           for(const [id,config] of Object.entries(saved.profiles))profiles[profileId(id)]=validateConfig(config);
-        }else{
+        }
+        // Earlier hosts could persist an empty profile map alongside their
+        // device-wide choices. It is not a completed profile migration: using
+        // defaults here hides installs still pinned to the old configured feed.
+        const migrateProfiles=!Object.keys(profiles).length;
+        if(migrateProfiles){
           // Snapshot everyone who existed before profile-scoped feeds. Later
           // players start with defaults, never another player's beta choices.
           const migrated=copy(config);
@@ -151,7 +156,7 @@
           for(const id of options.profileIds?.()||[FIRST])profiles[profileId(id)]=copy(migrated);
         }
         state={schema:1,config,profiles,cache,sources};
-        needsPersist=saved.profiles===undefined;
+        needsPersist=migrateProfiles;
       })();
       await loading;
     }

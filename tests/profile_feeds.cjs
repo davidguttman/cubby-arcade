@@ -6,6 +6,35 @@ const game=id=>({id,title:id,manifest_url:`https://games.test/${id}/manifest.jso
 function fixture(saved=null){let disk=saved,games=[];const writes=[],installs=[];const values=new Map([[Profiles.REGISTRY_KEY,JSON.stringify({profiles:[{id:'p_first',avatar:'fox'},{id:'p_kid',avatar:'frog'}],active:'p_first'})]]);const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v)};const bridge={readFeedState:async()=>structuredClone(disk),writeFeedState:async v=>{disk=structuredClone(v);writes.push(v);},fetchCatalog:async url=>[game(url===A?'stable':'early')],library:async()=>structuredClone(games),install:async(id)=>{installs.push(id);games.push(game(id));}};return {storage,bridge,writes,installs,disk:()=>disk,games};}
 test('profile feed selection hides installed beta games without deleting them or leaking offers after switches/restart',async()=>{const f=fixture(),p=createPlatform(f);await p.setFeedConfig(config(true));await p.catalog();await p.install('early');assert.deepEqual((await p.library()).map(g=>g.id),['early']);await p.useProfile('p_kid');assert.deepEqual((await p.catalog()).map(g=>g.id),['stable']);assert.deepEqual(await p.library(),[]);await assert.rejects(p.install('early'),/offered/);assert.equal(f.games.length,1);await p.useProfile('p_first');assert.deepEqual((await p.library()).map(g=>g.id),['early']);await p.setFeedConfig(config(false));assert.deepEqual(await p.library(),[]);await p.setFeedConfig(config(true));assert.equal((await p.library()).length,1);const q=createPlatform(f);await q.useProfile('p_kid');assert.deepEqual(await q.library(),[]);await q.useProfile('p_first');assert.equal((await q.library()).length,1);});
 test('migration snapshots legacy feed choices for existing profiles, not profiles created later',async()=>{const f=fixture({schema:1,config:{schema:1,feeds:[{url:A,name:'Stable',enabled:true},{url:'https://custom.test/catalog',name:'Custom',enabled:true}]},cache:{},sources:{}}),p=createPlatform(f);assert.equal((await p.feedConfig()).feeds.find(f=>f.name==='Custom').enabled,true);await p.useProfile('p_kid');assert.equal((await p.feedConfig()).feeds.find(f=>f.name==='Custom').enabled,true);await p.useProfile('p_new');assert.equal((await p.feedConfig()).feeds.some(f=>f.name==='Custom'),false);assert.equal((await p.feedConfig()).feeds.find(f=>f.url===B).enabled,false);const q=createPlatform(f);await q.useProfile('p_kid');assert.equal((await q.feedConfig()).feeds.find(f=>f.name==='Custom').enabled,true);});
+test('an empty legacy profile map preserves feed identities, installed visibility and install authority across reloads',async()=>{
+ const old='https://cubby.david.app/catalog',beta='https://cubby.david.app/beta/catalog',entry=game('small-change');
+ const settings={schema:1,feeds:[{url:old,name:'Cubby Arcade',enabled:true},{url:beta,name:'Cubby Beta',enabled:false}]};
+ const pin={feed_url:old,manifest_url:entry.manifest_url};
+ const f=fixture({schema:1,config:settings,profiles:{},cache:{[old]:[entry],[A]:[entry]},sources:{'small-change':pin}});
+ f.games.push(entry);f.bridge.fetchCatalog=async()=>[entry];
+ let installedOffer;f.bridge.install=async(_id,{offer})=>{installedOffer=offer;};
+ const p=createPlatform(f);
+ assert.deepEqual(await p.feedConfig(),settings);
+ assert.deepEqual(f.disk().profiles,{p_first:settings,p_kid:settings});
+ assert.deepEqual((await p.library()).map(g=>g.id),['small-change']);
+ assert.equal((await p.catalog())[0]._source.feed_url,old);
+ await p.install('small-change');assert.deepEqual(installedOffer._source,pin);
+ assert.deepEqual(f.disk().sources,{'small-change':pin},'Migration never rewrites installed source pins');
+ f.storage.setItem(Profiles.REGISTRY_KEY,JSON.stringify({profiles:[{id:'p_first',avatar:'fox'},{id:'p_kid',avatar:'frog'},{id:'p_new',avatar:'bear'}],active:'p_new'}));
+ const q=createPlatform(f);assert.deepEqual(await q.feedConfig(),Feeds.defaultConfig());
+ await q.useProfile('p_kid');assert.deepEqual(await q.feedConfig(),settings);
+});
+test('empty legacy profile maps preserve custom feeds and explicit opt-outs, while scoped settings remain authoritative',async()=>{
+ for(const settings of [{schema:1,feeds:[]},{schema:1,feeds:[{url:'https://custom.test/catalog',name:'Custom',enabled:false},{url:B,name:'Beta',enabled:true}]}]){
+  const f=fixture({schema:1,config:settings,profiles:{},cache:{},sources:{}}),p=createPlatform(f);
+  assert.deepEqual(await p.feedConfig(),settings);
+  await p.useProfile('p_kid');assert.deepEqual(await p.feedConfig(),settings);
+ }
+ const legacy={schema:1,feeds:[{url:'https://custom.test/catalog',name:'Custom',enabled:true}]};
+ const kid={schema:1,feeds:[]},f=fixture({schema:1,config:legacy,profiles:{p_kid:kid},cache:{},sources:{}}),p=createPlatform(f);
+ assert.deepEqual(await p.feedConfig(),Feeds.defaultConfig(),'A missing scoped player never inherits device-wide choices');
+ await p.useProfile('p_kid');assert.deepEqual(await p.feedConfig(),kid);
+});
 test('profile changes reject stale catalog and library completions',async()=>{const f=fixture(),p=createPlatform(f);await p.setFeedConfig(config(true));let finish,started;const ready=new Promise(r=>started=r);const gate=new Promise(r=>finish=r);f.bridge.fetchCatalog=async()=>{started();await gate;return [game('early')];};const pending=p.catalog();await ready;await p.useProfile('p_kid');finish();await assert.rejects(pending,/profile/i);});
 
 test('beta bytes exposed during an in-flight install stay hidden after switching to a child',async()=>{
