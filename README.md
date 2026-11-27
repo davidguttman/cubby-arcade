@@ -301,6 +301,14 @@ found and decoded too. Triggers, shoulders and the right stick are left out, so
 an axis resting at -1 never looks held. Only the left stick counts when deciding
 a pad is released.
 
+Several controllers can be connected at once (a second pad, a virtual pad from
+Steam or another program, a wheel), and Windows lists them all from the start, so
+the pad being played may not be first. The first pad the hub and games read
+speaks for all of them: every pad's buttons count, and the stick follows the pad
+that last pressed a new button. Controller setup takes a fresh press from any pad,
+then waits only on the pad being set up; a device that never sits still cannot
+hold setup or the input after it.
+
 The host reserves screen space for the `.screen`/`canvas#screen`/`canvas.library`
 layout conventions. Shadow DOM isolates controls and styles, not the browser
 viewport: arbitrary games that calculate their layout from `innerHeight` still
