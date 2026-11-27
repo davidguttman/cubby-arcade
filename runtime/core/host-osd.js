@@ -11,7 +11,8 @@
  function copyPad(pad,buttons=pad.buttons,axes=pad.axes){return {id:pad.id,index:pad.index,mapping:pad.mapping,connected:pad.connected,timestamp:pad.timestamp,buttons,axes,vibrationActuator:pad.vibrationActuator,hapticActuators:pad.hapticActuators,pose:pad.pose};}
  const held=pad=>Array.from(pad.buttons).flatMap((b,i)=>b.pressed||b.value>.5?[i]:[]);
  // Only the left stick steers. Other axes may rest at -1 or +1 (triggers, hats).
- const still=pad=>!pad||!held(pad).length&&[0,1].every(i=>Math.abs(pad.axes[i]||0)<.5);
+ const still=pad=>!held(pad).length&&[0,1].every(i=>Math.abs(pad.axes[i]||0)<.5);
+ // Only the left stick steers. Other axes may rest at -1 or +1 (triggers, hats).
  const released=()=>({pressed:false,touched:false,value:0}),pressed=()=>({pressed:true,touched:true,value:1});
  // A pad the browser could not map ('' mapping) reports raw indices. Turn it into a
  // standard pad so the hub, the game shell and every game's own input read it as one:
@@ -55,10 +56,8 @@
  // exits only by idling; the dialog's own close/Escape works for every pad.
  function createCalibration(read,storage,now=()=>Date.now()){
   let profiles={};try{const saved=JSON.parse(storage?.getItem(calibrationKey)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))profiles=saved;}catch{}
-  let session=null,draining=false;const standardize=createStandardizer();
+  let session=null,draining=false,drainKeys=null,drainLocked=null;const standardize=createStandardizer();
   function raw(){try{return Array.from(read()||[]);}catch{return [];}}
-  // Released, judged on what the pad will be read as: a hat or a trigger at rest is not held.
-  const settled=pad=>!pad||(pad.mapping==='standard'?still(pad):!held(pad).length&&still(standardize(pad)));
   function valid(map,pad){return Array.isArray(map)&&map.length===4&&new Set(map).size===4&&map.every(i=>Number.isInteger(i)&&i>=0&&i<pad.buttons.length);}
   function state(){return session?{phase:session.phase,ready:session.ready,next:session.phase==='capture'?labels[session.map.length]:null,captured:labels.slice(0,session.map.length),rejected:session.rejected,persisted:session.persisted}:null;}
   function notify(){session?.change?.(state());}
@@ -68,34 +67,53 @@
    if(session.map.every((source,i)=>source===i))delete profiles[session.key];else profiles[session.key]=session.map.slice();
    try{storage.setItem(calibrationKey,JSON.stringify(profiles));session.persisted=true;}catch{session.persisted=false;}
   }
+  // A computer can have more than one controller-like device (a second pad, a virtual
+  // pad from Steam or another program, a wheel), and some never sit still. Setup takes
+  // a fresh press from any of them, then follows only the pad being set up: it must let
+  // go before its next press. Other devices never hold setup up.
+  const padKey=pad=>pad.index+':'+controllerKey(pad);
+  // Released, judged on what the pad will be read as: a hat or a trigger at rest is not held.
+  const settled=pad=>pad.mapping==='standard'?still(pad):!held(pad).length&&still(standardize(pad));
   function capture(pads){
-   const t=now(),neutral=pads.every(settled);
-   if(!neutral)session.active=t;
-   if(neutral){if(!session.ready){session.ready=true;notify();}}
-   else if(session.ready){
-    const usable=pads.filter(p=>p&&p.connected!==false&&p.buttons.length>=4);
-    const pad=session.key?usable.find(p=>controllerKey(p)===session.key):usable.find(p=>held(p).length),down=pad?held(pad):[];
-    if(down.length){
-     session.ready=false;
-     if(pad.mapping==='standard'&&down.some(i=>i>=4))return end('cancelled');
-     if(down.length>1||session.map.includes(down[0]))session.rejected++;
-     else{session.key=controllerKey(pad);session.map.push(down[0]);if(session.map.length===4){store();return end('saved');}}
-     notify();
-    }
+   const t=now(),usable=pads.filter(p=>p&&p.connected!==false&&p.buttons.length>=4),presses=[];
+   for(const p of usable){const k=padKey(p),down=held(p),before=session.prev.get(k);session.prev.set(k,down);if(before&&down.some(i=>!before.includes(i)))presses.push(p);}
+   if(usable.some(p=>held(p).length))session.active=t;
+   // A press counts once the pads were ready on the previous frame.
+   const pad=session.ready&&(session.key?presses.find(p=>controllerKey(p)===session.key):presses[0]);
+   if(pad){
+    const down=held(pad);
+    session.ready=false;session.last=padKey(pad);
+    if(pad.mapping==='standard'&&down.some(i=>i>=4))return end('cancelled');
+    if(down.length>1||session.map.includes(down[0]))session.rejected++;
+    else{session.key=controllerKey(pad);session.map.push(down[0]);if(session.map.length===4){store();return end('saved');}}
+    notify();
+   }else{
+    // Before the first capture, every pad's buttons must be up (the press that opened setup
+    // is not a capture); after it, only the pad being set up, stick included.
+    const last=session.last&&usable.find(p=>padKey(p)===session.last);
+    const ready=session.last?!last||settled(last):usable.every(p=>!held(p).length);
+    if(ready!==session.ready){session.ready=ready;notify();}
    }
    if(t-session.active>=idleMs)end('timeout');
   }
   const api={
    state,isBlocking:()=>!!session||draining,
    // change(state) runs on every visible step; phase becomes saved, cancelled or timeout.
-   begin(change){session={key:null,map:[],ready:false,phase:'capture',rejected:0,persisted:null,active:now(),change};notify();},
+   begin(change){session={key:null,map:[],ready:false,phase:'capture',rejected:0,persisted:null,active:now(),prev:new Map(),last:null,change};notify();},
    // Ends the session; captures not yet saved are discarded. Input stays swallowed
-   // until every physical control is released, so the last press can't navigate.
-   cancel(){if(session){session=null;draining=true;}},
+   // until the buttons held at that moment are released, so the last press can't navigate.
+   cancel(){if(session){drainLocked=session.last;drainKeys=null;session=null;draining=true;}},
    getGamepads(){
     const pads=raw();
     if(session?.phase==='capture')capture(pads);
-    const blocked=!!session||draining;if(draining&&pads.every(settled))draining=false;
+    const blocked=!!session||draining;
+    if(draining){
+     // The pad being set up must settle, stick included; any other pad only has to let go
+     // of the buttons it held when setup closed. A device that never sits still can't hold it up.
+     if(drainKeys===null)drainKeys=pads.filter(p=>p&&held(p).length).map(padKey);
+     const find=k=>pads.find(p=>p&&padKey(p)===k),locked=drainLocked&&find(drainLocked);
+     draining=!!(locked&&!settled(locked))||drainKeys.some(k=>{const p=find(k);return p&&held(p).length>0;});
+    }
     return pads.map(pad=>{
      if(!pad)return pad;
      const map=profiles[controllerKey(pad)],faces=valid(map,pad)?map:null;
@@ -113,19 +131,36 @@
   };return api;
  }
  function createDevice(readPhysical,now=()=>Date.now(),readVirtual=()=>[]){
-  const pointers=new Map();let stamp=now();
+  const pointers=new Map(),last=new Map();let stamp=now(),active=null;
   function reset(){pointers.clear();stamp=now();}
+  const keyOf=p=>p.index+':'+p.id;
   return {press(pointer,button){if(Object.hasOwn(indices,button)){pointers.set(pointer,button);stamp=now();}},release(pointer){pointers.delete(pointer);stamp=now();},reset,
    getGamepads(){
     let pads;try{pads=Array.from(readPhysical()||[]);}catch{pads=[];}
-    const held=new Set([...pointers.values(),...readVirtual()]),standard=pads.findIndex(p=>p?.mapping==='standard'),physical=standard<0?null:pads[standard];
+    const held=new Set([...pointers.values(),...readVirtual()]),standards=pads.filter(p=>p?.mapping==='standard');
+    // A computer can have several controllers at once: a second pad, a virtual pad from
+    // Steam or another program, a wheel. Games and the hub read the first pad, so the
+    // first pad speaks for all of them: every pad's buttons count, and the stick comes
+    // from the pad that last pressed a new button (before that, the first pad).
+    const seen=new Set(),pressers=[];
+    for(const p of standards){
+     const k=keyOf(p),down=Array.from(p.buttons,b=>!!b.pressed),before=last.get(k);seen.add(k);
+     if(before&&down.some((d,i)=>d&&!before[i]))pressers.push(k);
+     last.set(k,down);
+    }
+    if(pressers.length&&!pressers.includes(active))active=pressers[0];
+    for(const k of [...last.keys()])if(!seen.has(k))last.delete(k);
+    const physical=standards.find(p=>keyOf(p)===active)||standards[0]||null;
+    const standard=standards.length?pads.indexOf(standards[0]):-1;
     const mergedIndex=standard<0?0:standard;
-    if(physical&&!held.size&&standard===pads.findIndex(Boolean))return pads;
-    const buttons=Array.from({length:Math.max(17,physical?.buttons?.length||0)},(_,i)=>{
-     const original=physical?.buttons?.[i],virtual=[...held].some(name=>indices[name]===i),pressed=!!original?.pressed||virtual;
-     return {pressed,touched:virtual||!!original?.touched,value:virtual?1:(original?.value||0)};
+    if(physical&&standards.length===1&&!held.size&&standard===pads.findIndex(Boolean))return pads;
+    const buttons=Array.from({length:Math.max(17,...standards.map(p=>p.buttons.length))},(_,i)=>{
+     const originals=standards.map(p=>p.buttons[i]).filter(Boolean),virtual=[...held].some(name=>indices[name]===i);
+     const pressed=originals.some(b=>b.pressed)||virtual;
+     return {pressed,touched:virtual||originals.some(b=>b.touched),value:virtual?1:Math.max(0,...originals.map(b=>b.value||0))};
     });
-    const merged={id:physical?.id||'Cubby virtual controller',index:mergedIndex,mapping:'standard',connected:true,timestamp:Math.max(physical?.timestamp||0,stamp),buttons,axes:Array.from(physical?.axes||[0,0,0,0]),vibrationActuator:physical?.vibrationActuator,hapticActuators:physical?.hapticActuators};
+    const named=standards[0]||physical;
+    const merged={id:named?.id||'Cubby virtual controller',index:mergedIndex,mapping:'standard',connected:true,timestamp:Math.max(stamp,...standards.map(p=>p.timestamp||0)),buttons,axes:Array.from(physical?.axes||[0,0,0,0]),vibrationActuator:physical?.vibrationActuator,hapticActuators:physical?.hapticActuators};
     // Installed, calibration has already presented every pad as standard; this is
     // for a nonstandard pad read directly. It cannot accept standard indices. Keep it as
     // its own device, with the standard virtual/aggregated pad first for old
