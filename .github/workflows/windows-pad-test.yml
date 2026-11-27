@@ -1,0 +1,43 @@
+name: Windows controller repro
+on:
+  push:
+    branches: [san/windows-pad-test]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pad:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ViGEmBus (virtual Xbox controller driver)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/nefarius/ViGEmBus/releases/download/v1.22.0/ViGEmBus_1.22.0_x64_x86_arm64.exe -OutFile vigem.exe
+          Start-Process .\vigem.exe -ArgumentList '/qn','/norestart' -Wait
+          Get-PnpDevice -FriendlyName '*Virtual Gamepad Emulation*' | Format-Table -AutoSize
+      - run: pip install vgamepad playwright
+      - name: Download released Windows app
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo ${{ github.repository }} --pattern 'CubbyArcade-win32-x64.zip' --dir dl
+          Expand-Archive dl/CubbyArcade-win32-x64.zip -DestinationPath app
+      - name: Desktop app with one virtual Xbox pad
+        run: python tests/windows-pad/repro.py app desktop-one
+      - name: Desktop app with two virtual Xbox pads (second idle)
+        if: always()
+        run: python tests/windows-pad/repro.py app desktop-two
+      - name: Chrome on play.cubbyarcade.com with one virtual Xbox pad
+        if: always()
+        run: python tests/windows-pad/repro.py app chrome-one
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-pad-evidence
+          path: evidence
